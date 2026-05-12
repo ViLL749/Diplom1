@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Создание новой модели для марки {{ car_make.name }}{% endblock %}
+{% block content %}
+{% load static %}
+<script src="{% static 'js/jquery-3.6.0.min.js' %}"></script>
+
+<h1>Создание новой модели для марки {{ car_make.name }}</h1>
+<div id="form-errors" class="form-errors" style="display: none;"></div>
+<form method="post" id="car-model-form">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="btn">Сохранить</button>
+    <a href="{{ cancel_url }}" class="btn">Отмена</a>
+</form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const form = document.getElementById("car-model-form");
+    const nameInput = document.getElementById("id_name");
+    const formErrors = document.getElementById("form-errors");
+
+    function validateName() {
+        const nameValue = nameInput.value.trim();
+        if (!nameValue) return "Название модели обязательно.";
+        if (nameValue.length > 100) return "Название не может превышать 100 символов.";
+        return null;
+    }
+
+    async function checkCarModelUniqueness(name) {
+        const lowerName = name.trim().toLowerCase();
+        return $.ajax({
+            url: '{% url "check_car_model_uniqueness" %}',
+            data: { name: lowerName },
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+        }).then(response => response.exists ? "Модель с таким названием уже существует." : null);
+    }
+
+    async function validateForm(event) {
+        event.preventDefault();
+        const nameError = validateName();
+        const uniquenessError = nameError ? null : await checkCarModelUniqueness(nameInput.value);
+
+        if (nameError || uniquenessError) {
+            formErrors.innerHTML = "<p>Пожалуйста, исправьте ошибки:</p><ul>" +
+                (nameError ? `<li>${nameError}</li>` : '') +
+                (uniquenessError ? `<li>${uniquenessError}</li>` : '') +
+                "</ul>";
+            formErrors.style.display = "block";
+        } else {
+            formErrors.style.display = "none";
+            form.submit();
+        }
+    }
+
+    form.addEventListener("submit", validateForm);
+});
+</script>
+{% endblock %}

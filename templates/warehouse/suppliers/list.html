@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Поставщики{% endblock %}
+{% block content %}
+<h1>Поставщики</h1>
+<a href="{% url 'supplier_create' %}" class="btn">Добавить поставщика</a>
+
+<form method="GET" class="search-container">
+    <input type="text" name="search" placeholder="Поиск..." value="{{ request.GET.search|default:'' }}">
+    <button type="submit" class="btn">Искать</button>
+</form>
+
+<table id="suppliers-table">
+    <thead>
+        <tr>
+            <th>Название</th>
+            <th>Телефон</th>
+            <th>Контактное лицо</th>
+            <th>Примечания</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in page_obj %}
+        <tr data-id="{{ s.id }}"
+            data-url-update="{% url 'supplier_update' s.id %}"
+            data-url-delete="{% url 'supplier_delete' s.id %}">
+            <td>{{ s.name }}</td>
+            <td>{{ s.phone|default:"—" }}</td>
+            <td>{{ s.contact|default:"—" }}</td>
+            <td>{{ s.notes|truncatechars:40|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4">Поставщики не найдены.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if page_obj.has_other_pages %}
+<div class="pagination">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}" class="btn">Предыдущая</a>{% endif %}
+    {% for num in page_obj.paginator.page_range %}{% if num >= page_obj.number|add:-2 and num <= page_obj.number|add:2 %}<a href="?page={{ num }}&per_page={{ per_page }}" class="btn {% if page_obj.number == num %}active{% endif %}">{{ num }}</a>{% endif %}{% endfor %}
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}" class="btn">Следующая</a>{% endif %}
+</div>
+{% endif %}
+
+<form method="GET" class="per-page-form">
+    <label>Записей на страницу:
+        <select name="per_page" onchange="this.form.submit()">
+            <option value="5" {% if per_page == 5 %}selected{% endif %}>5</option>
+            <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+            <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+        </select>
+    </label>
+</form>
+
+<div class="mt-20">
+    <button id="edit-s" class="btn" disabled>Изменить</button>
+    <button id="delete-s" class="btn btn-danger" disabled>Удалить</button>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var selected = null;
+    document.querySelectorAll('#suppliers-table tbody tr').forEach(function(row) {
+        row.addEventListener('click', function() {
+            if (selected) selected.classList.remove('selected');
+            this.classList.add('selected');
+            selected = this;
+            document.getElementById('edit-s').disabled = false;
+            document.getElementById('delete-s').disabled = false;
+            document.getElementById('edit-s').onclick = function() { window.location.href = selected.dataset.urlUpdate; };
+            document.getElementById('delete-s').onclick = function() { window.location.href = selected.dataset.urlDelete; };
+        });
+    });
+});
+</script>
+{% endblock %}

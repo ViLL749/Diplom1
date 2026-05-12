@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Остатки на складе{% endblock %}
+{% block content %}
+<h1>Остатки на складе</h1>
+<a href="{% url 'supply_create' %}" class="btn">Создать приход</a>
+<a href="{% url 'parts_list' %}" class="btn">Номенклатура</a>
+
+<form method="GET" class="search-container">
+    <input type="text" name="search" placeholder="Поиск..." value="{{ request.GET.search|default:'' }}">
+    <select name="column">
+        <option value="article" {% if request.GET.column == 'article' or not request.GET.column %}selected{% endif %}>Артикул</option>
+        <option value="name" {% if request.GET.column == 'name' %}selected{% endif %}>Название</option>
+        <option value="location" {% if request.GET.column == 'location' %}selected{% endif %}>Место хранения</option>
+    </select>
+    <button type="submit" class="btn">Искать</button>
+</form>
+
+<table id="stock-table">
+    <thead>
+        <tr>
+            <th><a href="?sort=part__article&direction={% if request.GET.sort == 'part__article' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}">Артикул{% if request.GET.sort == 'part__article' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
+            <th><a href="?sort=part__name&direction={% if request.GET.sort == 'part__name' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}">Название{% if request.GET.sort == 'part__name' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
+            <th><a href="?sort=location__label&direction={% if request.GET.sort == 'location__label' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}">Место хранения{% if request.GET.sort == 'location__label' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
+            <th><a href="?sort=total_qty&direction={% if request.GET.sort == 'total_qty' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}">Всего{% if request.GET.sort == 'total_qty' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
+            <th><a href="?sort=reserved_qty&direction={% if request.GET.sort == 'reserved_qty' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}">Резерв{% if request.GET.sort == 'reserved_qty' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
+            <th>Доступно</th>
+            <th>Мин.</th>
+            <th>Действие</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in page_obj %}
+        <tr {% if entry.is_low %}class="low-stock"{% endif %}>
+            <td><a href="{% url 'part_detail' entry.part.id %}">{{ entry.part.article }}</a></td>
+            <td>{{ entry.part.name }}</td>
+            <td>{{ entry.location.label }}</td>
+            <td>{{ entry.total_qty }}</td>
+            <td>{{ entry.reserved_qty }}</td>
+            <td><strong>{{ entry.available_qty }}</strong></td>
+            <td>{{ entry.min_qty }}</td>
+            <td><a href="{% url 'stock_update_min' entry.id %}" class="btn">Мин.</a></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8">Остатки не найдены.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if page_obj.has_other_pages %}
+<div class="pagination">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn">Предыдущая</a>{% endif %}
+    {% for num in page_obj.paginator.page_range %}{% if num >= page_obj.number|add:-2 and num <= page_obj.number|add:2 %}<a href="?page={{ num }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn {% if page_obj.number == num %}active{% endif %}">{{ num }}</a>{% endif %}{% endfor %}
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn">Следующая</a>{% endif %}
+</div>
+{% endif %}
+
+<form method="GET" class="per-page-form">
+    <label>Записей на страницу:
+        <select name="per_page" onchange="this.form.submit()">
+            <option value="5" {% if per_page == 5 %}selected{% endif %}>5</option>
+            <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+            <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+        </select>
+    </label>
+    {% if request.GET.search %}<input type="hidden" name="search" value="{{ request.GET.search }}"><input type="hidden" name="column" value="{{ request.GET.column }}">{% endif %}
+</form>
+
+<style>
+tr.low-stock td { color: #c0392b; font-weight: bold; }
+</style>
+{% endblock %}

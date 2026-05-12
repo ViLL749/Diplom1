@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Добавить место хранения{% endblock %}
+{% block content %}
+<h1>Добавить место хранения</h1>
+<p>Адрес генерируется автоматически в формате Стеллаж-Полка-Ячейка (например: A-01-05).</p>
+
+<div id="form-errors" class="form-errors" style="display:none;"></div>
+
+<form method="post" id="location-form">
+    {% csrf_token %}
+    {% for field in form %}
+    <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
+        {{ field }}
+        {% if field.errors %}<p class="error">{{ field.errors|join:", " }}</p>{% endif %}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn">Сохранить</button>
+    <a href="{% url 'locations_list' %}" class="btn btn-danger">Отмена</a>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var formErrors = document.getElementById('form-errors');
+    var errors = [
+        {% for e in form.non_field_errors %}"{{ e }}",{% endfor %}
+    ].filter(Boolean);
+    if (errors.length) {
+        formErrors.innerHTML = '<p>Пожалуйста, исправьте ошибки:</p><ul>' +
+            errors.map(function(e) { return '<li>' + e + '</li>'; }).join('') + '</ul>';
+        formErrors.style.display = 'block';
+    }
+});
+</script>
+{% endblock %}

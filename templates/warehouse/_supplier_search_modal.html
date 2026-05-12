@@ -1,0 +1,71 @@
+<!-- Модальное окно выбора поставщика -->
+<div id="supplier-modal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <span class="modal-close" onclick="closeSupplierModal()">×</span>
+        <h2>Выбор поставщика</h2>
+        <div class="search-container">
+            <input type="text" id="supplier-modal-search" placeholder="Поиск по названию или контакту...">
+            <button type="button" class="btn" onclick="searchSuppliers()">Искать</button>
+        </div>
+        <div class="overflow-table">
+            <table>
+                <thead><tr><th>Название</th><th>Телефон</th><th>Контакт</th></tr></thead>
+                <tbody id="supplier-modal-list"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+var _supplierHiddenId  = null;
+var _supplierDisplayId = null;
+
+function openSupplierModal(hiddenId, displayId) {
+    _supplierHiddenId  = hiddenId;
+    _supplierDisplayId = displayId;
+    document.getElementById('supplier-modal-search').value = '';
+    searchSuppliers();
+    document.getElementById('supplier-modal').style.display = 'block';
+}
+
+function closeSupplierModal() {
+    document.getElementById('supplier-modal').style.display = 'none';
+}
+
+function searchSuppliers() {
+    var q = document.getElementById('supplier-modal-search').value;
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '{% url "api_suppliers" %}?search=' + encodeURIComponent(q));
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            var data = JSON.parse(xhr.responseText);
+            var tbody = document.getElementById('supplier-modal-list');
+            tbody.innerHTML = '';
+            data.suppliers.forEach(function(s) {
+                var tr = document.createElement('tr');
+                tr.className = 'supplier-row';
+                tr.style.cursor = 'pointer';
+                tr.innerHTML = '<td>' + s.name + '</td><td>' + (s.phone || '—') + '</td><td>' + (s.contact || '—') + '</td>';
+                tr.addEventListener('click', function() {
+                    document.getElementById(_supplierHiddenId).value = s.id;
+                    document.getElementById(_supplierDisplayId).value = s.name;
+                    closeSupplierModal();
+                });
+                tbody.appendChild(tr);
+            });
+            if (data.suppliers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="color:#888;">Поставщики не найдены.</td></tr>';
+            }
+        }
+    };
+    xhr.send();
+}
+
+document.getElementById('supplier-modal-search').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); searchSuppliers(); }
+});
+
+window.addEventListener('click', function(e) {
+    if (e.target === document.getElementById('supplier-modal')) closeSupplierModal();
+});
+</script>

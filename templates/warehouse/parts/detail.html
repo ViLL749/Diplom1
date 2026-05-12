@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Деталь {{ part.article }}{% endblock %}
+{% block content %}
+<h1>{{ part.article }} — {{ part.name }}</h1>
+<p><strong>Производитель:</strong> {{ part.brand|default:"—" }}</p>
+<p><strong>Категория:</strong> {{ part.category }}</p>
+<p><strong>Штук в упаковке:</strong> {{ part.package_qty }}</p>
+<p><strong>Примечания:</strong> {{ part.notes|default:"—" }}</p>
+
+<a href="{% url 'parts_list' %}" class="btn">К списку</a>
+<a href="{% url 'part_update' part.id %}" class="btn">Изменить</a>
+<a href="{% url 'part_delete' part.id %}" class="btn btn-danger">Удалить</a>
+
+<h2 class="top-title-margin">Остатки на складе</h2>
+{% if stock_entries %}
+<table>
+    <thead>
+        <tr>
+            <th>Место хранения</th>
+            <th>Общее кол-во</th>
+            <th>Зарезервировано</th>
+            <th>Доступно</th>
+            <th>Мин. остаток</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in stock_entries %}
+        <tr {% if entry.is_low %}style="color:#c0392b;font-weight:bold;"{% endif %}>
+            <td>{{ entry.location.label }}</td>
+            <td>{{ entry.total_qty }}</td>
+            <td>{{ entry.reserved_qty }}</td>
+            <td>{{ entry.available_qty }}</td>
+            <td>{{ entry.min_qty }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>На складе нет остатков по данной детали.</p>
+{% endif %}
+{% endblock %}

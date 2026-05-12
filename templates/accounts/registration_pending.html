@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Регистрация ожидает подтверждения</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body>
+    <div class="auth-container">
+        <h1>Регистрация ожидает подтверждения</h1>
+        <p>Ваша учетная запись будет активирована после подтверждения.</p>
+        <p>Уже есть аккаунт? <a href="{% url 'login' %}">Войдите здесь</a></p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Удалить деталь из заказ-наряда{% endblock %}
+{% block content %}
+<h1>Удалить деталь из заказ-наряда №{{ wop.work_order.id }}?</h1>
+<p><strong>Деталь:</strong> {{ wop.part.article }} — {{ wop.part.name }}</p>
+<p><strong>Количество:</strong> {{ wop.quantity }}</p>
+{% if wop.status == 'reserved' %}
+<p>Резерв на складе будет снят автоматически.</p>
+{% endif %}
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Удалить</button>
+    <a href="{% url 'order_detail' wop.work_order.id %}" class="btn">Отмена</a>
+</form>
+{% endblock %}

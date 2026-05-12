@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Список заказов{% endblock %}
+{% block content %}
+    <h1>Список заказов</h1>
+    <a href="{% url 'order_create' %}" class="btn">Добавить заказ</a>
+
+    <!-- Поиск -->
+    <form method="GET" class="search-container">
+        <input type="text" id="search-input" name="search" placeholder="Поиск..." value="{{ request.GET.search|default:'' }}">
+        <select id="search-column" name="column">
+            <option value="id" {% if request.GET.column == "id" %}selected{% endif %}>ID</option>
+            <option value="client" {% if request.GET.column == "client" or not request.GET.column %}selected{% endif %}>Клиент</option>
+            <option value="car" {% if request.GET.column == "car" %}selected{% endif %}>Автомобиль</option>
+        </select>
+        <button id="search-btn" type="submit" class="btn">Искать</button>
+    </form>
+
+    <table id="orders-table">
+        <thead>
+            <tr>
+                <th>
+                    <a href="?sort=id&direction={% if request.GET.sort == 'id' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if request.GET.per_page %}&per_page={{ request.GET.per_page }}{% endif %}" data-sort="id">
+                        ID
+                        {% if request.GET.sort == 'id' %}
+                            <span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                        {% else %}
+                            <span class="sort-arrow default"></span>
+                        {% endif %}
+                    </a>
+                </th>
+                <th>
+                    <a href="?sort=client_fio_static&direction={% if request.GET.sort == 'client_fio_static' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if request.GET.per_page %}&per_page={{ request.GET.per_page }}{% endif %}" data-sort="client_fio_static">
+                        Клиент
+                        {% if request.GET.sort == 'client_fio_static' %}
+                            <span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                        {% else %}
+                            <span class="sort-arrow default"></span>
+                        {% endif %}
+                    </a>
+                </th>
+
+                <th>
+                    <a href="?sort=car_details_static&direction={% if request.GET.sort == 'car_details_static' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if request.GET.per_page %}&per_page={{ request.GET.per_page }}{% endif %}" data-sort="car_details_static">
+                        Автомобиль
+                        {% if request.GET.sort == 'car_details_static' %}
+                            <span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                        {% else %}
+                            <span class="sort-arrow default"></span>
+                        {% endif %}
+                    </a>
+                </th>
+                <th>
+                    <a href="?sort=order_date&direction={% if request.GET.sort == 'order_date' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if request.GET.per_page %}&per_page={{ request.GET.per_page }}{% endif %}" data-sort="order_date">
+                        Дата заказа
+                        {% if request.GET.sort == 'order_date' %}
+                            <span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                        {% else %}
+                            <span class="sort-arrow default"></span>
+                        {% endif %}
+                    </a>
+                </th>
+                <th>
+                    <a href="?sort=status&direction={% if request.GET.sort == 'status' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if request.GET.per_page %}&per_page={{ request.GET.per_page }}{% endif %}" data-sort="status">
+                        Статус
+                        {% if request.GET.sort == 'status' %}
+                            <span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                        {% else %}
+                            <span class="sort-arrow default"></span>
+                        {% endif %}
+                    </a>
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in page_obj %}
+                <tr data-id="{{ order.id }}" data-url-detail="{% url 'order_detail' order.id %}" data-url-update="{% url 'order_update' order.id %}" data-url-delete="{% url 'order_delete' order.id %}">
+                    <td>{{ order.id }}</td>
+                    {% if order.status == 'Завершён' %}
+                        <td>{{ order.client_fio_static }}</td>
+                        <td>{{ order.car_details_static }}</td>
+                    {% else %}
+                        <td>{{ order.client_car.client.fio }}</td>
+                        <td>{{ order.client_car.make.name }} {{ order.client_car.model.name }}</td>
+                    {% endif %}
+                    <td>{{ order.order_date }}</td>
+                    <td>{{ order.status }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if page_obj.has_other_pages %}
+        <div class="pagination">
+            {% if page_obj.has_previous %}
+                <a href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if request.GET.sort %}&sort={{ request.GET.sort }}&direction={{ request.GET.direction }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn">Предыдущая</a>
+            {% endif %}
+            {% with current=page_obj.number total=page_obj.paginator.num_pages %}
+                {% for num in page_obj.paginator.page_range %}
+                    {% if num >= current|add:-2 and num <= current|add:2 %}
+                        <a href="?page={{ num }}&per_page={{ per_page }}{% if request.GET.sort %}&sort={{ request.GET.sort }}&direction={{ request.GET.direction }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn {% if page_obj.number == num %}active{% endif %}">{{ num }}</a>
+                    {% endif %}
+                {% endfor %}
+            {% endwith %}
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if request.GET.sort %}&sort={{ request.GET.sort }}&direction={{ request.GET.direction }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn">Следующая</a>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <form method="GET" class="per-page-form">
+        <label for="per_page">Записей на страницу:</label>
+        <select name="per_page" id="per_page" onchange="this.form.submit()">
+            <option value="5" {% if per_page == 5 %}selected{% endif %}>5</option>
+            <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+            <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+        </select>
+        {% if request.GET.sort %}
+            <input type="hidden" name="sort" value="{{ request.GET.sort }}">
+            <input type="hidden" name="direction" value="{{ request.GET.direction }}">
+        {% endif %}
+        {% if request.GET.search %}
+            <input type="hidden" name="search" value="{{ request.GET.search }}">
+            <input type="hidden" name="column" value="{{ request.GET.column }}">
+        {% endif %}
+    </form>
+
+    <div id="order-actions" class="mt-20">
+        <button id="view-order" class="btn" disabled>Просмотр</button>
+        <button id="edit-order" class="btn" disabled>Изменить</button>
+        <button id="delete-order" class="btn btn-danger" disabled>Удалить</button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const rows = document.querySelectorAll('#orders-table tbody tr');
+            let selectedRow = null;
+
+            rows.forEach(row => {
+                row.addEventListener('click', function() {
+                    if (selectedRow) {
+                        selectedRow.classList.remove('selected');
+                    }
+                    this.classList.add('selected');
+                    selectedRow = this;
+                    document.getElementById('view-order').disabled = false;  // Исправлено 'makes-order' на 'view-order'
+                    document.getElementById('edit-order').disabled = false;
+                    document.getElementById('delete-order').disabled = false;
+                    document.getElementById('view-order').onclick = () => window.location.href = this.getAttribute('data-url-detail');
+                    document.getElementById('edit-order').onclick = () => window.location.href = this.getAttribute('data-url-update');
+                    document.getElementById('delete-order').onclick = () => window.location.href = this.getAttribute('data-url-delete');
+                });
+
+                row.addEventListener('dblclick', function() {
+                    window.location.href = this.getAttribute('data-url-detail');
+                });
+            });
+        });
+    </script>
+{% endblock %}

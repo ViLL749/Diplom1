@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Удалить деталь{% endblock %}
+{% block content %}
+<h1>Удалить деталь?</h1>
+<p>Вы уверены, что хотите удалить деталь <strong>{{ part.article }} — {{ part.name }}</strong>?</p>
+<p>Это также удалит все остатки и связанные записи заказов.</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Удалить</button>
+    <a href="{% url 'part_detail' part.id %}" class="btn">Отмена</a>
+</form>
+{% endblock %}

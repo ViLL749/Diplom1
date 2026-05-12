@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Добавить деталь{% endblock %}
+{% block content %}
+<h1>Добавить деталь</h1>
+<form method="post">
+    {% csrf_token %}
+    {% for field in form %}
+        {% if field.html_name == 'brand_display' %}
+        <div>
+            <label>{{ field.label }}:</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+                {{ field }}
+                <button type="button" class="btn" onclick="openBrandModal()">Выбрать</button>
+            </div>
+            {% if form.brand.errors %}<p class="error">{{ form.brand.errors|join:", " }}</p>{% endif %}
+        </div>
+        {% elif field.html_name == 'brand' %}
+        {{ field }}
+        {% else %}
+        <div>
+            <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
+            {{ field }}
+            {% if field.errors %}<p class="error">{{ field.errors|join:", " }}</p>{% endif %}
+        </div>
+        {% endif %}
+    {% endfor %}
+    <button type="submit" class="btn">Сохранить</button>
+    <a href="{% url 'parts_list' %}" class="btn btn-danger">Отмена</a>
+</form>
+
+{% include "warehouse/_brand_search_modal.html" %}
+{% endblock %}

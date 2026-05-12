@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Изменение автомобиля клиента{% endblock %}
+{% block content %}
+{% load static %}
+<script src="{% static 'js/jquery-3.6.0.min.js' %}"></script>
+<script src="{% static 'js/imask.js' %}"></script>
+
+    <h1>Изменение автомобиля клиента</h1>
+<div id="form-errors" class="form-errors" style="display: none;"></div>
+<form method="post" id="client-car-form" action="{% url 'client_car_update' pk=client.pk car_pk=form.instance.pk %}">
+    {% csrf_token %}
+    {{ form.client.as_hidden }}
+    {{ form.make.as_hidden }}
+    {{ form.model.as_hidden }}
+
+    <div class="client-selection">
+        <p><strong>Клиент:</strong> {{ client.fio }}</p>
+        <p><strong>Автомобиль:</strong> {{ form.instance.model }}</p>
+    </div>
+
+    <div>
+        <label for="id_vin">VIN-номер:</label>
+        {{ form.vin }}
+    </div>
+    <div>
+        <label for="id_year">Год выпуска:</label>
+        {{ form.year }}
+    </div>
+    <div>
+        <label for="id_license_plate">Госномер:</label>
+        {{ form.license_plate }}
+    </div>
+    <div>
+        <label for="id_color">Цвет:</label>
+        {{ form.color }}
+    </div>
+    <div style="margin-top: 20px;">
+        <button type="submit" class="btn">Сохранить</button>
+        <a href="{{ cancel_url }}" class="btn btn-danger">Отмена</a>
+    </div>
+</form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const form = document.getElementById("client-car-form");
+    const vinInput = document.getElementById("id_vin");
+    const yearInput = document.getElementById("id_year");
+    const licensePlateInput = document.getElementById("id_license_plate");
+    const colorInput = document.getElementById("id_color");
+    const formErrors = document.getElementById("form-errors");
+    const vinPattern = /^[A-HJ-NPR-Z0-9]{17}$/;
+    const currentYear = new Date().getFullYear();
+    const yearPattern = new RegExp(`^(19[0-9]{2}|20[0-${Math.floor(currentYear % 100 / 10)}${currentYear % 10}])`);
+    const licensePlatePattern = /^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}$/;
+    const originalVin = "{{ form.instance.vin }}";
+    const originalLicensePlate = "{{ form.instance.license_plate }}";
+
+    let vinMask, licensePlateMask;
+
+    if (typeof IMask !== "undefined") {
+        vinMask = new IMask(vinInput, {
+            mask: '*****************',
+            definitions: { '*': /[A-HJ-NPR-Z0-9]/ },
+            prepare: function (value) { return value.toUpperCase(); }
+        });
+
+        licensePlateMask = new IMask(licensePlateInput, {
+            mask: [
+                { mask: 'А000АА00', definitions: { 'А': /[АВЕКМНОРСТУХ]/, '0': /[0-9]/ } },
+                { mask: 'А000АА000', definitions: { 'А': /[АВЕКМНОРСТУХ]/, '0': /[0-9]/ } }
+            ],
+            prepare: function (value) { return value.toUpperCase(); }
+        });
+    } else {
+        console.error("IMask не загружен");
+    }
+
+    function validateVin() {
+        const vinValue = vinInput.value.trim().toUpperCase();
+        if (!vinValue) return "VIN-номер обязателен.";
+        if (!vinPattern.test(vinValue)) return "VIN должен состоять из 17 символов (0-9, A-Z, кроме I, O, Q).";
+        return null;
+    }
+
+    function validateYear() {
+        const yearValue = yearInput.value.trim();
+        if (!yearValue) return "Год выпуска обязателен.";
+        if (!yearPattern.test(yearValue) || parseInt(yearValue) < 1900 || parseInt(yearValue) > currentYear) {
+            return `Год должен быть от 1900 до ${currentYear}.`;
+        }
+        return null;
+    }
+
+    function validateLicensePlate() {
+        const licensePlateValue = licensePlateInput.value.trim();
+        if (!licensePlateValue) return "Госномер обязателен.";
+        if (!licensePlatePattern.test(licensePlateValue)) return "Формат: А123АА77 или А123АА777.";
+        return null;
+    }
+
+    function validateColor() {
+        const colorValue = colorInput.value;
+        if (!colorValue) return "Выберите цвет.";
+        return null;
+    }
+
+    async function checkVinUniqueness(vin) {
+        if (vin === originalVin) return null;
+        return $.ajax({
+            url: '{% url "check_vin_uniqueness" %}',
+            data: { vin: vin },
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+        }).then(response => response.exists ? "Такой VIN-номер уже существует." : null);
+    }
+
+    async function checkLicensePlateUniqueness(licensePlate) {
+        if (licensePlate === originalLicensePlate) return null;
+        return $.ajax({
+            url: '{% url "check_license_plate_uniqueness" %}',
+            data: { license_plate: licensePlate },
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+        }).then(response => response.exists ? "Такой госномер уже существует." : null);
+    }
+
+    async function validateForm(event) {
+        event.preventDefault();
+        const errors = [];
+
+        const vinError = validateVin();
+        const yearError = validateYear();
+        const licensePlateError = validateLicensePlate();
+        const colorError = validateColor();
+
+        if (vinError) errors.push(vinError);
+        if (yearError) errors.push(yearError);
+        if (licensePlateError) errors.push(licensePlateError);
+        if (colorError) errors.push(colorError);
+
+        if (!vinError) {
+            const vinUniquenessError = await checkVinUniqueness(vinInput.value);
+            if (vinUniquenessError) errors.push(vinUniquenessError);
+        }
+        if (!licensePlateError) {
+            const licensePlateUniquenessError = await checkLicensePlateUniqueness(licensePlateInput.value);
+            if (licensePlateUniquenessError) errors.push(licensePlateUniquenessError);
+        }
+
+        if (errors.length > 0) {
+            formErrors.innerHTML = "<p>Пожалуйста, исправьте ошибки:</p><ul>" +
+                errors.map(error => `<li>${error}</li>`).join('') + "</ul>";
+            formErrors.style.display = "block";
+        } else {
+            formErrors.style.display = "none";
+            if (vinMask) vinInput.value = vinMask.value;
+            if (licensePlateMask) licensePlateInput.value = licensePlateMask.value;
+            form.submit();
+        }
+    }
+
+    form.addEventListener("submit", validateForm);
+});
+</script>
+{% endblock %}

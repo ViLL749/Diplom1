@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Удалить услугу из заказ-наряда{% endblock %}
+{% block content %}
+<h1>Удалить услугу из заказ-наряда №{{ wos.work_order.id }}?</h1>
+<p><strong>Услуга:</strong> {{ wos.service.name }}</p>
+<p><strong>Часы:</strong> {{ wos.hours_applied }} ч. × коэф. {{ wos.complexity_factor }} = {{ wos.final_price|floatformat:2 }} руб.</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Удалить</button>
+    <a href="{% url 'order_detail' wos.work_order.id %}" class="btn">Отмена</a>
+</form>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Заказ поставщику №{{ po.id }}{% endblock %}
+{% block content %}
+<h1>Заказ поставщику №{{ po.id }}</h1>
+<p><strong>Поставщик:</strong> {% if po.supplier %}{{ po.supplier.name }}{% else %}—{% endif %}</p>
+<p><strong>Статус:</strong> {{ po.get_status_display }}</p>
+<p><strong>Заказ-наряд:</strong> {% if po.work_order %}<a href="{% url 'order_detail' po.work_order.id %}">№{{ po.work_order.id }}</a>{% else %}—{% endif %}</p>
+<p><strong>Дата заказа:</strong> {{ po.created_at|date:"d.m.Y H:i" }}</p>
+{% if po.comment %}<p><strong>Примечание:</strong> {{ po.comment }}</p>{% endif %}
+
+<a href="{% url 'purchase_list' %}" class="btn">К списку</a>
+{% if not po.is_received %}
+    <a href="{% url 'purchase_update' po.id %}" class="btn">Изменить статус</a>
+{% endif %}
+{% if po.status in "ordered,in_transit,partial" or po.status == 'ordered' or po.status == 'in_transit' or po.status == 'partial' %}
+    <a href="{% url 'supply_create' %}?po={{ po.id }}" class="btn">Оформить приход</a>
+{% endif %}
+
+<h2 class="top-title-margin">Позиции заказа</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Артикул</th>
+            <th>Название</th>
+            <th>Заказано</th>
+            <th>Получено</th>
+            <th>Осталось</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in items %}
+        <tr {% if item.remaining_qty == 0 %}style="color:green;"{% endif %}>
+            <td>{{ item.part.article }}</td>
+            <td>{{ item.part.name }}</td>
+            <td>{{ item.quantity }}</td>
+            <td>{{ item.received_qty }}</td>
+            <td><strong>{{ item.remaining_qty }}</strong></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5">Позиций нет.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if supply_docs %}
+<h2 class="top-title-margin">Документы прихода по этому заказу</h2>
+<table>
+    <thead><tr><th>№</th><th>Дата</th><th>Позиций</th></tr></thead>
+    <tbody>
+        {% for doc in supply_docs %}
+        <tr>
+            <td><a href="{% url 'supply_detail' doc.id %}">Приход №{{ doc.id }}</a></td>
+            <td>{{ doc.created_at|date:"d.m.Y H:i" }}</td>
+            <td>{{ doc.items.count }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

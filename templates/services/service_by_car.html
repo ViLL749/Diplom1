@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+{% block title %}Услуги по авто{% endblock %}
+{% block content %}
+{% load static %}
+<script src="{% static 'js/jquery-3.6.0.min.js' %}"></script>
+
+<h1>Услуги по авто</h1>
+<div class="car-selection">
+    <button type="button" id="select-car-btn" class="btn">Выбрать автомобиль</button>
+    <button type="button" id="change-selection-btn" class="btn" style="display: none;">Изменить выбор</button>
+    <button type="button" id="reset-car-btn" class="btn" style="display: none;">Отменить выбор</button>
+    <input type="hidden" id="id_car_model" name="car_model_id" value="{{ selected_car_model_id }}">
+</div>
+
+<!-- Поиск -->
+<form method="GET" class="search-container">
+    <input type="text" id="search-input" name="search" placeholder="Поиск по услуге..." value="{{ request.GET.search|default:'' }}">
+    <button id="search-btn" type="submit" class="btn">Искать</button>
+    {% if selected_car_model_id %}
+        <input type="hidden" name="car_model_id" value="{{ selected_car_model_id }}">
+    {% endif %}
+</form>
+
+<!-- Таблица услуг -->
+<table id="services-table">
+    <thead>
+        <tr>
+            <th>
+                <a href="?sort=car_make__name&direction={% if sort == 'car_make__name' and direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if selected_car_model_id %}&car_model_id={{ selected_car_model_id }}{% endif %}&per_page={{ per_page }}">
+                    Марка
+                    {% if sort == 'car_make__name' %}
+                        <span class="sort-arrow {% if direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                    {% elif not sort %}
+                        <span class="sort-arrow default"></span>
+                    {% endif %}
+                </a>
+            </th>
+            <th>
+                <a href="?sort=car_model__name&direction={% if sort == 'car_model__name' and direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if selected_car_model_id %}&car_model_id={{ selected_car_model_id }}{% endif %}&per_page={{ per_page }}">
+                    Модель
+                    {% if sort == 'car_model__name' %}
+                        <span class="sort-arrow {% if direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                    {% elif not sort %}
+                        <span class="sort-arrow default"></span>
+                    {% endif %}
+                </a>
+            </th>
+            <th>
+                <a href="?sort=service__name&direction={% if sort == 'service__name' and direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if selected_car_model_id %}&car_model_id={{ selected_car_model_id }}{% endif %}&per_page={{ per_page }}">
+                    Услуга
+                    {% if sort == 'service__name' %}
+                        <span class="sort-arrow {% if direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                    {% elif not sort %}
+                        <span class="sort-arrow default"></span>
+                    {% endif %}
+                </a>
+            </th>
+            <th>
+                <a href="?sort=price&direction={% if sort == 'price' and direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if selected_car_model_id %}&car_model_id={{ selected_car_model_id }}{% endif %}&per_page={{ per_page }}">
+                    Цена
+                    {% if sort == 'price' %}
+                        <span class="sort-arrow {% if direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                    {% elif not sort %}
+                        <span class="sort-arrow default"></span>
+                    {% endif %}
+                </a>
+            </th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for service_price in page_obj %}
+            <tr data-service-id="{{ service_price.id }}">
+                <td>{{ service_price.car_make.name }}</td>
+                <td>{{ service_price.car_model.name }}</td>
+                <td>{{ service_price.service.name }}</td>
+                <td>{{ service_price.price }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="4">Услуги не найдены</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if page_obj.has_other_pages %}
+    <div class="pagination">
+        {% if page_obj.has_previous %}
+            <a href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if sort %}&sort={{ sort }}&direction={{ direction }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if selected_car_model_id %}&car_model_id={{ selected_car_model_id }}{% endif %}" class="btn">Предыдущая</a>
+        {% endif %}
+
+        {% with current=page_obj.number total=page_obj.paginator.num_pages %}
+            {% for num in page_obj.paginator.page_range %}
+                {% if num >= current|add:-2 and num <= current|add:2 %}
+                    <a href="?page={{ num }}&per_page={{ per_page }}{% if sort %}&sort={{ sort }}&direction={{ direction }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if selected_car_model_id %}&car_model_id={{ selected_car_model_id }}{% endif %}" class="btn {% if page_obj.number == num %}active{% endif %}">{{ num }}</a>
+                {% endif %}
+            {% endfor %}
+        {% endwith %}
+
+        {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if sort %}&sort={{ sort }}&direction={{ direction }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if selected_car_model_id %}&car_model_id={{ selected_car_model_id }}{% endif %}" class="btn">Следующая</a>
+        {% endif %}
+    </div>
+{% endif %}
+
+<!-- Выбор количества записей -->
+<form method="GET" class="per-page-form">
+    <label for="per_page">Записей на страницу:</label>
+    <select name="per_page" id="per_page" onchange="this.form.submit()">
+        <option value="5" {% if per_page == 5 %}selected{% endif %}>5</option>
+        <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+        <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+    </select>
+    {% if sort %}
+        <input type="hidden" name="sort" value="{{ sort }}">
+        <input type="hidden" name="direction" value="{{ direction }}">
+    {% endif %}
+    {% if request.GET.search %}
+        <input type="hidden" name="search" value="{{ request.GET.search }}">
+    {% endif %}
+    {% if selected_car_model_id %}
+        <input type="hidden" name="car_model_id" value="{{ selected_car_model_id }}">
+    {% endif %}
+</form>
+
+<!-- Модальное окно для выбора автомобиля -->
+<div id="car-modal" class="modal">
+    <div class="modal-content">
+        <span class="close">×</span>
+        <h2>Выбор автомобиля</h2>
+        <div class="car-selection-container">
+            <div class="makes-table">
+                <h3>Марки</h3>
+                <table>
+                    <thead><tr><th>Название</th></tr></thead>
+                    <tbody id="makes-list"></tbody>
+                </table>
+                <div class="pagination">
+                    <button id="prev-page" class="btn">Назад</button>
+                    <span id="page-info"></span>
+                    <button id="next-page" class="btn">Вперед</button>
+                </div>
+            </div>
+            <div class="models-table">
+                <h3>Модели</h3>
+                <table>
+                    <thead><tr><th>Название</th></tr></thead>
+                    <tbody id="models-list"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    let currentPage = 1;
+    const makesPerPage = 10;
+
+    // --- Управление модальным окном автомобиля ---
+    const carModal = $('#car-modal');
+    const selectCarBtn = $('#select-car-btn');
+    const changeBtn = $('#change-selection-btn');
+    const resetCarBtn = $('#reset-car-btn');
+    const carModelInput = $('#id_car_model');
+
+    // Инициализация при загрузке страницы
+    const urlParams = new URLSearchParams(window.location.search);
+    const carModelId = urlParams.get('car_model_id');
+    if (carModelId) {
+        carModelInput.val(carModelId);
+        selectCarBtn.hide();
+        changeBtn.show();
+        resetCarBtn.show();
+    }
+
+    selectCarBtn.click(function() {
+        carModal.show();
+        loadMakes(currentPage);
+    });
+
+    changeBtn.click(function() {
+        carModal.show();
+        loadMakes(currentPage);
+    });
+
+    resetCarBtn.click(function() {
+        carModelInput.val('');
+        selectCarBtn.show();
+        changeBtn.hide();
+        resetCarBtn.hide();
+        window.location.href = "?reset=true";
+    });
+
+    carModal.find('.close').click(function() {
+        carModal.hide();
+    });
+
+    $(window).click(function(event) {
+        if (event.target == carModal[0]) carModal.hide();
+    });
+
+    function loadMakes(page) {
+        $.ajax({
+            url: '{% url "get_all_makes" %}',
+            data: { 'page': page, 'per_page': makesPerPage },
+            success: function(data) {
+                const tbody = $('#makes-list');
+                tbody.empty();
+                data.makes.forEach(function(make) {
+                    tbody.append(`<tr data-make-id="${make.id}"><td>${make.name}</td></tr>`);
+                });
+                $('#page-info').text(`Страница ${page} из ${data.total_pages}`);
+                $('#prev-page').prop('disabled', page === 1);
+                $('#next-page').prop('disabled', page >= data.total_pages);
+                currentPage = page;
+            }
+        });
+    }
+
+    $('#prev-page').click(function() { if (currentPage > 1) loadMakes(currentPage - 1); });
+    $('#next-page').click(function() { if (!$('#next-page').prop('disabled')) loadMakes(currentPage + 1); });
+
+    $('#makes-list').on('click', 'tr', function() {
+        $('#makes-list tr').removeClass('selected');
+        $(this).addClass('selected');
+        loadModels($(this).data('make-id'));
+    });
+
+    function loadModels(makeId) {
+        $.ajax({
+            url: '{% url "get_models" %}',
+            data: { 'make_id': makeId },
+            success: function(data) {
+                const tbody = $('#models-list');
+                tbody.empty();
+                data.forEach(function(model) {
+                    tbody.append(`<tr data-model-id="${model.id}"><td>${model.name}</td></tr>`);
+                });
+            }
+        });
+    }
+
+    $('#models-list').on('click', 'tr', function() {
+        $('#models-list tr').removeClass('selected');
+        $(this).addClass('selected');
+        const modelId = $(this).data('model-id');
+
+        carModelInput.val(modelId);
+        selectCarBtn.hide();
+        changeBtn.show();
+        resetCarBtn.show();
+        carModal.hide();
+
+        // Сохраняем текущие параметры поиска и сортировки
+        const currentParams = new URLSearchParams(window.location.search);
+        currentParams.set('car_model_id', modelId);
+        window.location.href = "?" + currentParams.toString();
+    });
+});
+</script>
+
+<style>
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.4);
+}
+.modal-content {
+    background-color: #fefefe;
+    margin: 10% auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 90%;
+    max-width: 1000px;
+}
+.close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+.close:hover,
+.close:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+.car-selection-container {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+}
+.makes-table, .models-table {
+    width: 48%;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+th, td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+tr:hover {
+    background-color: #f5f5f5;
+    cursor: pointer;
+}
+tr.selected {
+    background-color: #e0e0e0;
+}
+.car-selection {
+    margin-bottom: 20px;
+}
+.search-container {
+    margin-bottom: 20px;
+}
+.search-container input {
+    padding: 5px;
+    width: 300px;
+}
+#services-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+#services-table th, #services-table td {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+#services-table tr:hover {
+    background-color: #f5f5f5;
+}
+<!--.pagination {-->
+<!--    margin: 20px 0;-->
+<!--}-->
+.pagination .btn {
+    margin: 0 5px;
+}
+.per-page-form {
+    margin: 20px 0;
+}
+</style>
+{% endblock %}

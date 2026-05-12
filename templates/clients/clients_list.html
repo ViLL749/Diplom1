@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Список клиентов{% endblock %}
+{% block content %}
+    <h1>Список клиентов</h1>
+    <a href="{% url 'client_create' %}" class="btn">Добавить клиента</a>
+
+    <!-- Поиск -->
+    <form method="GET" class="search-container">
+        <input type="text" id="search-input" name="search" placeholder="Поиск..." value="{{ request.GET.search|default:'' }}">
+        <select id="search-column" name="column">
+            <option value="id" {% if request.GET.column == "id" %}selected{% endif %}>ID</option>
+            <option value="fio" {% if request.GET.column == "fio" or not request.GET.column %}selected{% endif %}>ФИО</option>
+            <option value="phone" {% if request.GET.column == "phone" %}selected{% endif %}>Телефон</option>
+        </select>
+        <button id="search-btn" type="submit" class="btn">Искать</button>
+    </form>
+
+    <table id="clients-table">
+        <thead>
+            <tr>
+                <th>
+                    <a href="?sort=id&direction={% if request.GET.sort == 'id' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if request.GET.per_page %}&per_page={{ request.GET.per_page }}{% endif %}" data-sort="id">
+                        ID
+                        {% if request.GET.sort == 'id' %}
+                            <span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                        {% else %}
+                            <span class="sort-arrow default"></span>
+                        {% endif %}
+                    </a>
+                </th>
+                <th>
+                    <a href="?sort=fio&direction={% if request.GET.sort == 'fio' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if request.GET.per_page %}&per_page={{ request.GET.per_page }}{% endif %}" data-sort="fio">
+                        ФИО
+                        {% if request.GET.sort == 'fio' %}
+                            <span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                        {% else %}
+                            <span class="sort-arrow default"></span>
+                        {% endif %}
+                    </a>
+                </th>
+
+                <th>
+                    <a href="?sort=phone&direction={% if request.GET.sort == 'phone' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if request.GET.per_page %}&per_page={{ request.GET.per_page }}{% endif %}" data-sort="phone">
+                        Телефон
+                        {% if request.GET.sort == 'phone' %}
+                            <span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                        {% else %}
+                            <span class="sort-arrow default"></span>
+                        {% endif %}
+                    </a>
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for client in page_obj %}
+                <tr data-id="{{ client.id }}" data-url-detail="{% url 'client_detail' client.id %}" data-url-update="{% url 'client_update' client.id %}" data-url-delete="{% url 'client_delete' client.id %}">
+                    <td>{{ client.id }}</td>
+                    <td>{{ client.fio }}</td>
+                    <td>{{ client.phone }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if page_obj.has_other_pages %}
+        <div class="pagination">
+            {% if page_obj.has_previous %}
+                <a href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if request.GET.sort %}&sort={{ request.GET.sort }}&direction={{ request.GET.direction }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn">Предыдущая</a>
+            {% endif %}
+            {% for num in page_obj.paginator.page_range %}
+                <a href="?page={{ num }}&per_page={{ per_page }}{% if request.GET.sort %}&sort={{ request.GET.sort }}&direction={{ request.GET.direction }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn {% if page_obj.number == num %}active{% endif %}">{{ num }}</a>
+            {% endfor %}
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if request.GET.sort %}&sort={{ request.GET.sort }}&direction={{ request.GET.direction }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn">Следующая</a>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <form method="GET" class="per-page-form">
+        <label for="per_page">Записей на страницу:</label>
+        <select name="per_page" id="per_page" onchange="this.form.submit()">
+            <option value="5" {% if per_page == 5 %}selected{% endif %}>5</option>
+            <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+            <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+        </select>
+        {% if request.GET.sort %}
+            <input type="hidden" name="sort" value="{{ request.GET.sort }}">
+            <input type="hidden" name="direction" value="{{ request.GET.direction }}">
+        {% endif %}
+        {% if request.GET.search %}
+            <input type="hidden" name="search" value="{{ request.GET.search }}">
+            <input type="hidden" name="column" value="{{ request.GET.column }}">
+        {% endif %}
+    </form>
+
+    <div id="client-actions" class="mt-20">
+        <button id="view-client" class="btn" disabled>Подробнее</button>
+        <button id="edit-client" class="btn" disabled>Изменить</button>
+        <button id="delete-client" class="btn btn-danger" disabled>Удалить</button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const rows = document.querySelectorAll('#clients-table tbody tr');
+            let selectedRow = null;
+
+            rows.forEach(row => {
+                row.addEventListener('click', function() {
+                    if (selectedRow) {
+                        selectedRow.classList.remove('selected');
+                    }
+                    this.classList.add('selected');
+                    selectedRow = this;
+                    document.getElementById('view-client').disabled = false;
+                    document.getElementById('edit-client').disabled = false;
+                    document.getElementById('delete-client').disabled = false;
+                    document.getElementById('view-client').onclick = () => window.location.href = this.getAttribute('data-url-detail');
+                    document.getElementById('edit-client').onclick = () => window.location.href = this.getAttribute('data-url-update');
+                    document.getElementById('delete-client').onclick = () => window.location.href = this.getAttribute('data-url-delete');
+                });
+
+                row.addEventListener('dblclick', function() {
+                    window.location.href = this.getAttribute('data-url-detail');
+                });
+            });
+        });
+    </script>
+{% endblock %}

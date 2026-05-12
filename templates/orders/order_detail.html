@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Детали заказа{% endblock %}
+{% block content %}
+    <h1>Детали заказа {{ order.id }}</h1>
+    {% if order.status == 'Завершён' %}
+        <p><strong>Клиент:</strong> {{ order.client_fio_static }}</p>
+        <p><strong>Автомобиль:</strong> {{ order.car_details_static }}</p>
+        <p><strong>Дата заказа:</strong> {{ order.order_date }}</p>
+        <p><strong>Статус:</strong> {{ order.status }}</p>
+        <p><strong>Услуги:</strong> {{ order.services_static }}</p>
+        <p><strong>Кастомные услуги:</strong> {{ order.custom_services_static }}</p>
+        <p><strong>Стоимость:</strong> {{ order.cost|floatformat:2|default:"Не указана" }}</p>
+        <p><strong>Дата завершения:</strong> {{ order.completion_date|default:"Не указана" }}</p>
+        <p><strong>Комментарий:</strong> {{ order.comment|default:"Нет комментария" }}</p>
+    {% else %}
+        <p><strong>Клиент:</strong> {{ order.client_car.client.fio }}</p>
+        <p><strong>Автомобиль:</strong> {{ order.client_car.make.name }} {{ order.client_car.model.name }} ({{ order.client_car.license_plate|default:'' }})</p>
+        <p><strong>Дата заказа:</strong> {{ order.order_date }}</p>
+        <p><strong>Статус:</strong> {{ order.status }}</p>
+        <p><strong>Услуги:</strong>
+            {% for order_service in order.orderservice_set.all %}
+                {{ order_service.service.name }}{% if not forloop.last %}, {% endif %}
+            {% empty %}
+                Нет услуг
+            {% endfor %}
+        </p>
+        <p><strong>Кастомные услуги:</strong>
+            {% for custom_service in order.custom_services.all %}
+                {{ custom_service.name }} ({{ custom_service.price|floatformat:2 }}){% if not forloop.last %}, {% endif %}
+            {% empty %}
+                Нет кастомных услуг
+            {% endfor %}
+        </p>
+        <p><strong>Стоимость:</strong> {{ order.cost|floatformat:2|default:"Не указана" }}</p>
+        <p><strong>Дата завершения:</strong> {{ order.completion_date|default:"Не указана" }}</p>
+        <p><strong>Комментарий:</strong> {{ order.comment|default:"Нет комментария" }}</p>
+    {% endif %}
+    <a href="{% url 'orders_list' %}" class="btn">Вернуться к списку</a>
+    {% if order.status != 'Завершён' %}
+        <a href="{% url 'order_update' order.id %}" class="btn">Изменить</a>
+        <a href="{% url 'order_delete' order.id %}" class="btn btn-danger">Удалить</a>
+    {% endif %}
+
+    {% if order.status != 'Завершён' %}
+    <!-- Услуги по нормо-часам -->
+    <h2 class="top-title-margin">Услуги (нормо-часы)</h2>
+    {% with wos_list=order.work_order_services.all %}
+    {% if wos_list %}
+    <table>
+        <thead>
+            <tr>
+                <th>Услуга</th>
+                <th>Часы</th>
+                <th>Коэф.</th>
+                <th>Цена</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for wos in wos_list %}
+            <tr>
+                <td>{{ wos.service.name }}</td>
+                <td>{{ wos.hours_applied }}</td>
+                <td>{{ wos.complexity_factor }}</td>
+                <td>{{ wos.final_price|floatformat:2 }} руб.</td>
+                <td>
+                    <a href="{% url 'workorderservice_update' wos.id %}" class="btn">Изм.</a>
+                    <a href="{% url 'workorderservice_delete' wos.id %}" class="btn btn-danger">Удал.</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>Услуги (нормо-часы) не добавлены.</p>
+    {% endif %}
+    {% endwith %}
+    <a href="{% url 'workorderservice_create' order.id %}" class="btn">+ Добавить услугу</a>
+
+    <!-- Детали со склада -->
+    <h2 class="top-title-margin">Детали из склада</h2>
+    {% with parts_list=order.work_order_parts.all %}
+    {% if parts_list %}
+    <table>
+        <thead>
+            <tr>
+                <th>Артикул</th>
+                <th>Название</th>
+                <th>Кол-во</th>
+                <th>Цена за ед.</th>
+                <th>Наценка %</th>
+                <th>Сумма</th>
+                <th>Статус</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for wop in parts_list %}
+            <tr>
+                <td>{{ wop.part.article }}</td>
+                <td>{{ wop.part.name }}</td>
+                <td>{{ wop.quantity }}</td>
+                <td>{{ wop.sale_price|floatformat:2|default:"—" }} руб.</td>
+                <td>{{ wop.markup }}</td>
+                <td>{{ wop.total_price|floatformat:2|default:"—" }} руб.</td>
+                <td>{{ wop.get_status_display }}</td>
+                <td>
+                    <a href="{% url 'workorderpart_update' wop.id %}" class="btn">Изм.</a>
+                    <a href="{% url 'workorderpart_delete' wop.id %}" class="btn btn-danger">Удал.</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <a href="{% url 'picking_list' order.id %}" class="btn">Лист отборки</a>
+    {% else %}
+    <p>Детали не добавлены.</p>
+    {% endif %}
+    {% endwith %}
+    <a href="{% url 'workorderpart_create' order.id %}" class="btn">+ Добавить деталь</a>
+    {% endif %}
+{% endblock %}

@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Выход</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body>
+    <div class="auth-container">
+        <h2>Выход выполнен успешно</h2>
+        <p>Вы успешно вышли из системы. <a href="{% url 'login' %}">Нажмите здесь для повторного входа.</a></p>
+    </div>
+</body>
+</html>

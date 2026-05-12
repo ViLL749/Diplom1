@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Создание нового типа услуги{% endblock %}
+{% block content %}
+{% load static %}
+<script src="{% static 'js/jquery-3.6.0.min.js' %}"></script>
+
+<h1>Создание нового типа услуги</h1>
+<div id="form-errors" class="form-errors" style="display: none;"></div>
+<form method="post" id="service-type-form">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="btn">Сохранить</button>
+    <a href="{{ cancel_url }}" class="btn btn-danger">Отмена</a>
+</form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const form = document.getElementById("service-type-form");
+    const nameInput = document.getElementById("id_name");
+    const formErrors = document.getElementById("form-errors");
+
+    function validateName() {
+        const nameValue = nameInput.value.trim();
+        if (!nameValue) return "Название типа услуги обязательно.";
+        if (nameValue.length > 100) return "Название не может превышать 100 символов.";
+        return null;
+    }
+
+    async function checkServiceTypeUniqueness(name) {
+        const lowerName = name.trim().toLowerCase();
+        return $.ajax({
+            url: '{% url "check_service_type_uniqueness" %}',
+            data: { name: lowerName },
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+        }).then(response => response.exists ? "Тип услуги с таким названием уже существует." : null);
+    }
+
+    async function validateForm(event) {
+        event.preventDefault();
+        const nameError = validateName();
+        const uniquenessError = nameError ? null : await checkServiceTypeUniqueness(nameInput.value);
+
+        if (nameError || uniquenessError) {
+            formErrors.innerHTML = "<p>Пожалуйста, исправьте ошибки:</p><ul>" +
+                (nameError ? `<li>${nameError}</li>` : '') +
+                (uniquenessError ? `<li>${uniquenessError}</li>` : '') +
+                "</ul>";
+            formErrors.style.display = "block";
+        } else {
+            formErrors.style.display = "none";
+            form.submit();
+        }
+    }
+
+    form.addEventListener("submit", validateForm);
+});
+</script>
+{% endblock %}

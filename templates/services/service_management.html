@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Управление типами услуг{% endblock %}
+{% block content %}
+    <h1>Управление типами услуг</h1>
+    <a href="{% url 'service_type_create' %}" class="btn">Добавить тип услуги</a>
+
+    <!-- Поиск -->
+    <form method="GET" class="search-container">
+        <input type="text" id="search-input" name="search" placeholder="Поиск..." value="{{ request.GET.search|default:'' }}">
+        <select id="search-column" name="column">
+            <option value="id" {% if request.GET.column == "id" %}selected{% endif %}>ID</option>
+            <option value="name" {% if request.GET.column == "name" or not request.GET.column %}selected{% endif %}>Название типа</option>
+        </select>
+        <button id="search-btn" type="submit" class="btn">Искать</button>
+    </form>
+
+    <table id="service-types-table">
+        <thead>
+            <tr>
+                <th>
+                    <a href="?sort=id&direction={% if request.GET.sort == 'id' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if request.GET.per_page %}&per_page={{ request.GET.per_page }}{% endif %}" data-sort="id">
+                        ID
+                        {% if request.GET.sort == 'id' %}
+                            <span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                        {% endif %}
+                    </a>
+                </th>
+                <th>
+                    <a href="?sort=name&direction={% if request.GET.sort == 'name' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if request.GET.per_page %}&per_page={{ request.GET.per_page }}{% endif %}" data-sort="name">
+                        Название типа
+                        {% if request.GET.sort == 'name' %}
+                            <span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>
+                        {% endif %}
+                    </a>
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for service_type in page_obj %}
+                <tr data-id="{{ service_type.id }}" data-url-detail="{% url 'service_type_detail' service_type.id %}" data-url-update="{% url 'service_type_update' service_type.id %}" data-url-delete="{% url 'service_type_delete' service_type.id %}">
+                    <td>{{ service_type.id }}</td>
+                    <td>{{ service_type.name }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Пагинация -->
+    {% if page_obj.has_other_pages %}
+        <div class="pagination">
+            {% if page_obj.has_previous %}
+                <a href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if request.GET.sort %}&sort={{ request.GET.sort }}&direction={{ request.GET.direction }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn">Предыдущая</a>
+            {% endif %}
+            {% for num in page_obj.paginator.page_range %}
+                <a href="?page={{ num }}&per_page={{ per_page }}{% if request.GET.sort %}&sort={{ request.GET.sort }}&direction={{ request.GET.direction }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn {% if page_obj.number == num %}active{% endif %}">{{ num }}</a>
+            {% endfor %}
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if request.GET.sort %}&sort={{ request.GET.sort }}&direction={{ request.GET.direction }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn">Следующая</a>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <!-- Выбор количества записей на страницу -->
+    <form method="GET" class="per-page-form">
+        <label for="per_page">Записей на страницу:</label>
+        <select name="per_page" id="per_page" onchange="this.form.submit()">
+            <option value="5" {% if per_page == 5 %}selected{% endif %}>5</option>
+            <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+            <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+        </select>
+        {% if request.GET.sort %}
+            <input type="hidden" name="sort" value="{{ request.GET.sort }}">
+            <input type="hidden" name="direction" value="{{ request.GET.direction }}">
+        {% endif %}
+        {% if request.GET.search %}
+            <input type="hidden" name="search" value="{{ request.GET.search }}">
+            <input type="hidden" name="column" value="{{ request.GET.column }}">
+        {% endif %}
+    </form>
+
+    <!-- Кнопки действий для выбранного типа услуги -->
+    <div id="service-type-actions" style="margin-top: 20px;">
+        <button id="view-service-type" class="btn" disabled>Подробнее</button>
+        <button id="edit-service-type" class="btn" disabled>Изменить</button>
+        <button id="delete-service-type" class="btn btn-danger" disabled>Удалить</button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const rows = document.querySelectorAll('#service-types-table tbody tr');
+            let selectedRow = null;
+
+            rows.forEach(row => {
+                row.addEventListener('click', function(e) {
+                    if (selectedRow) {
+                        selectedRow.classList.remove('selected');
+                    }
+                    this.classList.add('selected');
+                    selectedRow = this;
+                    document.getElementById('view-service-type').disabled = false;
+                    document.getElementById('edit-service-type').disabled = false;
+                    document.getElementById('delete-service-type').disabled = false;
+                    document.getElementById('view-service-type').onclick = () => window.location.href = this.getAttribute('data-url-detail');
+                    document.getElementById('edit-service-type').onclick = () => window.location.href = this.getAttribute('data-url-update');
+                    document.getElementById('delete-service-type').onclick = () => window.location.href = this.getAttribute('data-url-delete');
+                });
+
+                row.addEventListener('dblclick', function(e) {
+                    const detailUrl = this.getAttribute('data-url-detail');
+                    if (detailUrl) {
+                        window.location.href = detailUrl;
+                    }
+                });
+            });
+        });
+    </script>
+
+    <style>
+        #service-types-table tr.selected {
+            background-color: #e0e0e0;
+            cursor: pointer;
+        }
+<!--        .pagination {-->
+<!--            margin: 20px 0;-->
+<!--        }-->
+        .pagination .btn {
+            margin: 0 5px;
+        }
+        .per-page-form {
+            margin: 20px 0;
+        }
+    </style>
+{% endblock %}

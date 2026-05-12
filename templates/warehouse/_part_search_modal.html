@@ -1,0 +1,107 @@
+{% load static %}
+<script src="{% static 'js/jquery-3.6.0.min.js' %}"></script>
+
+<!-- Модальное окно поиска деталей -->
+<div id="part-modal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <span class="modal-close" onclick="closePartModal()">×</span>
+        <h2>Выбор детали</h2>
+        <div class="search-container">
+            <input type="text" id="part-modal-search" placeholder="Поиск по артикулу или названию...">
+            <button type="button" class="btn" onclick="searchParts(1)">Искать</button>
+        </div>
+        <div class="overflow-table">
+            <table>
+                <thead><tr><th>Артикул</th><th>Название</th><th>Производитель</th><th>Уп.</th></tr></thead>
+                <tbody id="part-modal-list"></tbody>
+            </table>
+        </div>
+        <div class="pagination" id="part-modal-pagination"></div>
+    </div>
+</div>
+
+<style>
+.modal { display:none; position:fixed; z-index:100; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); overflow:auto; }
+.modal-content { background:#fff; margin:8% auto; padding:24px; width:90%; max-width:700px; border-radius:4px; position:relative; }
+.modal-close { position:absolute; top:12px; right:16px; font-size:26px; cursor:pointer; color:#888; }
+.modal-close:hover { color:#000; }
+.overflow-table { max-height:350px; overflow-y:auto; margin-top:10px; }
+</style>
+
+<script>
+var _partModalTarget  = null;  // id of hidden part input
+var _partModalDisplay = null;  // id of display text input
+var _partModalPkgId   = null;  // id of hidden package_qty input (optional)
+
+function openPartModal(hiddenId, displayId, pkgId) {
+    _partModalTarget  = hiddenId;
+    _partModalDisplay = displayId;
+    _partModalPkgId   = pkgId || null;
+    $('#part-modal-search').val('');
+    searchParts(1);
+    $('#part-modal').show();
+}
+
+function closePartModal() { $('#part-modal').hide(); }
+
+function searchParts(page) {
+    var q = $('#part-modal-search').val();
+    var data = { search: q, page: page };
+    // If a Purchase Order is selected in the current form, limit choices to
+    // parts that still have remaining items in that PO.
+    var poSelect = document.getElementById('id_purchase_order');
+    if (poSelect && poSelect.value) data.po_id = poSelect.value;
+    $.ajax({
+        url: '{% url "api_parts" %}',
+        data: data,
+        success: function(data) {
+            var tbody = $('#part-modal-list');
+            tbody.empty();
+            data.parts.forEach(function(p) {
+                var pkg = p.package_qty || 1;
+                var pkgCell = pkg > 1
+                    ? '<td style="color:#1976d2;font-weight:bold;">' + pkg + ' шт.</td>'
+                    : '<td style="color:#aaa;">1 шт.</td>';
+                tbody.append(
+                    '<tr class="part-row" data-id="' + p.id +
+                    '" data-label="' + p.article + ' — ' + p.name +
+                    '" data-pkg="' + pkg + '">' +
+                    '<td>' + p.article + '</td><td>' + p.name + '</td><td>' + (p.brand || '') + '</td>' + pkgCell + '</tr>'
+                );
+            });
+            // Pagination
+            var pag = $('#part-modal-pagination');
+            pag.empty();
+            if (data.total_pages > 1) {
+                if (page > 1) pag.append('<button class="btn" onclick="searchParts(' + (page-1) + ')">Назад</button> ');
+                pag.append('<span>Стр. ' + data.current_page + ' из ' + data.total_pages + '</span> ');
+                if (page < data.total_pages) pag.append('<button class="btn" onclick="searchParts(' + (page+1) + ')">Вперёд</button>');
+            }
+        }
+    });
+}
+
+$(document).on('click', '.part-row', function() {
+    var id    = $(this).data('id');
+    var label = $(this).data('label');
+    var pkg   = parseInt($(this).data('pkg')) || 1;
+    $('#' + _partModalTarget).val(id);
+    $('#' + _partModalDisplay).val(label);
+    if (_partModalPkgId) {
+        var pkgEl = document.getElementById(_partModalPkgId);
+        if (pkgEl) {
+            pkgEl.value = pkg;
+            pkgEl.dispatchEvent(new Event('change', {bubbles: true}));
+        }
+    }
+    closePartModal();
+});
+
+$('#part-modal-search').on('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); searchParts(1); }
+});
+
+$(window).on('click', function(e) {
+    if ($(e.target).is('#part-modal')) closePartModal();
+});
+</script>

@@ -1,0 +1,69 @@
+{% load static %}
+
+<!-- Модальное окно выбора производителя -->
+<div id="brand-modal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <span class="modal-close" onclick="closeBrandModal()">×</span>
+        <h2>Выбор производителя</h2>
+        <div class="search-container">
+            <input type="text" id="brand-modal-search" placeholder="Поиск по названию...">
+            <button type="button" class="btn" onclick="searchBrands()">Искать</button>
+        </div>
+        <div class="overflow-table">
+            <table>
+                <thead><tr><th>Название</th></tr></thead>
+                <tbody id="brand-modal-list"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function openBrandModal() {
+    document.getElementById('brand-modal-search').value = '';
+    searchBrands();
+    document.getElementById('brand-modal').style.display = 'block';
+}
+
+function closeBrandModal() {
+    document.getElementById('brand-modal').style.display = 'none';
+}
+
+function searchBrands() {
+    var q = document.getElementById('brand-modal-search').value;
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '{% url "api_brands" %}?search=' + encodeURIComponent(q));
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            var data = JSON.parse(xhr.responseText);
+            var tbody = document.getElementById('brand-modal-list');
+            tbody.innerHTML = '';
+            data.brands.forEach(function(b) {
+                var tr = document.createElement('tr');
+                tr.className = 'brand-row';
+                tr.style.cursor = 'pointer';
+                tr.dataset.name = b.name;
+                tr.innerHTML = '<td>' + b.name + '</td>';
+                tr.addEventListener('click', function() {
+                    document.getElementById('brand-hidden-input').value = b.name;
+                    document.getElementById('brand-display-input').value = b.name;
+                    closeBrandModal();
+                });
+                tbody.appendChild(tr);
+            });
+            if (data.brands.length === 0) {
+                tbody.innerHTML = '<tr><td style="color:#888;">Не найдено. Введите название вручную.</td></tr>';
+            }
+        }
+    };
+    xhr.send();
+}
+
+document.getElementById('brand-modal-search').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); searchBrands(); }
+});
+
+window.addEventListener('click', function(e) {
+    if (e.target === document.getElementById('brand-modal')) closeBrandModal();
+});
+</script>

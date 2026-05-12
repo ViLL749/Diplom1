@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Редактировать цену на услугу{% endblock %}
+{% block content %}
+    <h1>Редактировать цену на услугу</h1>
+
+    <div class="service-info">
+        <p><strong>Марка и модель авто:</strong> {{ form.instance.car_make }} {{ form.instance.car_model }}</p>
+        <p><strong>Тип услуги и услуга:</strong> {{ form.instance.service.service_type }} – {{ form.instance.service }}</p>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <div>
+            {{ form.price.label_tag }}
+            {{ form.price }}
+        </div>
+        <button type="submit" class="btn">Сохранить</button>
+        <a href="{{ cancel_url }}" class="btn">Отмена</a>
+    </form>
+
+    <style>
+        .service-info {
+            margin-bottom: 20px;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        form div {
+            margin-bottom: 10px;
+        }
+
+        select:disabled, input:disabled {
+            background-color: #f0f0f0;
+            color: #333;
+            border: 1px solid #ccc;
+        }
+    </style>
+{% endblock %}

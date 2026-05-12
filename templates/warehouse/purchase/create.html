@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Создать заказ поставщику{% endblock %}
+{% block content %}
+{% include "warehouse/_part_search_modal.html" %}
+{% include "warehouse/_supplier_search_modal.html" %}
+{% include "warehouse/_workorder_search_modal.html" %}
+
+<h1>Создать заказ поставщику</h1>
+<form method="post" id="po-form">
+    {% csrf_token %}
+    <h2>Общие сведения</h2>
+    {% for field in form %}
+        {% if field.html_name == 'supplier_display' %}
+        <div>
+            <label>{{ field.label }}:</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+                {{ field }}
+                <button type="button" class="btn" onclick="openSupplierModal('id_supplier', 'supplier-display-input')">Выбрать</button>
+                <button type="button" class="btn btn-secondary" onclick="clearSupplier()">Очистить</button>
+            </div>
+            {% if form.supplier.errors %}<p class="error">{{ form.supplier.errors|join:", " }}</p>{% endif %}
+        </div>
+        {% elif field.html_name == 'supplier' %}
+        {{ field }}
+        {% elif field.html_name == 'work_order_display' %}
+        <div>
+            <label>{{ field.label }}:</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+                {{ field }}
+                <button type="button" class="btn" onclick="openWorkOrderModal('id_work_order', 'wo-display-input')">Выбрать</button>
+                <button type="button" class="btn btn-secondary" onclick="clearWorkOrder()">Очистить</button>
+            </div>
+            {% if form.work_order.errors %}<p class="error">{{ form.work_order.errors|join:", " }}</p>{% endif %}
+        </div>
+        {% elif field.html_name == 'work_order' %}
+        {{ field }}
+        {% else %}
+        <div>
+            <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
+            {{ field }}
+            {% if field.errors %}<p class="error">{{ field.errors|join:", " }}</p>{% endif %}
+        </div>
+        {% endif %}
+    {% endfor %}
+
+    <h2 class="top-title-margin">Позиции заказа</h2>
+    {{ formset.management_form }}
+    <table id="po-items-table">
+        <thead>
+            <tr>
+                <th>Деталь</th>
+                <th>Количество</th>
+                <th>Удалить</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item_form in formset %}
+            <tr class="po-item-row">
+                {% with prefix=item_form.prefix %}
+                <td>
+                    <input type="text" id="{{ prefix }}-part_display"
+                           value="{% if item_form.instance.pk %}{{ item_form.instance.part }}{% endif %}"
+                           readonly placeholder="Нажмите «Выбрать»" style="width:260px;">
+                    <button type="button" class="btn"
+                            onclick="openPartModal('id_{{ prefix }}-part', '{{ prefix }}-part_display')">
+                        Выбрать
+                    </button>
+                    {{ item_form.part }}
+                    {% if item_form.part.errors %}<p class="error">{{ item_form.part.errors|join:", " }}</p>{% endif %}
+                </td>
+                <td>{{ item_form.quantity }}</td>
+                <td>{{ item_form.DELETE }}</td>
+                {{ item_form.id }}
+                {% endwith %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <button type="button" id="add-po-row" class="btn" style="margin-top:10px;">+ Добавить деталь</button>
+
+    <div style="margin-top:20px;">
+        <button type="submit" class="btn">Сохранить заказ</button>
+        <a href="{% url 'purchase_list' %}" class="btn btn-danger">Отмена</a>
+    </div>
+</form>
+
+<script>
+function clearSupplier() {
+    document.getElementById('id_supplier').value = '';
+    document.getElementById('supplier-display-input').value = '';
+}
+function clearWorkOrder() {
+    document.getElementById('id_work_order').value = '';
+    document.getElementById('wo-display-input').value = '';
+}
+
+(function() {
+    var totalForms = document.getElementById('id_items-TOTAL_FORMS');
+    var tbody = document.querySelector('#po-items-table tbody');
+
+    document.getElementById('add-po-row').addEventListener('click', function() {
+        var count = parseInt(totalForms.value);
+        var template = tbody.querySelector('.po-item-row');
+        var newRow = template.cloneNode(true);
+        newRow.innerHTML = newRow.innerHTML.replace(/items-\d+-/g, 'items-' + count + '-');
+        newRow.querySelectorAll('input[type=text], input[type=number]').forEach(function(el) { el.value = ''; });
+        newRow.querySelectorAll('input[type=hidden]').forEach(function(el) {
+            if (!el.id.includes('-DELETE') && !el.name.includes('csrfmiddlewaretoken')) el.value = '';
+        });
+        newRow.querySelectorAll('input[type=checkbox]').forEach(function(el) { el.checked = false; });
+        tbody.appendChild(newRow);
+        totalForms.value = count + 1;
+    });
+})();
+</script>
+{% endblock %}

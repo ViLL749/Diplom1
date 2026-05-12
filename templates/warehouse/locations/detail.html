@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Место хранения {{ location.label }}{% endblock %}
+{% block content %}
+<h1>Место хранения: {{ location.label }}</h1>
+<p><strong>Стеллаж:</strong> {{ location.rack }}</p>
+<p><strong>Полка:</strong> {{ location.shelf }}</p>
+<p><strong>Ячейка:</strong> {{ location.cell }}</p>
+
+<a href="{% url 'locations_list' %}" class="btn">К списку</a>
+<a href="{% url 'location_update' location.id %}" class="btn">Изменить</a>
+<a href="{% url 'location_delete' location.id %}" class="btn btn-danger">Удалить</a>
+
+<h2 class="top-title-margin">Детали на этом месте</h2>
+{% if stock_entries %}
+<table>
+    <thead>
+        <tr>
+            <th>Артикул</th>
+            <th>Название</th>
+            <th>Кол-во</th>
+            <th>Зарезервировано</th>
+            <th>Доступно</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in stock_entries %}
+        <tr {% if entry.is_low %}style="color:#c0392b;font-weight:bold;"{% endif %}>
+            <td>{{ entry.part.article }}</td>
+            <td>{{ entry.part.name }}</td>
+            <td>{{ entry.total_qty }}</td>
+            <td>{{ entry.reserved_qty }}</td>
+            <td>{{ entry.available_qty }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>На этом месте ничего не хранится.</p>
+{% endif %}
+{% endblock %}

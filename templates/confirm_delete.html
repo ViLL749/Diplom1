@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Удалить {{ object }}{% endblock %}
+{% block content %}
+    <h1>Вы уверены, что хотите удалить "{{ object }}"?</h1>
+
+    {% if deleted_object_type == 'CarMake' %}
+        <p style="color: red; font-weight: bold;">
+            Внимание! При удалении этой марки будут также удалены:
+            <ul>
+                <li>Все модели, связанные с маркой "{{ object }}"</li>
+                <li>Все автомобили клиентов с этой маркой</li>
+                <li>Все незавершённые заказы, связанные с автомобилями этой марки</li>
+            </ul>
+            Завершённые заказы останутся, но автомобили в них будут отвязаны.
+        </p>
+    {% elif deleted_object_type == 'CarModel' %}
+        <p style="color: red; font-weight: bold;">
+            Внимание! При удалении этой модели будут также удалены:
+            <ul>
+                <li>Все автомобили клиентов с моделью "{{ object }}"</li>
+                <li>Все незавершённые заказы, связанные с автомобилями этой модели</li>
+            </ul>
+            Завершённые заказы останутся, но автомобили в них будут отвязаны.
+        </p>
+    {% elif deleted_object_type == 'Client' %}
+        <p style="color: red; font-weight: bold;">
+            Внимание! При удалении этого клиента будут также удалены:
+            <ul>
+                <li>Все автомобили клиента "{{ object }}"</li>
+                <li>Все незавершённые заказы, связанные с автомобилями этого клиента</li>
+            </ul>
+            Завершённые заказы останутся, но автомобили в них будут отвязаны.
+        </p>
+    {% elif deleted_object_type == 'ClientCar' %}
+        <p style="color: red; font-weight: bold;">
+            Внимание! При удалении этого автомобиля будут также удалены:
+            <ul>
+                <li>Все незавершённые заказы, связанные с автомобилем "{{ object }}"</li>
+            </ul>
+            Завершённые заказы останутся, но этот автомобиль в них будет отвязан.
+        </p>
+    {% elif deleted_object_type == 'ServiceType' %}
+        <p style="color: red; font-weight: bold;">
+            Внимание! При удалении этого типа услуги будут также удалены:
+            <ul>
+                <li>Все услуги, связанные с типом "{{ object }}"</li>
+                <li>Все записи этих услуг из заказов</li>
+            </ul>
+        </p>
+    {% elif deleted_object_type == 'Service' %}
+        <p style="color: red; font-weight: bold;">
+            Внимание! При удалении этой услуги будут также удалены:
+            <ul>
+                <li>Все цены на услугу "{{ object }}"</li>
+                <li>Все записи этой услуги из заказов</li>
+            </ul>
+        </p>
+    {% elif deleted_object_type == 'ServicePrice' %}
+        <p style="color: red; font-weight: bold;">
+            Удаление этой цены не затронет другие объекты.
+        </p>
+    {% elif deleted_object_type == 'Order' %}
+        <p style="color: red; font-weight: bold;">
+            Внимание! При удалении этого заказа будут также удалены:
+            <ul>
+                <li>Все связанные с заказом услуги и кастомные услуги</li>
+            </ul>
+        </p>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">Удалить</button>
+        <a href="{{ cancel_url }}" class="btn">Отмена</a>
+    </form>
+{% endblock %}

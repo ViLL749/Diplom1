@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Добавить поставщика{% endblock %}
+{% block content %}
+<script src="{% static 'js/imask.js' %}"></script>
+
+<h1>Добавить поставщика</h1>
+
+<div id="form-errors" class="form-errors" style="display:none;"></div>
+
+<form method="post" id="supplier-form">
+    {% csrf_token %}
+    {% for field in form %}
+    <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
+        {{ field }}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn">Сохранить</button>
+    <a href="{% url 'suppliers_list' %}" class="btn btn-danger">Отмена</a>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var formErrors = document.getElementById('form-errors');
+    var phoneInput = document.getElementById('id_phone');
+
+    if (phoneInput && typeof IMask !== 'undefined') {
+        IMask(phoneInput, { mask: '+7 (000) 000-00-00', lazy: false });
+    }
+
+    // Show server-side errors on page load
+    var serverErrors = [
+        {% for field in form %}{% if field.errors %}{% for e in field.errors %}"{{ field.label }}: {{ e }}",{% endfor %}{% endif %}{% endfor %}
+        {% for e in form.non_field_errors %}"{{ e }}",{% endfor %}
+    ].filter(Boolean);
+    if (serverErrors.length) {
+        formErrors.innerHTML = '<p>Пожалуйста, исправьте ошибки:</p><ul>' +
+            serverErrors.map(function(e) { return '<li>' + e + '</li>'; }).join('') + '</ul>';
+        formErrors.style.display = 'block';
+    }
+
+    document.getElementById('supplier-form').addEventListener('submit', function(e) {
+        var errors = [];
+        var phone = phoneInput ? phoneInput.value.trim() : '';
+        if (phone && phone !== '+7 (___) ___-__-__') {
+            var phonePattern = /^\+7\s\(\d{3}\)\s\d{3}-\d{2}-\d{2}$/;
+            if (!phonePattern.test(phone)) {
+                errors.push('Телефон: введите номер в формате +7 (999) 999-99-99.');
+            }
+        }
+        if (errors.length) {
+            e.preventDefault();
+            formErrors.innerHTML = '<p>Пожалуйста, исправьте ошибки:</p><ul>' +
+                errors.map(function(err) { return '<li>' + err + '</li>'; }).join('') + '</ul>';
+            formErrors.style.display = 'block';
+        } else {
+            formErrors.style.display = 'none';
+        }
+    });
+});
+</script>
+{% endblock %}

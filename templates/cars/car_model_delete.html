@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Удалить модель для марки {{ object.make.name }}{% endblock %}
+{% block content %}
+    <h1>Вы уверены, что хотите удалить модель "{{ object }}" для марки {{ object.make.name }}?</h1>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">Удалить</button>
+        <a href="{{ cancel_url }}" class="btn">Отмена</a>
+    </form>
+{% endblock %}

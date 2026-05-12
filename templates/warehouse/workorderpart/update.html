@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Изменить деталь в заказ-наряде{% endblock %}
+{% block content %}
+<h1>Изменить деталь в заказ-наряде №{{ wop.work_order.id }}</h1>
+<p><strong>Деталь:</strong> {{ wop.part.article }} — {{ wop.part.name }}</p>
+<p><strong>Количество:</strong> {{ wop.quantity }}</p>
+
+<form method="post">
+    {% csrf_token %}
+    {% for field in form %}
+    <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
+        {{ field }}
+        {% if field.errors %}<p class="error">{{ field.errors|join:", " }}</p>{% endif %}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn">Сохранить</button>
+    <a href="{% url 'order_detail' wop.work_order.id %}" class="btn btn-danger">Отмена</a>
+</form>
+{% endblock %}

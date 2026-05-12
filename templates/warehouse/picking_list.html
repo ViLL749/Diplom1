@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Лист отборки — заказ №{{ order.id }}{% endblock %}
+{% block content %}
+<h1>Лист отборки — заказ-наряд №{{ order.id }}</h1>
+{% if order.client_car %}
+<p><strong>Клиент:</strong> {{ order.client_car.client.fio }}</p>
+<p><strong>Автомобиль:</strong> {{ order.client_car.make.name }} {{ order.client_car.model.name }} ({{ order.client_car.license_plate|default:'' }})</p>
+{% endif %}
+
+<a href="{% url 'order_detail' order.id %}" class="btn">Вернуться к заказу</a>
+<button onclick="window.print()" class="btn">Печать</button>
+
+<table>
+    <thead>
+        <tr>
+            <th>Место</th>
+            <th>Артикул</th>
+            <th>Название</th>
+            <th>Количество</th>
+            <th>Статус</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for wop in parts %}
+        <tr>
+            <td>
+                {% with entry=wop.part.stock_entries.first %}
+                    {% if entry %}{{ entry.location.label }}{% else %}—{% endif %}
+                {% endwith %}
+            </td>
+            <td>{{ wop.part.article }}</td>
+            <td>{{ wop.part.name }}</td>
+            <td>{{ wop.quantity }}</td>
+            <td>{{ wop.get_status_display }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5">Деталей в заказ-наряде нет.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

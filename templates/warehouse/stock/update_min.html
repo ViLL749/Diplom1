@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Минимальный остаток{% endblock %}
+{% block content %}
+<h1>Изменить минимальный остаток</h1>
+<p><strong>Деталь:</strong> {{ entry.part.article }} — {{ entry.part.name }}</p>
+<p><strong>Место:</strong> {{ entry.location.label }}</p>
+<form method="post">
+    {% csrf_token %}
+    <div>
+        <label for="{{ form.min_qty.id_for_label }}">{{ form.min_qty.label }}:</label>
+        {{ form.min_qty }}
+    </div>
+    <button type="submit" class="btn">Сохранить</button>
+    <a href="{% url 'stock_list' %}" class="btn btn-danger">Отмена</a>
+</form>
+{% endblock %}

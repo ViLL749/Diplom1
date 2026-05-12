@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Добавить услугу в заказ-наряд{% endblock %}
+{% block content %}
+<h1>Добавить услугу (нормо-часы) в заказ-наряд №{{ order.id }}</h1>
+<p><strong>Нормо-час:</strong> {{ hourly_rate }} руб.</p>
+<p><em>Цена = часы × нормо-час × коэффициент сложности</em></p>
+
+<form method="post">
+    {% csrf_token %}
+    {% for field in form %}
+    <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
+        {{ field }}
+        {% if field.errors %}<p class="error">{{ field.errors|join:", " }}</p>{% endif %}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn">Добавить</button>
+    <a href="{% url 'order_detail' order.id %}" class="btn btn-danger">Отмена</a>
+</form>
+{% endblock %}

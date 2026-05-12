@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Редактировать клиента{% endblock %}
+{% block content %}
+{% load static %}
+<script src="{% static 'js/imask.js' %}"></script>
+<script src="{% static 'js/jquery-3.6.0.min.js' %}"></script>
+
+<div>
+    <h1>Редактировать клиента</h1>
+    <div id="form-errors" class="form-errors" style="display: none;"></div>
+    <form method="post" id="client-form">
+        {% csrf_token %}
+        <div>
+            <label for="id_fio">ФИО:</label>
+            {{ form.fio }}
+        </div>
+        <div>
+            <label for="id_phone">Телефон:</label>
+            {{ form.phone }}
+        </div>
+        <button type="submit" class="btn">Сохранить</button>
+        <a href="{{ cancel_url }}" class="btn btn-danger">Отмена</a>
+    </form>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const form = document.getElementById("client-form");
+    const fioInput = document.getElementById("id_fio");
+    const phoneInput = document.getElementById("id_phone");
+    const formErrors = document.getElementById("form-errors");
+    const fioPattern = /^[А-Яа-яЁёA-Za-z\s.]+$/;
+    const phonePattern = /^\+7\s\(\d{3}\)\s\d{3}-\d{2}-\d{2}$/;
+    const clientId = '{{ form.instance.id }}';
+
+    if (typeof IMask !== "undefined") {
+        const maskOptions = {
+            mask: "+7 (000) 000-00-00",
+            lazy: false,
+        };
+        new IMask(phoneInput, maskOptions);
+    }
+
+    function validateFio() {
+        const fioValue = fioInput.value.trim();
+        if (!fioValue) return "Поле ФИО обязательно для заполнения.";
+        if (!fioPattern.test(fioValue)) return "ФИО должно содержать только буквы, пробелы и точки.";
+        if (fioValue.length < 3) return "ФИО должно содержать минимум 3 символа.";
+        return null;
+    }
+
+    function validatePhone() {
+        const phoneValue = phoneInput.value;
+        if (!phoneValue) return "Поле телефона обязательно для заполнения.";
+        if (!phonePattern.test(phoneValue)) return "Введите телефон в формате +7 (123) 456-78-90.";
+        return null;
+    }
+
+    async function checkPhoneUniqueness(phone) {
+        return $.ajax({
+            url: '{% url "check_client_phone_uniqueness" %}',
+            data: { phone: phone, id: clientId },
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+        }).then(response => response.exists ? "Клиент с таким номером телефона уже существует." : null);
+    }
+
+    async function validateForm(event) {
+        event.preventDefault();
+        const fioError = validateFio();
+        const phoneError = validatePhone();
+        const uniquenessError = (!fioError && !phoneError) ? await checkPhoneUniqueness(phoneInput.value) : null;
+
+        const errors = [];
+        if (fioError) errors.push(fioError);
+        if (phoneError) errors.push(phoneError);
+        if (uniquenessError) errors.push(uniquenessError);
+
+        if (errors.length > 0) {
+            formErrors.innerHTML = "<p>Пожалуйста, исправьте ошибки:</p><ul>" +
+                errors.map(error => `<li>${error}</li>`).join('') + "</ul>";
+            formErrors.style.display = "block";
+            return false;
+        } else {
+            formErrors.style.display = "none";
+            form.submit();
+        }
+    }
+
+    form.addEventListener("submit", validateForm);
+});
+</script>
+{% endblock %}

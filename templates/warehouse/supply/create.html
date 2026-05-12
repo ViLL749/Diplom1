@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+{% block title %}Создать приход товара{% endblock %}
+{% block content %}
+{% include "warehouse/_part_search_modal.html" %}
+
+<h1>Создать приход товара</h1>
+
+{% if initial_po %}
+<div style="background:#e8f5e9;padding:12px;border-left:4px solid #4caf50;margin-bottom:16px;">
+    <strong>На основе заказа №{{ initial_po.id }}</strong>
+    ({{ initial_po.get_status_display }})
+    — поставщик: {% if initial_po.supplier %}{{ initial_po.supplier.name }}{% else %}не указан{% endif %}.
+    Позиций к получению: {{ po_items|length }}.
+</div>
+{% endif %}
+
+<div style="background:#e3f2fd;padding:10px 14px;border-left:4px solid #1976d2;margin-bottom:16px;font-size:0.93em;">
+    Строки <strong>без места хранения</strong> пропускаются — можно заполнить только часть.
+    <strong>«÷»</strong> — разделить одну позицию по нескольким ячейкам.
+</div>
+
+<form method="post" id="supply-form">
+    {% csrf_token %}
+    <h2>Документ</h2>
+    {% for field in doc_form %}
+    {% if initial_po and field.html_name == "supplier" %}
+        {# When PO is set, supplier is shown combined with PO below — skip separate row #}
+        {{ field.as_hidden }}
+    {% elif initial_po and field.html_name == "purchase_order" %}
+        <div>
+            <label>Заказ поставщику:</label>
+            <span style="font-weight:500;">
+                №{{ initial_po.id }}{% if initial_po.supplier %} — {{ initial_po.supplier.name }}{% endif %}
+            </span>
+            {{ field.as_hidden }}
+        </div>
+    {% else %}
+        <div>
+            <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
+            {{ field }}
+            {% if field.errors %}<p class="error">{{ field.errors|join:", " }}</p>{% endif %}
+        </div>
+    {% endif %}
+    {% endfor %}
+
+    <h2 class="top-title-margin">Строки прихода</h2>
+
+    {{ formset.management_form }}
+    <table id="supply-items-table">
+        <thead>
+            <tr>
+                <th>Деталь</th>
+                <th>Место хранения</th>
+                <th>Количество</th>
+                <th>Цена закупки</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="supply-tbody">
+            {% for item_form in formset %}
+            <tr class="supply-row">
+                {% with prefix=item_form.prefix %}
+                <td>
+                    {# name attribute ensures display text is submitted and survives POST re-render #}
+                    <input type="text"
+                           id="{{ prefix }}-part_display"
+                           name="{{ prefix }}-part_display"
+                           value="{{ item_form.part_display.value|default:'' }}"
+                           readonly placeholder="Нажмите «Выбрать»" style="width:200px;">
+                    <button type="button" class="btn"
+                            onclick="openPartModal('id_{{ prefix }}-part', '{{ prefix }}-part_display', '{{ prefix }}-package_qty')">
+                        Выбрать
+                    </button>
+                    {{ item_form.part }}
+                    {{ item_form.po_item }}
+                    {# Non-model field — carries package count entered by user to the view #}
+                    <input type="hidden"
+                           id="{{ prefix }}-package_qty"
+                           name="{{ prefix }}-package_qty"
+                           value="{{ item_form.package_qty.value|default:'1' }}">
+                    {% if item_form.part.errors %}<p class="error">{{ item_form.part.errors|join:", " }}</p>{% endif %}
+                </td>
+                <td>
+                    {{ item_form.location }}
+                    {% if item_form.location.errors %}<p class="error">{{ item_form.location.errors|join:", " }}</p>{% endif %}
+                </td>
+                <td>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        {{ item_form.quantity }}
+                        <span class="pkg-units-wrap" style="display:none;align-items:center;gap:4px;">
+                            <span style="color:#aaa;">×</span>
+                            <input type="number" class="qty-units-field" readonly
+                                   style="width:60px;background:#f0f7ff;border:1px solid #90caf9;color:#1565c0;font-weight:bold;"
+                                   value="" placeholder="шт." tabindex="-1">
+                            <span style="font-size:0.85em;color:#1565c0;">шт.</span>
+                        </span>
+                    </div>
+                    {% if item_form.quantity.errors %}<p class="error">{{ item_form.quantity.errors|join:", " }}</p>{% endif %}
+                </td>
+                <td>
+                    {{ item_form.purchase_price }}
+                    {% if item_form.purchase_price.errors %}<p class="error">{{ item_form.purchase_price.errors|join:", " }}</p>{% endif %}
+                </td>
+                <td style="white-space:nowrap;">
+                    <button type="button" class="btn" title="Разделить по ячейкам" onclick="splitRow(this)">÷</button>
+                    <button type="button" class="btn btn-danger" title="Удалить строку" onclick="removeRow(this)">×</button>
+                    <div style="display:none;">{{ item_form.DELETE }}</div>
+                </td>
+                {{ item_form.id }}
+                {% endwith %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <button type="button" id="add-supply-row" class="btn" style="margin-top:10px;">+ Добавить строку</button>
+
+    <div style="margin-top:20px;">
+        <button type="submit" class="btn">Сохранить приход</button>
+        <a href="{% url 'supply_list' %}" class="btn btn-danger">Отмена</a>
+    </div>
+</form>
+
+<script>
+(function() {
+    var totalForms = document.getElementById('id_items-TOTAL_FORMS');
+    var tbody = document.getElementById('supply-tbody');
+
+    // Key: po_item id (string), Value: { remaining, label, pkg }
+    var PO_META = {
+        {% for poi in po_items %}
+        "{{ poi.id }}": { remaining: {{ poi.remaining_qty }}, label: "{{ poi.part.article|escapejs }} — {{ poi.part.name|escapejs }}", pkg: {{ poi.part.package_qty }} }{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    };
+    // Key: part id (string), Value: po_item id (string) — for auto-linking manual rows.
+    var PO_PART_TO_ITEM = {
+        {% for poi in po_items %}
+        "{{ poi.part.id }}": "{{ poi.id }}"{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    };
+
+    // --- helpers ---
+
+    function getPrefix(row) {
+        var el = row.querySelector('input[name$="-part"][type="hidden"]');
+        return el ? el.name.replace(/-part$/, '') : null;
+    }
+
+    function getPkgQty(row) {
+        return parseInt(row.dataset.pkgQty) || 1;
+    }
+
+    // Shows/updates the separate "× [N шт.]" read-only field next to the qty input.
+    function updatePkgHint(row) {
+        var wrap  = row.querySelector('.pkg-units-wrap');
+        var field = row.querySelector('.qty-units-field');
+        if (!wrap || !field) return;
+        var pkg = getPkgQty(row);
+        if (pkg > 1) {
+            var prefix = getPrefix(row);
+            var qty = prefix ? (parseInt((row.querySelector('input[name="' + prefix + '-quantity"]') || {}).value) || 0) : 0;
+            field.value = qty * pkg || '';
+            wrap.style.display = 'flex';
+        } else {
+            wrap.style.display = 'none';
+            field.value = '';
+        }
+    }
+
+    function applyPoMeta(row) {
+        var prefix = getPrefix(row);
+        if (!prefix) return;
+        var poInput = row.querySelector('input[name="' + prefix + '-po_item"]');
+        if (!poInput || !poInput.value) return;
+        var meta = PO_META[poInput.value];
+        if (!meta) return;
+        row.dataset.poItemId     = poInput.value;
+        row.dataset.remainingQty = meta.remaining;
+        row.dataset.partLabel    = meta.label;
+        row.dataset.pkgQty       = meta.pkg || 1;
+        addRemainHint(row, meta.remaining);
+    }
+
+    function addRemainHint(row, remaining) {
+        var prefix = getPrefix(row);
+        if (!prefix) return;
+        var qtyInput = row.querySelector('input[name="' + prefix + '-quantity"]');
+        if (!qtyInput || row.querySelector('.remain-hint')) return;
+        var hint = document.createElement('span');
+        hint.className = 'remain-hint';
+        hint.style.cssText = 'font-size:0.82em;display:block;color:#888;';
+        hint.textContent = 'Введено: 0 / ' + remaining + ' шт.';
+        qtyInput.parentNode.appendChild(hint);
+    }
+
+    function updateQtyWarnings() {
+        var totals = {};
+        tbody.querySelectorAll('.supply-row').forEach(function(row) {
+            if (row.style.display === 'none') return;
+            var poId = row.dataset.poItemId;
+            if (!poId) return;
+            var prefix = getPrefix(row);
+            if (!prefix) return;
+            // Compare in the same unit as PO (packages entered by user, not multiplied units).
+            var qty = parseInt((row.querySelector('input[name="' + prefix + '-quantity"]') || {}).value) || 0;
+            totals[poId] = (totals[poId] || 0) + qty;
+        });
+        tbody.querySelectorAll('.supply-row').forEach(function(row) {
+            var hint = row.querySelector('.remain-hint');
+            if (!hint) return;
+            var poId = row.dataset.poItemId;
+            if (!poId) return;
+            var remaining = parseInt(row.dataset.remainingQty) || 0;
+            var total = totals[poId] || 0;
+            var pkg = getPkgQty(row);
+            var unit = pkg > 1 ? 'упак.' : 'шт.';
+            hint.textContent = 'Введено: ' + total + ' / ' + remaining + ' ' + unit;
+            if (total > remaining) {
+                hint.style.color = 'red'; hint.style.fontWeight = 'bold';
+            } else if (total > 0 && total === remaining) {
+                hint.style.color = 'green'; hint.style.fontWeight = 'normal';
+            } else {
+                hint.style.color = '#888'; hint.style.fontWeight = 'normal';
+            }
+        });
+    }
+
+    tbody.addEventListener('input', function(e) {
+        if (e.target.name && e.target.name.endsWith('-quantity')) {
+            updatePkgHint(e.target.closest('tr'));
+            updateQtyWarnings();
+        }
+    });
+
+    // package_qty hidden input is changed by the part modal — update hints.
+    // Also auto-link the row to a PO item if the selected part exists in the PO.
+    tbody.addEventListener('change', function(e) {
+        if (e.target.name && e.target.name.endsWith('-package_qty')) {
+            var row = e.target.closest('tr');
+            if (row) {
+                row.dataset.pkgQty = e.target.value;
+                // Auto-link to PO item when part matches one in the linked PO.
+                var prefix = getPrefix(row);
+                if (prefix) {
+                    var partInput = row.querySelector('input[name="' + prefix + '-part"]');
+                    if (partInput && partInput.value) {
+                        var poItemId = PO_PART_TO_ITEM[partInput.value];
+                        if (poItemId) {
+                            var poInput = row.querySelector('input[name="' + prefix + '-po_item"]');
+                            if (poInput && !poInput.value) poInput.value = poItemId;
+                        }
+                    }
+                }
+                applyPoMeta(row);
+                updatePkgHint(row);
+            }
+            updateQtyWarnings();
+        }
+    });
+
+    window.addEventListener('DOMContentLoaded', function() {
+        tbody.querySelectorAll('.supply-row').forEach(function(row) {
+            var del = row.querySelector('input[type=checkbox][name$="-DELETE"]');
+            if (del && del.checked) { row.style.display = 'none'; return; }
+            // Restore pkgQty from hidden input (preserved in POST re-render data).
+            var prefix = getPrefix(row);
+            if (prefix) {
+                var pkgEl = document.getElementById(prefix + '-package_qty');
+                if (pkgEl && parseInt(pkgEl.value) > 1) row.dataset.pkgQty = pkgEl.value;
+            }
+            applyPoMeta(row);   // may override pkgQty from PO_META — that's fine
+            updatePkgHint(row);
+        });
+        updateQtyWarnings();
+    });
+
+    {% if initial_po and po_items and prefill_fresh %}
+    window.addEventListener('DOMContentLoaded', function() { prefillFromPO({{ initial_po.id }}); });
+
+    function prefillFromPO(poId) {
+        $.ajax({
+            url: '{% url "api_po_items" %}',
+            data: { po_id: poId },
+            success: function(data) {
+                if (!data.items.length) return;
+                var rows = tbody.querySelectorAll('.supply-row');
+                data.items.forEach(function(item, idx) {
+                    if (idx >= rows.length) { addEmptyRow(); rows = tbody.querySelectorAll('.supply-row'); }
+                    var row = rows[idx];
+                    var prefix = getPrefix(row);
+                    row.querySelector('input[name="' + prefix + '-part"]').value = item.part_id;
+                    row.querySelector('[name="' + prefix + '-part_display"]').value = item.article + ' — ' + item.name;
+                    var poInput = row.querySelector('input[name="' + prefix + '-po_item"]');
+                    if (poInput) poInput.value = item.id;
+                    var pkg = item.package_qty || 1;
+                    var pkgEl = document.getElementById(prefix + '-package_qty');
+                    if (pkgEl) pkgEl.value = pkg;
+                    row.dataset.pkgQty = pkg;
+                    var qtyInput = row.querySelector('input[name="' + prefix + '-quantity"]');
+                    if (qtyInput) qtyInput.value = item.remaining_qty;
+                    applyPoMeta(row);
+                    updatePkgHint(row);
+                });
+                updateQtyWarnings();
+            }
+        });
+    }
+    {% endif %}
+
+    // --- row operations ---
+
+    function cloneRow(sourceRow, newIndex) {
+        var newRow = sourceRow.cloneNode(true);
+        newRow.innerHTML = newRow.innerHTML.replace(/items-\d+-/g, 'items-' + newIndex + '-');
+        newRow.style.display = '';
+        return newRow;
+    }
+
+    function addEmptyRow() {
+        var count = parseInt(totalForms.value);
+        var template = tbody.querySelector('.supply-row');
+        var newRow = cloneRow(template, count);
+        newRow.querySelectorAll('input[type=text], input[type=number]').forEach(function(el) { el.value = ''; });
+        newRow.querySelectorAll('input[type=hidden]').forEach(function(el) {
+            if (!el.name.includes('csrfmiddlewaretoken')) el.value = '';
+        });
+        // package_qty defaults to 1 for blank rows
+        var pkgEl = newRow.querySelector('[name$="-package_qty"]');
+        if (pkgEl) pkgEl.value = '1';
+        newRow.querySelectorAll('input[type=checkbox]').forEach(function(el) { el.checked = false; });
+        newRow.querySelectorAll('select').forEach(function(el) { el.selectedIndex = 0; });
+        newRow.querySelectorAll('.remain-hint').forEach(function(el) { el.remove(); });
+        newRow.querySelectorAll('.pkg-units-wrap').forEach(function(el) { el.style.display='none'; });
+        newRow.querySelectorAll('.qty-units-field').forEach(function(el) { el.value=''; });
+        delete newRow.dataset.poItemId;
+        delete newRow.dataset.remainingQty;
+        delete newRow.dataset.partLabel;
+        delete newRow.dataset.pkgQty;
+        tbody.appendChild(newRow);
+        totalForms.value = count + 1;
+    }
+
+    // "÷" — copy part/po_item/price/pkg to a new row, clear location & qty.
+    function splitRow(btn) {
+        var row = btn.closest('tr');
+        var count = parseInt(totalForms.value);
+        var srcPrefix = getPrefix(row);
+
+        // Read values BEFORE innerHTML replace wipes JS-set text input values.
+        var displayEl = srcPrefix ? row.querySelector('[name="' + srcPrefix + '-part_display"]') : null;
+        var partLabel = displayEl ? displayEl.value : (row.dataset.partLabel || '');
+        var pkgVal    = srcPrefix ? (row.querySelector('[id="' + srcPrefix + '-package_qty"]') || {value:'1'}).value : '1';
+        var pkgQty    = parseInt(pkgVal) || 1;
+
+        var newRow = cloneRow(row, count);
+        var newPrefix = 'items-' + count;
+
+        var nd = newRow.querySelector('[name="' + newPrefix + '-part_display"]');
+        if (nd) nd.value = partLabel;
+        var np = newRow.querySelector('[id="' + newPrefix + '-package_qty"]');
+        if (np) np.value = pkgVal;
+
+        if (row.dataset.poItemId)     newRow.dataset.poItemId     = row.dataset.poItemId;
+        if (row.dataset.remainingQty) newRow.dataset.remainingQty = row.dataset.remainingQty;
+        if (row.dataset.partLabel)    newRow.dataset.partLabel    = row.dataset.partLabel;
+        newRow.dataset.pkgQty = pkgQty;
+
+        newRow.querySelectorAll('input[name$="-id"]').forEach(function(el) { el.value = ''; });
+        newRow.querySelectorAll('input[name$="-quantity"]').forEach(function(el) { el.value = ''; });
+        newRow.querySelectorAll('select').forEach(function(el) { el.selectedIndex = 0; });
+        newRow.querySelectorAll('input[type=checkbox]').forEach(function(el) { el.checked = false; });
+        newRow.querySelectorAll('.remain-hint').forEach(function(el) { el.remove(); });
+
+        row.parentNode.insertBefore(newRow, row.nextSibling);
+        totalForms.value = count + 1;
+
+        if (row.dataset.remainingQty) addRemainHint(newRow, row.dataset.remainingQty);
+        updatePkgHint(newRow);
+        updateQtyWarnings();
+    }
+
+    function removeRow(btn) {
+        var row = btn.closest('tr');
+        var del = row.querySelector('input[type=checkbox]');
+        if (del) del.checked = true;
+        row.style.display = 'none';
+        updateQtyWarnings();
+    }
+
+    document.getElementById('add-supply-row').addEventListener('click', addEmptyRow);
+    window.splitRow = splitRow;
+    window.removeRow = removeRow;
+})();
+</script>
+{% endblock %}

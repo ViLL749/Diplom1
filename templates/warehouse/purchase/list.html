@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Заказы поставщикам{% endblock %}
+{% block content %}
+<h1>Заказы поставщикам</h1>
+<a href="{% url 'purchase_create' %}" class="btn">Создать заказ</a>
+
+<form method="GET" class="search-container">
+    <input type="text" name="search" placeholder="Поиск по поставщику или артикулу..." value="{{ request.GET.search|default:'' }}">
+    <button type="submit" class="btn">Искать</button>
+</form>
+
+<table id="purchase-table">
+    <thead>
+        <tr>
+            <th>№</th>
+            <th>Поставщик</th>
+            <th>Артикулы</th>
+            <th>Статус</th>
+            <th>Заказ-наряд</th>
+            <th>Дата</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for po in page_obj %}
+        <tr data-id="{{ po.id }}"
+            data-url-detail="{% url 'purchase_detail' po.id %}"
+            data-url-update="{% url 'purchase_update' po.id %}">
+            <td>{{ po.id }}</td>
+            <td>{% if po.supplier %}{{ po.supplier.name }}{% else %}—{% endif %}</td>
+            <td>
+                {% for item in po.items.all %}
+                    {{ item.part.article }}{% if not forloop.last %}, {% endif %}
+                {% empty %}—{% endfor %}
+            </td>
+            <td>
+                {% if po.status == 'received' %}<span style="color:green;font-weight:bold;">
+                {% elif po.status == 'partial' %}<span style="color:darkorange;font-weight:bold;">
+                {% elif po.status == 'in_transit' %}<span style="color:orange;">
+                {% else %}<span>{% endif %}
+                {{ po.get_status_display }}</span>
+            </td>
+            <td>{% if po.work_order %}№{{ po.work_order.id }}{% else %}—{% endif %}</td>
+            <td>{{ po.created_at|date:"d.m.Y" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6">Заказов нет.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if page_obj.has_other_pages %}
+<div class="pagination">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}" class="btn">Предыдущая</a>{% endif %}
+    {% for num in page_obj.paginator.page_range %}{% if num >= page_obj.number|add:-2 and num <= page_obj.number|add:2 %}<a href="?page={{ num }}&per_page={{ per_page }}" class="btn {% if page_obj.number == num %}active{% endif %}">{{ num }}</a>{% endif %}{% endfor %}
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}" class="btn">Следующая</a>{% endif %}
+</div>
+{% endif %}
+
+<form method="GET" class="per-page-form">
+    <label>Записей на страницу:
+        <select name="per_page" onchange="this.form.submit()">
+            <option value="5" {% if per_page == 5 %}selected{% endif %}>5</option>
+            <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+            <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+        </select>
+    </label>
+</form>
+
+<div class="mt-20">
+    <button id="view-po" class="btn" disabled>Просмотр</button>
+    <button id="edit-po" class="btn" disabled>Изменить статус</button>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var selected = null;
+    document.querySelectorAll('#purchase-table tbody tr').forEach(function(row) {
+        row.addEventListener('click', function() {
+            if (selected) selected.classList.remove('selected');
+            this.classList.add('selected');
+            selected = this;
+            document.getElementById('view-po').disabled = false;
+            document.getElementById('edit-po').disabled = false;
+            document.getElementById('view-po').onclick = function() { window.location.href = selected.dataset.urlDetail; };
+            document.getElementById('edit-po').onclick = function() { window.location.href = selected.dataset.urlUpdate; };
+        });
+        row.addEventListener('dblclick', function() { window.location.href = this.dataset.urlDetail; });
+    });
+});
+</script>
+{% endblock %}

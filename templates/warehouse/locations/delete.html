@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Удалить место хранения{% endblock %}
+{% block content %}
+<h1>Удалить место хранения?</h1>
+<p>Вы уверены, что хотите удалить место <strong>{{ location.label }}</strong>?</p>
+<p>Все остатки на этом месте также будут удалены.</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Удалить</button>
+    <a href="{% url 'location_detail' location.id %}" class="btn">Отмена</a>
+</form>
+{% endblock %}

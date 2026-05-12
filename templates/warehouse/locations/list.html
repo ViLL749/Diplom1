@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% block title %}Места хранения{% endblock %}
+{% block content %}
+<h1>Места хранения</h1>
+
+<div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+    <a href="{% url 'location_create' %}" class="btn">Добавить место</a>
+    <button id="toggle-view" class="btn" style="margin-left:auto;" onclick="toggleView()">Схема склада</button>
+</div>
+
+<!-- ═══ TABLE VIEW ═══ -->
+<div id="loc-table-view">
+    <form method="GET" class="search-container">
+        <input type="text" name="search" placeholder="Поиск по адресу..." value="{{ request.GET.search|default:'' }}">
+        <button type="submit" class="btn">Искать</button>
+    </form>
+
+    <table id="locations-table">
+        <thead>
+            <tr>
+                <th>Стеллаж</th>
+                <th>Полка</th>
+                <th>Ячейка</th>
+                <th>Адрес</th>
+                <th>Кол-во позиций</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for loc in page_obj %}
+            <tr data-id="{{ loc.id }}"
+                data-url-detail="{% url 'location_detail' loc.id %}"
+                data-url-update="{% url 'location_update' loc.id %}"
+                data-url-delete="{% url 'location_delete' loc.id %}">
+                <td>{{ loc.rack }}</td>
+                <td>{{ loc.shelf }}</td>
+                <td>{{ loc.cell }}</td>
+                <td>{{ loc.label }}</td>
+                <td>{{ loc.stock_entries.count }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5">Места хранения не найдены.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if page_obj.has_other_pages %}
+    <div class="pagination">
+        {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}" class="btn">Предыдущая</a>{% endif %}
+        {% for num in page_obj.paginator.page_range %}{% if num >= page_obj.number|add:-2 and num <= page_obj.number|add:2 %}<a href="?page={{ num }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}" class="btn {% if page_obj.number == num %}active{% endif %}">{{ num }}</a>{% endif %}{% endfor %}
+        {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}" class="btn">Следующая</a>{% endif %}
+    </div>
+    {% endif %}
+
+    <form method="GET" class="per-page-form">
+        <label>Записей на страницу:
+            <select name="per_page" onchange="this.form.submit()">
+                <option value="5" {% if per_page == 5 %}selected{% endif %}>5</option>
+                <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+                <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+            </select>
+        </label>
+        {% if request.GET.search %}<input type="hidden" name="search" value="{{ request.GET.search }}">{% endif %}
+    </form>
+
+    <div id="location-actions" class="mt-20">
+        <button id="view-loc" class="btn" disabled>Просмотр</button>
+        <button id="edit-loc" class="btn" disabled>Изменить</button>
+        <button id="delete-loc" class="btn btn-danger" disabled>Удалить</button>
+    </div>
+</div>
+
+<!-- ═══ MAP VIEW ═══ -->
+<div id="loc-map-view" style="display:none;">
+    <div id="map-legend" style="display:flex;gap:16px;align-items:center;margin-bottom:16px;font-size:0.88em;flex-wrap:wrap;">
+        <span><span class="cell-demo cell-empty"></span> Пустая</span>
+        <span><span class="cell-demo cell-ok"></span> Есть товар</span>
+        <span><span class="cell-demo cell-low"></span> Мало (≤ мин.)</span>
+        <span><span class="cell-demo cell-reserved"></span> Есть резерв</span>
+    </div>
+    <div id="map-racks"></div>
+</div>
+
+<!-- Cell popup -->
+<div id="cell-popup" style="display:none;position:fixed;z-index:200;background:#fff;border:1px solid #ccc;border-radius:6px;padding:14px 18px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:240px;max-width:340px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <strong id="popup-title"></strong>
+        <span style="cursor:pointer;font-size:20px;color:#888;line-height:1;" onclick="closePopup()">×</span>
+    </div>
+    <div id="popup-body"></div>
+    <div style="margin-top:10px;">
+        <a id="popup-detail-link" href="#" class="btn" style="font-size:0.85em;">Подробнее</a>
+    </div>
+</div>
+
+<style>
+/* ── Map layout ── */
+#map-racks {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+.rack-card {
+    border: 2px solid #90a4ae;
+    border-radius: 6px;
+    overflow: hidden;
+    min-width: 140px;
+}
+.rack-header {
+    background: #546e7a;
+    color: #fff;
+    font-weight: bold;
+    text-align: center;
+    padding: 6px 10px;
+    font-size: 0.95em;
+    letter-spacing: 0.05em;
+}
+.shelf-row {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    border-top: 1px solid #e0e0e0;
+    gap: 6px;
+}
+.shelf-label {
+    font-size: 0.78em;
+    color: #888;
+    min-width: 42px;
+    white-space: nowrap;
+}
+.cell-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 4px;
+    border: 1px solid rgba(0,0,0,0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+    user-select: none;
+    text-align: center;
+    line-height: 1.1;
+    color: #fff;
+}
+.cell-box:hover {
+    transform: scale(1.12);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.22);
+    z-index: 1;
+    position: relative;
+}
+/* Colors */
+.cell-empty    { background: #cfd8dc; color: #546e7a; }
+.cell-ok       { background: #43a047; }
+.cell-low      { background: #fb8c00; }
+.cell-reserved { background: #1e88e5; }
+/* legend demos */
+.cell-demo {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-right: 4px;
+    border: 1px solid rgba(0,0,0,0.1);
+}
+</style>
+
+<script>
+var MAP_DATA = {{ map_data_json|safe }};
+var DETAIL_URL_BASE = "{% url 'location_detail' 0 %}".replace('/0/', '/');
+
+function buildMap() {
+    var container = document.getElementById('map-racks');
+    container.innerHTML = '';
+    var racks = Object.keys(MAP_DATA).sort();
+    if (!racks.length) {
+        container.innerHTML = '<p style="color:#888;">Места хранения не созданы.</p>';
+        return;
+    }
+    racks.forEach(function(rack) {
+        var shelves = MAP_DATA[rack];
+        var card = document.createElement('div');
+        card.className = 'rack-card';
+
+        var header = document.createElement('div');
+        header.className = 'rack-header';
+        header.textContent = 'Стеллаж ' + rack;
+        card.appendChild(header);
+
+        var shelfKeys = Object.keys(shelves).sort(function(a,b){ return a.localeCompare(b, undefined, {numeric:true}); });
+        shelfKeys.forEach(function(shelf) {
+            var row = document.createElement('div');
+            row.className = 'shelf-row';
+
+            var lbl = document.createElement('span');
+            lbl.className = 'shelf-label';
+            lbl.textContent = 'П.' + shelf;
+            row.appendChild(lbl);
+
+            shelves[shelf].forEach(function(cellInfo) {
+                var box = document.createElement('div');
+                box.className = 'cell-box ' + cellClass(cellInfo);
+                box.title = cellInfo.label;
+                box.textContent = cellInfo.cell;
+                box.dataset.info = JSON.stringify(cellInfo);
+                box.addEventListener('click', function(e) {
+                    showPopup(e, JSON.parse(this.dataset.info));
+                });
+                row.appendChild(box);
+            });
+            card.appendChild(row);
+        });
+        container.appendChild(card);
+    });
+}
+
+function cellClass(c) {
+    if (c.empty)     return 'cell-empty';
+    if (c.reserved > 0) return 'cell-reserved';
+    if (c.low)       return 'cell-low';
+    return 'cell-ok';
+}
+
+function showPopup(e, info) {
+    var popup = document.getElementById('cell-popup');
+    document.getElementById('popup-title').textContent = 'Ячейка ' + info.label;
+    document.getElementById('popup-detail-link').href = DETAIL_URL_BASE + info.id + '/';
+
+    var body = document.getElementById('popup-body');
+    if (!info.parts.length) {
+        body.innerHTML = '<em style="color:#888;">Пусто</em>';
+    } else {
+        var rows = info.parts.map(function(p) {
+            var pkg = p.pkg || 1;
+            var qtyStr;
+            if (pkg > 1) {
+                var packs = Math.floor(p.qty / pkg);
+                var rem   = p.qty % pkg;
+                qtyStr = packs + ' упак.';
+                if (rem > 0) qtyStr += ' + ' + rem + ' шт.';
+            } else {
+                qtyStr = p.qty + ' шт.';
+            }
+            var res = p.reserved > 0
+                ? ' <span style="color:#1e88e5;">(рез. ' + (pkg > 1 ? Math.ceil(p.reserved/pkg) + ' упак.' : p.reserved + ' шт.') + ')</span>'
+                : '';
+            return '<tr><td style="padding:2px 8px 2px 0;font-size:0.85em;">' + p.article + '</td>' +
+                   '<td style="padding:2px 0;font-size:0.85em;color:#555;">' + p.name + '</td>' +
+                   '<td style="padding:2px 0 2px 8px;font-weight:bold;white-space:nowrap;">' + qtyStr + res + '</td></tr>';
+        }).join('');
+        body.innerHTML = '<table style="border-collapse:collapse;">' + rows + '</table>';
+    }
+
+    // Position near click, keep inside viewport
+    popup.style.display = 'block';
+    var x = e.clientX + 12, y = e.clientY + 12;
+    var pw = popup.offsetWidth, ph = popup.offsetHeight;
+    if (x + pw > window.innerWidth  - 8) x = e.clientX - pw - 12;
+    if (y + ph > window.innerHeight - 8) y = e.clientY - ph - 12;
+    popup.style.left = x + 'px';
+    popup.style.top  = y + 'px';
+    e.stopPropagation();
+}
+
+function closePopup() {
+    document.getElementById('cell-popup').style.display = 'none';
+}
+
+document.addEventListener('click', function(e) {
+    var popup = document.getElementById('cell-popup');
+    if (popup.style.display !== 'none' && !popup.contains(e.target)) closePopup();
+});
+
+// ── Toggle ──
+var mapBuilt = false;
+function toggleView() {
+    var tableView = document.getElementById('loc-table-view');
+    var mapView   = document.getElementById('loc-map-view');
+    var btn       = document.getElementById('toggle-view');
+    if (mapView.style.display === 'none') {
+        tableView.style.display = 'none';
+        mapView.style.display = '';
+        btn.textContent = 'Список';
+        if (!mapBuilt) { buildMap(); mapBuilt = true; }
+    } else {
+        mapView.style.display = 'none';
+        tableView.style.display = '';
+        btn.textContent = 'Схема склада';
+    }
+    closePopup();
+}
+
+// ── Table row selection (original behaviour) ──
+document.addEventListener('DOMContentLoaded', function() {
+    const rows = document.querySelectorAll('#locations-table tbody tr');
+    let selected = null;
+    rows.forEach(row => {
+        row.addEventListener('click', function() {
+            if (selected) selected.classList.remove('selected');
+            this.classList.add('selected');
+            selected = this;
+            document.getElementById('view-loc').disabled = false;
+            document.getElementById('edit-loc').disabled = false;
+            document.getElementById('delete-loc').disabled = false;
+            document.getElementById('view-loc').onclick = () => window.location.href = this.dataset.urlDetail;
+            document.getElementById('edit-loc').onclick = () => window.location.href = this.dataset.urlUpdate;
+            document.getElementById('delete-loc').onclick = () => window.location.href = this.dataset.urlDelete;
+        });
+        row.addEventListener('dblclick', function() { window.location.href = this.dataset.urlDetail; });
+    });
+});
+</script>
+{% endblock %}

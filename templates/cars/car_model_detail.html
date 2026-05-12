@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Информация о модели автомобиля{% endblock %}
+{% block content %}
+    <h1>Информация о модели автомобиля</h1>
+    <p><strong>Марка:</strong> {{ car_model.make.name }}</p>
+    <p><strong>Название:</strong> {{ car_model.name }}</p>
+    <a href="{{ cancel_url }}" class="btn">Вернуться к списку</a>
+    <a href="{% url 'car_model_update' car_model.id %}" class="btn">Редактировать</a>
+    <a href="{% url 'car_model_delete' car_model.id %}" class="btn btn-danger">Удалить</a>
+{% endblock %}

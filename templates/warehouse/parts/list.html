@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Номенклатура деталей{% endblock %}
+{% block content %}
+<h1>Номенклатура деталей</h1>
+<a href="{% url 'part_create' %}" class="btn">Добавить деталь</a>
+
+<form method="GET" class="search-container">
+    <input type="text" name="search" placeholder="Поиск..." value="{{ request.GET.search|default:'' }}">
+    <select name="column">
+        <option value="article" {% if request.GET.column == 'article' or not request.GET.column %}selected{% endif %}>Артикул</option>
+        <option value="name" {% if request.GET.column == 'name' %}selected{% endif %}>Название</option>
+        <option value="brand" {% if request.GET.column == 'brand' %}selected{% endif %}>Производитель</option>
+        <option value="category" {% if request.GET.column == 'category' %}selected{% endif %}>Категория</option>
+    </select>
+    <button type="submit" class="btn">Искать</button>
+</form>
+
+<table id="parts-table">
+    <thead>
+        <tr>
+            <th><a href="?sort=article&direction={% if request.GET.sort == 'article' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}">Артикул{% if request.GET.sort == 'article' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
+            <th><a href="?sort=name&direction={% if request.GET.sort == 'name' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}">Название{% if request.GET.sort == 'name' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
+            <th><a href="?sort=brand&direction={% if request.GET.sort == 'brand' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}">Производитель{% if request.GET.sort == 'brand' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
+            <th><a href="?sort=category&direction={% if request.GET.sort == 'category' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}">Категория{% if request.GET.sort == 'category' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for part in page_obj %}
+        <tr data-id="{{ part.id }}"
+            data-url-detail="{% url 'part_detail' part.id %}"
+            data-url-update="{% url 'part_update' part.id %}"
+            data-url-delete="{% url 'part_delete' part.id %}">
+            <td>{{ part.article }}</td>
+            <td>{{ part.name }}</td>
+            <td>{{ part.brand }}</td>
+            <td>{{ part.category }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4">Детали не найдены.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if page_obj.has_other_pages %}
+<div class="pagination">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn">Предыдущая</a>{% endif %}
+    {% for num in page_obj.paginator.page_range %}{% if num >= page_obj.number|add:-2 and num <= page_obj.number|add:2 %}<a href="?page={{ num }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn {% if page_obj.number == num %}active{% endif %}">{{ num }}</a>{% endif %}{% endfor %}
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn">Следующая</a>{% endif %}
+</div>
+{% endif %}
+
+<form method="GET" class="per-page-form">
+    <label>Записей на страницу:
+        <select name="per_page" onchange="this.form.submit()">
+            <option value="5" {% if per_page == 5 %}selected{% endif %}>5</option>
+            <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+            <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+        </select>
+    </label>
+    {% if request.GET.search %}<input type="hidden" name="search" value="{{ request.GET.search }}"><input type="hidden" name="column" value="{{ request.GET.column }}">{% endif %}
+</form>
+
+<div id="part-actions" class="mt-20">
+    <button id="view-part" class="btn" disabled>Просмотр</button>
+    <button id="edit-part" class="btn" disabled>Изменить</button>
+    <button id="delete-part" class="btn btn-danger" disabled>Удалить</button>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const rows = document.querySelectorAll('#parts-table tbody tr');
+    let selected = null;
+    rows.forEach(row => {
+        row.addEventListener('click', function() {
+            if (selected) selected.classList.remove('selected');
+            this.classList.add('selected');
+            selected = this;
+            document.getElementById('view-part').disabled = false;
+            document.getElementById('edit-part').disabled = false;
+            document.getElementById('delete-part').disabled = false;
+            document.getElementById('view-part').onclick = () => window.location.href = this.dataset.urlDetail;
+            document.getElementById('edit-part').onclick = () => window.location.href = this.dataset.urlUpdate;
+            document.getElementById('delete-part').onclick = () => window.location.href = this.dataset.urlDelete;
+        });
+        row.addEventListener('dblclick', function() { window.location.href = this.dataset.urlDetail; });
+    });
+});
+</script>
+{% endblock %}

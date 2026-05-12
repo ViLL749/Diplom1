@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Добавить деталь в заказ-наряд{% endblock %}
+{% block content %}
+{% include "warehouse/_part_search_modal.html" %}
+
+<h1>Добавить деталь в заказ-наряд №{{ order.id }}</h1>
+<p><strong>Клиент:</strong> {{ order.client_car.client.fio }}</p>
+<p><strong>Автомобиль:</strong> {{ order.client_car.make.name }} {{ order.client_car.model.name }}</p>
+
+<form method="post">
+    {% csrf_token %}
+    <div>
+        <label>Деталь:</label>
+        <input type="text" id="part_display"
+               value="{% if form.instance.pk %}{{ form.instance.part }}{% endif %}"
+               readonly placeholder="Нажмите «Выбрать»" style="width:280px;">
+        <button type="button" class="btn" onclick="openPartModal('id_part', 'part_display')">Выбрать</button>
+        {{ form.part }}
+        {% if form.part.errors %}<p class="error">{{ form.part.errors|join:", " }}</p>{% endif %}
+    </div>
+    <div>
+        <label for="{{ form.quantity.id_for_label }}">{{ form.quantity.label }}:</label>
+        {{ form.quantity }}
+    </div>
+    <div>
+        <label for="{{ form.markup.id_for_label }}">{{ form.markup.label }}:</label>
+        {{ form.markup }}
+    </div>
+    <button type="submit" class="btn">Добавить и зарезервировать</button>
+    <a href="{% url 'order_detail' order.id %}" class="btn btn-danger">Отмена</a>
+</form>
+{% endblock %}

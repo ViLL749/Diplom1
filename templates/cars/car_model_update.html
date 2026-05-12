@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Редактировать модель для марки {{ car_make.name }}{% endblock %}
+{% block content %}
+{% load static %}
+<script src="{% static 'js/jquery-3.6.0.min.js' %}"></script>
+
+<h1>Редактировать модель</h1>
+
+<div class="car-make-info">
+    <p><strong>Марка автомобиля:</strong> {{ car_make.name }}</p>
+</div>
+
+<div id="form-errors" class="form-errors" style="display: none;"></div>
+<form method="post" id="car-model-form">
+    {% csrf_token %}
+
+    {# Показываем только поле name, не выводим make #}
+    <div>
+        {{ form.name.label_tag }}
+        {{ form.name }}
+    </div>
+
+    <button type="submit" class="btn">Сохранить</button>
+    <a href="{{ cancel_url }}" class="btn">Отмена</a>
+</form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const form = document.getElementById("car-model-form");
+    const nameInput = document.getElementById("id_name");
+    const formErrors = document.getElementById("form-errors");
+    const carModelId = '{{ form.instance.id }}';
+
+    function validateName() {
+        const nameValue = nameInput.value.trim();
+        if (!nameValue) return "Название модели обязательно.";
+        if (nameValue.length > 100) return "Название не может превышать 100 символов.";
+        return null;
+    }
+
+    async function checkCarModelUniqueness(name) {
+        const lowerName = name.trim().toLowerCase();
+        return $.ajax({
+            url: '{% url "check_car_model_uniqueness" %}',
+            data: { name: lowerName, id: carModelId },
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+        }).then(response => {
+            return response.exists ? "Модель с таким названием уже существует." : null;
+        });
+    }
+
+    async function validateForm(event) {
+        event.preventDefault();
+        const nameError = validateName();
+        const uniquenessError = nameError ? null : await checkCarModelUniqueness(nameInput.value);
+
+        if (nameError || uniquenessError) {
+            formErrors.innerHTML = "<p>Пожалуйста, исправьте ошибки:</p><ul>" +
+                (nameError ? `<li>${nameError}</li>` : '') +
+                (uniquenessError ? `<li>${uniquenessError}</li>` : '') +
+                "</ul>";
+            formErrors.style.display = "block";
+        } else {
+            formErrors.style.display = "none";
+            form.submit();
+        }
+    }
+
+    form.addEventListener("submit", validateForm);
+});
+</script>
+
+<style>
+    .car-make-info {
+        margin-bottom: 20px;
+        font-size: 16px;
+        font-weight: 500;
+    }
+
+    form div {
+        margin-bottom: 10px;
+    }
+</style>
+{% endblock %}

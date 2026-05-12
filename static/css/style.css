@@ -1,0 +1,719 @@
+/* Общие стили */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    min-width: 700px;
+    overflow-x: auto;
+    font-family: 'Segoe UI', 'Arial', sans-serif;
+    background: linear-gradient(135deg, #f7f9fc 0%, #e0e7ff 100%);
+    color: #333;
+    line-height: 1.6;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+
+
+
+
+
+
+.wrap-title {
+    word-break: break-all;
+}
+
+h2 {
+    font-size: 1.5em;
+    margin-bottom: 20px;
+    color: #1a2533;
+    font-weight: 500;
+}
+
+.menu-group-title {
+    color: #ffffff;
+    margin: 10px 0 0;
+}
+
+.sidebar-header > h2 {
+    color: #ffffff;
+}
+
+h3 {
+    font-size: 1.3em;
+    margin: 20px 0 10px;
+    color: #2d3748;
+}
+
+.btn {
+    display: inline-block;
+    line-height: 1;
+    padding: 10px 20px;
+    background-color: #3182ce;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 0.95em;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    border: none;
+    cursor: pointer;
+}
+
+.btn-danger {
+    background-color: #e53e3e;
+}
+
+.search-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.mt-20 {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+#id_phone {
+    margin-bottom: 8px;
+}
+
+input {
+    height: 50px;
+}
+
+th>a {
+    color: #ffffff;
+    text-decoration: none;
+}
+
+.custom-service {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+#id_order_date {
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.9em;
+    color: #4a5568;
+    transition: border-color 0.2s ease;
+    box-sizing: border-box;
+}
+
+#id_order_date:focus {
+    border-color: #3182ce;
+    outline: none;
+}
+
+.pagination {
+    margin: 20px auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 5px;
+}
+
+#model-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+p {
+    margin-bottom: 10px;
+}
+
+#car-info {
+    font-size: 20px;
+    font-weight: bold;
+}
+
+.car-selection-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.overflow-table {
+    overflow: auto;
+    height: 303px;
+}
+
+#selected-services-list {
+    overflow: auto;
+    height: 110px;
+    border: 1px solid #e2e8f0;
+    margin-top: 20px;
+    border-radius: 5px;
+    width: 60%;
+}
+
+.top-title-margin {
+    margin-top: 25px;
+    font-weight: 600;
+}
+
+.mrg-top {
+    margin-top: 20px;
+}
+
+#client-car-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+#db_file {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#db_file::file-selector-button {
+    display: inline-block;
+    line-height: 1;
+    padding: 10px 20px;
+    background-color: #3182ce;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 0.95em;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    border: none;
+    cursor: pointer;
+}
+#db_file::file-selector-button:hover {
+    background-color: #2b6cb0;
+    transform: translateY(-2px);
+}
+
+#db_file::file-selector-button:active {
+    transform: translateY(0);
+
+}
+
+.big-btn-spravka {
+    display: block;
+    color: #fff;
+    padding: 12px;
+    text-decoration: none;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 0.95em;
+}
+
+
+/* Контейнер для sidebar и content */
+.container {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 100vh;
+    width: 100%;
+}
+
+/* Боковая панель */
+.sidebar {
+    width: 270px;
+    background-color: #1a2533;
+    color: #fff;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    padding: 20px 0;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.sidebar-header h2 {
+    margin: 0;
+    padding: 15px 0;
+    font-size: 1.6em;
+    text-align: center;
+    font-weight: 500;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 20px;
+    flex-grow: 1;
+}
+
+.sidebar-menu a {
+    display: block;
+    color: #d1d5db;
+    padding: 5px 15px;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 1em;
+    transition: background-color 0.2s ease, color 0.2s ease, transform 0.1s ease;
+}
+
+.sidebar-menu a:hover {
+    background-color: #2d3b4e;
+    color: #fff;
+    transform: translateX(5px);
+    text-decoration: none; /* Убираем подчеркивание при наведении */
+}
+
+.sidebar-menu a.active {
+    background-color: #3182ce;
+    color: #fff;
+}
+
+.sidebar-footer {
+    padding: 10px 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.logout-btn {
+    display: block;
+    color: #fff;
+    padding: 12px;
+    text-decoration: none;
+    background-color: #e53e3e;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 0.95em;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.logout-btn:hover {
+    background-color: #c53030;
+    transform: translateY(-2px);
+}
+
+/* Основной контент */
+.content {
+    margin-left: 250px;
+    padding: 30px;
+    flex: 1;
+    min-height: 100vh;
+    background-color: #fff;
+    box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.05);
+}
+
+/* Контейнер для страниц авторизации, регистрации, выхода и ошибок */
+.auth-container {
+    background: rgba(255, 255, 255, 0.9);
+    padding: 40px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+    backdrop-filter: blur(10px);
+    margin: 50px auto;
+}
+
+.auth-container h1 {
+    font-size: 1.8em;
+    margin-bottom: 25px;
+    color: #2d3748;
+    font-weight: 600;
+}
+
+.auth-container h2 {
+    margin-bottom: 20px;
+    color: #2d3748;
+    font-weight: 600;
+    font-size: 1.8em;
+}
+
+.auth-container form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.auth-container form p {
+    margin: 10px 0;
+}
+
+.auth-container form label {
+    font-weight: 500;
+    color: #4a5568;
+    text-align: left;
+    font-size: 0.95em;
+}
+
+.auth-container form input[type="text"],
+.auth-container form input[type="password"],
+.auth-container form input[type="email"] {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.9em;
+    color: #4a5568;
+    background-color: #fff;
+    transition: border-color 0.2s ease;
+}
+
+.auth-container form input[type="text"]:focus,
+.auth-container form input[type="password"]:focus,
+.auth-container form input[type="email"]:focus {
+    border-color: #3182ce;
+    box-shadow: 0 0 10px rgba(49, 130, 206, 0.3);
+    outline: none;
+}
+
+.auth-container form button {
+    padding: 12px;
+    background: linear-gradient(90deg, #3182ce, #2b6cb0);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 1em;
+    cursor: pointer;
+    transition: transform 0.2s ease, background 0.3s ease;
+}
+
+.auth-container form button:hover {
+    transform: translateY(-2px);
+    background: linear-gradient(90deg, #2b6cb0, #1e5ea8);
+}
+
+.auth-container form button:active {
+    transform: translateY(0);
+}
+
+/* Стили для ошибок */
+.form-errors {
+    background-color: #fef2f2;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #feb2b2;
+    margin-bottom: 15px;
+    text-align: left;
+    font-size: 0.9em;
+    color: #9b2c2c;
+}
+
+.form-errors ul {
+    list-style: none;
+    padding: 0;
+}
+
+.form-errors li {
+    padding: 6px 0;
+    display: flex;
+    align-items: center;
+}
+
+.form-errors li:before {
+    content: "⚠";
+    margin-right: 8px;
+    color: #e53e3e;
+    font-size: 1em;
+}
+
+/* Заголовки */
+h1 {
+    font-size: 1.8em;
+    margin-bottom: 25px;
+    color: #2d3748;
+    font-weight: 600;
+}
+
+
+/* Сообщения */
+.message {
+    padding: 12px 15px;
+    margin-bottom: 20px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.message.success {
+    background-color: #48bb78;
+    color: #fff;
+}
+
+.message.error {
+    background-color: #e53e3e;
+    color: #fff;
+}
+
+/* Кнопки */
+
+.btn:hover {
+    background-color: #2b6cb0;
+    transform: translateY(-2px);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+.btn-danger:hover {
+    background-color: #c53030;
+}
+
+.btn:disabled {
+    background-color: #a0aec0;
+    cursor: not-allowed;
+}
+
+/* Таблицы */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    background-color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+}
+
+th, td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid #edf2f7;
+}
+
+th {
+    background-color: #2d3748;
+    color: #fff;
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 0.85em;
+}
+
+td {
+    color: #4a5568;
+    font-size: 0.9em;
+}
+
+tr:hover {
+    background-color: #f7fafc;
+    cursor: pointer;
+}
+
+tr.selected {
+    background-color: #edf2f7;
+}
+
+/* Пагинация */
+
+
+.pagination .btn {
+    padding: 8px 14px;
+    background-color: #e2e8f0;
+    color: #4a5568;
+}
+
+.pagination .btn:hover {
+    background-color: #cbd5e0;
+}
+
+.pagination .btn:disabled {
+    background-color: #e2e8f0;
+    opacity: 0.6;
+}
+
+/* Формы */
+form {
+    margin: 20px 0;
+}
+
+form p {
+    margin: 15px 0;
+}
+
+form label {
+    font-weight: 500;
+    color: #4a5568;
+    display: block;
+    margin-bottom: 5px;
+}
+
+form input[type="text"],
+form input[type="number"],
+form input[type="file"],
+form select,
+form textarea {
+    resize: vertical;
+    max-height: 200px;
+    min-height: 50px;
+    width: 100%;
+    max-width: 400px;
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.9em;
+    color: #4a5568;
+    transition: border-color 0.2s ease;
+    box-sizing: border-box;
+}
+
+form input[type="text"]:focus,
+form input[type="number"]:focus,
+form input[type="file"]:focus,
+form select:focus,
+form textarea:focus {
+    border-color: #3182ce;
+    outline: none;
+}
+
+/* Модальные окна */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+    background-color: #fff;
+    margin: 5% auto;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    width: 90%;
+    max-width: 1000px;
+    position: relative;
+}
+
+/* Страница удаления */
+.delete-form {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+}
+
+.delete-form .btn {
+    margin: 0;
+}
+
+/* Страница импорта БД */
+.import-form div {
+    margin-bottom: 20px;
+}
+
+/* Ссылки */
+a {
+    color: #3182ce;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+/* Адаптивность */
+@media (max-width: 1024px) {
+    .modal-content {
+        width: 95%;
+        margin: 10% auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .sidebar {
+        width: 200px;
+    }
+    .content {
+        margin-left: 200px;
+        padding: 20px;
+    }
+    form input[type="text"],
+    form input[type="number"],
+    form input[type="file"],
+    form select,
+    form textarea {
+        max-width: 100%;
+    }
+    .car-selection-container {
+        grid-template-columns: repeat(1, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        flex-direction: column;
+    }
+    .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+        padding: 15px 0;
+        box-shadow: none;
+    }
+    .content {
+        margin-left: 0;
+        padding: 15px;
+    }
+    .sidebar-menu {
+        padding: 5px 20px;
+    }
+    .auth-container {
+        margin: 20px auto;
+        padding: 15px;
+        width: 90%;
+    }
+    .auth-container h1 {
+        font-size: 1.5em;
+    }
+    .auth-container h2 {
+        font-size: 1.6em;
+    }
+    .delete-form,
+    .import-form {
+        flex-direction: column;
+        gap: 10px;
+    }
+    .delete-form .btn,
+    .import-form .btn {
+        width: 100%;
+    }
+}
+
+#confirm-services {
+    margin-top: 20px;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.sort-arrow {
+    display: inline-block;
+    width: 10px;
+    text-align: center;
+    font-size: 12px;
+}
+
+.sort-arrow.asc::after {
+    content: "↓";
+}
+
+.sort-arrow.desc::after {
+    content: "↑";
+}
+

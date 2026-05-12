@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Информация об автомобиле клиента{% endblock %}
+{% block content %}
+    <h1>Информация об автомобиле клиента</h1>
+    <p><strong>Клиент:</strong> {{ client_car.client.fio }}</p>
+    <p><strong>Марка:</strong> {{ client_car.make.name }}</p>
+    <p><strong>Модель:</strong> {{ client_car.model.name }}</p>
+    <p><strong>Госномер:</strong> {{ client_car.license_plate }}</p>
+    <p><strong>Цвет:</strong> {{ client_car.color }}</p>
+    <p><strong>VIN:</strong> {{ client_car.vin }}</p>
+    <p><strong>Год выпуска:</strong> {{ client_car.year }}</p>
+    <a href="{{ cancel_url }}" class="btn">Вернуться к списку</a>
+    <a href="{% url 'client_car_update' client_car.client.id client_car.id %}" class="btn">Изменить</a>
+    <a href="{% url 'client_car_delete' client_car.client.id client_car.id %}" class="btn btn-danger">Удалить</a>
+{% endblock %}

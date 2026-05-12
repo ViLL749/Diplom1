@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Изменить статус заказа{% endblock %}
+{% block content %}
+<h1>Изменить статус заказа поставщику №{{ po.id }}</h1>
+<p><strong>Поставщик:</strong> {% if po.supplier %}{{ po.supplier.name }}{% else %}—{% endif %}</p>
+
+<div style="background:#fff3cd;padding:12px;border-left:4px solid #ffc107;margin-bottom:16px;">
+    Статус <strong>«Получено»</strong> проставляется автоматически при оформлении прихода товара через кнопку «Оформить приход».
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <div>
+        <label for="{{ form.status.id_for_label }}">{{ form.status.label }}:</label>
+        {{ form.status }}
+    </div>
+    <button type="submit" class="btn">Сохранить</button>
+    <a href="{% url 'purchase_detail' po.id %}" class="btn btn-danger">Отмена</a>
+</form>
+
+<h2 class="top-title-margin">Позиции заказа</h2>
+<table>
+    <thead><tr><th>Артикул</th><th>Название</th><th>Заказано</th><th>Получено</th><th>Осталось</th></tr></thead>
+    <tbody>
+        {% for item in po.items.all %}
+        <tr>
+            <td>{{ item.part.article }}</td>
+            <td>{{ item.part.name }}</td>
+            <td>{{ item.quantity }}</td>
+            <td>{{ item.received_qty }}</td>
+            <td>{{ item.remaining_qty }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

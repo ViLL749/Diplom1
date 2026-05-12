@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <title>{% block title %}Автосервис{% endblock %}</title>
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h2>Автосервис</h2>
+            </div>
+            <div class="sidebar-menu">
+                <!-- Группа: Заказы -->
+                <div class="menu-group">
+                    <h3 class="menu-group-title">Заказы</h3>
+                    <a href="{% url 'orders_list' %}" class="{% if request.resolver_match.url_name == 'orders_list' %}active{% endif %}">
+                        <i class="fas fa-file-alt"></i> Список заказов
+                    </a>
+                    <a href="{% url 'order_create' %}" class="{% if request.resolver_match.url_name == 'order_create' %}active{% endif %}">
+                        <i class="fas fa-plus"></i> Добавить заказ
+                    </a>
+                </div>
+
+                <!-- Группа: Клиенты -->
+                <div class="menu-group">
+                    <h3 class="menu-group-title">Клиенты</h3>
+                    <a href="{% url 'clients_list' %}" class="{% if request.resolver_match.url_name == 'clients_list' %}active{% endif %}">
+                        <i class="fas fa-users"></i> Список клиентов
+                    </a>
+                    <a href="{% url 'client_create' %}" class="{% if request.resolver_match.url_name == 'client_create' %}active{% endif %}">
+                        <i class="fas fa-user-plus"></i> Добавить клиента
+                    </a>
+                </div>
+
+                <!-- Группа: Услуги и цены -->
+                <div class="menu-group">
+                    <h3 class="menu-group-title">Услуги и цены</h3>
+                    <a href="{% url 'service_management' %}" class="{% if request.resolver_match.url_name == 'service_management' %}active{% endif %}">
+                        <i class="fas fa-wrench"></i> Услуги
+                    </a>
+                    <a href="{% url 'price_management' %}" class="{% if request.resolver_match.url_name == 'price_management' %}active{% endif %}">
+                        <i class="fas fa-tags"></i> Цены на услуги
+                    </a>
+                </div>
+
+                <!-- Группа: Марки и модели -->
+                <div class="menu-group">
+                    <h3 class="menu-group-title">Марки и модели</h3>
+                    <a href="{% url 'car_management' %}" class="{% if request.resolver_match.url_name == 'car_management' %}active{% endif %}">
+                        <i class="fas fa-car"></i> Марки и модели
+                    </a>
+                    <a href="{% url 'services_by_car' %}" class="{% if request.resolver_match.url_name == 'services_by_car' %}active{% endif %}">
+                        <i class="fas fa-list"></i> Услуги по авто
+                    </a>
+                </div>
+
+                <!-- Группа: Склад -->
+                <div class="menu-group">
+                    <h3 class="menu-group-title">Склад</h3>
+                    <a href="{% url 'stock_list' %}" class="{% if request.resolver_match.url_name == 'stock_list' %}active{% endif %}">
+                        <i class="fas fa-boxes"></i> Остатки
+                    </a>
+                    <a href="{% url 'parts_list' %}" class="{% if request.resolver_match.url_name in 'parts_list,part_detail,part_create,part_update,part_delete' %}active{% endif %}">
+                        <i class="fas fa-cog"></i> Номенклатура
+                    </a>
+                    <a href="{% url 'brands_list' %}" class="{% if request.resolver_match.url_name in 'brands_list,brand_create,brand_update,brand_delete' %}active{% endif %}">
+                        <i class="fas fa-trademark"></i> Производители
+                    </a>
+                    <a href="{% url 'locations_list' %}" class="{% if request.resolver_match.url_name in 'locations_list,location_detail,location_create,location_update,location_delete' %}active{% endif %}">
+                        <i class="fas fa-map-marker-alt"></i> Места хранения
+                    </a>
+                    <a href="{% url 'warehouse_settings' %}" class="{% if request.resolver_match.url_name == 'warehouse_settings' %}active{% endif %}">
+                        <i class="fas fa-sliders-h"></i> Настройки
+                    </a>
+                </div>
+
+                <!-- Группа: Закупки -->
+                <div class="menu-group">
+                    <h3 class="menu-group-title">Закупки</h3>
+                    <a href="{% url 'supply_list' %}" class="{% if request.resolver_match.url_name in 'supply_list,supply_create,supply_detail' %}active{% endif %}">
+                        <i class="fas fa-truck"></i> Приход товара
+                    </a>
+                    <a href="{% url 'purchase_list' %}" class="{% if request.resolver_match.url_name in 'purchase_list,purchase_create,purchase_detail,purchase_update' %}active{% endif %}">
+                        <i class="fas fa-shopping-cart"></i> Заказы поставщикам
+                    </a>
+                    <a href="{% url 'suppliers_list' %}" class="{% if request.resolver_match.url_name in 'suppliers_list,supplier_create,supplier_update,supplier_delete' %}active{% endif %}">
+                        <i class="fas fa-industry"></i> Поставщики
+                    </a>
+                </div>
+
+                <!-- Группа: Администрирование (только для админов) -->
+                {% if user.is_staff %}
+                <div class="menu-group">
+                    <h3 class="menu-group-title">Администрирование</h3>
+                    <a href="{% url 'export_db' %}">
+                        <i class="fas fa-download"></i> Экспорт БД
+                    </a>
+                    <a href="{% url 'import_db' %}">
+                        <i class="fas fa-upload"></i> Импорт БД
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <h3 class="wrap-title menu-group-title">Пользователь:<br> {{ user.username }}</h3>
+                </div>
+                <a href="{% url 'help_page' %}" class="mrg-top big-btn-spravka btn {% if request.resolver_match.url_name == 'help_page' %}active{% endif %}">
+                    <i class="fas fa-question-circle"></i> Справка
+                </a>
+                <a href="{% url 'logout' %}" class="logout-btn mrg-top">
+                    <i class="fas fa-sign-out-alt"></i> Выход
+                </a>
+            </div>
+        </nav>
+        <main class="content">
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="message {{ message.tags }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+            {% block content %}
+            {% endblock %}
+        </main>
+    </div>
+    <script src="{% static 'js/style.js' %}"></script>
+</body>
+</html>
