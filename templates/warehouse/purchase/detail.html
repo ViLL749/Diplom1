@@ -4,7 +4,6 @@
 <h1>Заказ поставщику №{{ po.id }}</h1>
 <p><strong>Поставщик:</strong> {% if po.supplier %}{{ po.supplier.name }}{% else %}—{% endif %}</p>
 <p><strong>Статус:</strong> {{ po.get_status_display }}</p>
-<p><strong>Заказ-наряд:</strong> {% if po.work_order %}<a href="{% url 'order_detail' po.work_order.id %}">№{{ po.work_order.id }}</a>{% else %}—{% endif %}</p>
 <p><strong>Дата заказа:</strong> {{ po.created_at|date:"d.m.Y H:i" }}</p>
 {% if po.comment %}<p><strong>Примечание:</strong> {{ po.comment }}</p>{% endif %}
 

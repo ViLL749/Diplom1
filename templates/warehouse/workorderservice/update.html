@@ -2,18 +2,29 @@
 {% block title %}Изменить услугу в заказ-наряде{% endblock %}
 {% block content %}
 <h1>Изменить услугу в заказ-наряде №{{ wos.work_order.id }}</h1>
-<p><strong>Нормо-час:</strong> {{ hourly_rate }} руб.</p>
-<p><em>Цена = часы × нормо-час × коэффициент сложности</em></p>
+
+<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:20px;">
+    <p style="margin:2px 0;"><strong>Услуга:</strong> {{ wos.service_name_snapshot|default:wos.service.name }}</p>
+    {% if wos.hourly_rate_snapshot %}
+    <p style="margin:4px 0;color:#64748b;font-size:0.9em;">
+        Нормо-час на момент добавления: <strong>{{ wos.hourly_rate_snapshot }} руб.</strong>
+        &nbsp;|&nbsp; Цена = часы × {{ wos.hourly_rate_snapshot }} × коэффициент
+    </p>
+    {% endif %}
+</div>
+
 <form method="post">
     {% csrf_token %}
     {% for field in form %}
-    <div>
-        <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
+    <div style="margin-bottom:12px;">
+        <label for="{{ field.id_for_label }}" style="display:block;margin-bottom:4px;font-weight:500;">{{ field.label }}:</label>
         {{ field }}
-        {% if field.errors %}<p class="error">{{ field.errors|join:", " }}</p>{% endif %}
+        {% if field.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ field.errors|join:", " }}</p>{% endif %}
     </div>
     {% endfor %}
-    <button type="submit" class="btn">Сохранить</button>
-    <a href="{% url 'order_detail' wos.work_order.id %}" class="btn btn-danger">Отмена</a>
+    <div style="margin-top:16px;display:flex;gap:8px;">
+        <button type="submit" class="btn">Сохранить</button>
+        <a href="{% url 'order_detail' wos.work_order.id %}" class="btn btn-danger">Отмена</a>
+    </div>
 </form>
 {% endblock %}

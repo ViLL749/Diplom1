@@ -2,19 +2,56 @@
 {% block title %}Изменить деталь в заказ-наряде{% endblock %}
 {% block content %}
 <h1>Изменить деталь в заказ-наряде №{{ wop.work_order.id }}</h1>
-<p><strong>Деталь:</strong> {{ wop.part.article }} — {{ wop.part.name }}</p>
-<p><strong>Количество:</strong> {{ wop.quantity }}</p>
+
+<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:20px;">
+    <p style="margin:2px 0;"><strong>Деталь:</strong> {{ wop.part.article }} — {{ wop.part.name }}</p>
+    {% if wop.part.brand %}<p style="margin:2px 0;color:#64748b;">Производитель: {{ wop.part.brand }}</p>{% endif %}
+    {% if wop.status == 'reserved' %}
+    <p style="margin:6px 0 2px;font-size:0.9em;color:#64748b;">
+        Текущий резерв: <strong>{{ wop.quantity }} шт.</strong>
+        &nbsp;|&nbsp; При увеличении — дополнительный резерв на складе.
+        При уменьшении — излишек резерва освобождается.
+    </p>
+    {% endif %}
+</div>
 
 <form method="post">
     {% csrf_token %}
     {% for field in form %}
-    <div>
-        <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
+    <div style="margin-bottom:12px;">
+        <label for="{{ field.id_for_label }}" style="display:block;margin-bottom:4px;font-weight:500;">{{ field.label }}:</label>
         {{ field }}
-        {% if field.errors %}<p class="error">{{ field.errors|join:", " }}</p>{% endif %}
+        {% if field.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ field.errors|join:", " }}</p>{% endif %}
+        {% if field.name == 'quantity' and wop.status == 'reserved' %}
+        <p style="font-size:0.82em;color:#64748b;margin-top:3px;">Текущий резерв: {{ wop.quantity }} шт.</p>
+        {% endif %}
     </div>
     {% endfor %}
-    <button type="submit" class="btn">Сохранить</button>
-    <a href="{% url 'order_detail' wop.work_order.id %}" class="btn btn-danger">Отмена</a>
+    <div style="margin-top:16px;display:flex;gap:8px;">
+        <button type="submit" class="btn">Сохранить</button>
+        <a href="{% url 'order_detail' wop.work_order.id %}" class="btn btn-danger">Отмена</a>
+    </div>
 </form>
+
+<script>
+(function() {
+    var markupInput    = document.getElementById('id_markup');
+    var salePriceInput = document.getElementById('id_sale_price');
+    if (!markupInput || !salePriceInput) return;
+
+    var initMarkup    = parseFloat(markupInput.value) || 0;
+    var initSalePrice = parseFloat(salePriceInput.value) || 0;
+    // Derive the original cost price once on load
+    var costPrice = initMarkup >= 0 && initSalePrice > 0
+        ? initSalePrice / (1 + initMarkup / 100)
+        : null;
+
+    markupInput.addEventListener('input', function() {
+        if (costPrice === null) return;
+        var newMarkup = parseFloat(this.value);
+        if (isNaN(newMarkup) || newMarkup < 0) return;
+        salePriceInput.value = (costPrice * (1 + newMarkup / 100)).toFixed(2);
+    });
+})();
+</script>
 {% endblock %}

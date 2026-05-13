@@ -1,5 +1,6 @@
 from django.test.runner import DiscoverRunner
 from unittest import TextTestResult
+from unittest.runner import _WritelnDecorator
 import sys
 from termcolor import colored
 
@@ -45,7 +46,7 @@ class CustomTestRunner(DiscoverRunner):
         old_config = self.setup_databases()
 
         result = CustomTestResult(
-            stream=sys.stdout,
+            stream=_WritelnDecorator(sys.stdout),
             descriptions=self.descriptions if hasattr(self, 'descriptions') else True,
             verbosity=self.verbosity if hasattr(self, 'verbosity') else 1
         )

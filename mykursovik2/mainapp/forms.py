@@ -8,8 +8,7 @@ from datetime import datetime
 
 # Импорт моделей
 from .models import (
-    CarMake, CarModel, Client, ClientCar, Order, CustomService,
-    OrderService, Service, ServicePrice, ServiceType
+    CarMake, CarModel, Client, ClientCar, Order, Service, ServiceType
 )
 
 
@@ -35,12 +34,12 @@ class OrderForm(forms.ModelForm):
             if self.instance.order_date:
                 self.initial['order_date'] = self.instance.order_date.strftime('%Y-%m-%d')
         else:
-            # При создании исключаем статус "Завершён"
+            # При создании исключаем статус "Завершён" и "Отменён"
             self.fields['client_car'].queryset = ClientCar.objects.all()
             self.initial['order_date'] = timezone.now().date().strftime('%Y-%m-%d')
-            # Фильтруем STATUS_CHOICES, исключая "Завершён"
             self.fields['status'].choices = [
-                (key, value) for key, value in Order.STATUS_CHOICES if key != 'Завершён'
+                (key, value) for key, value in Order.STATUS_CHOICES
+                if key not in ('Завершён', 'Отменён')
             ]
 
     def clean_client_car(self):
@@ -56,12 +55,6 @@ class OrderForm(forms.ModelForm):
     #     return client_car
 
     # Убираем переопределение save, оставляем стандартное поведение
-
-class CustomServiceForm(forms.ModelForm):
-    class Meta:
-        model = CustomService
-        fields = ['name', 'price']
-
 
 class ClientForm(forms.ModelForm):
     class Meta:
@@ -113,68 +106,21 @@ class ServiceTypeForm(forms.ModelForm):
 class ServiceForm(forms.ModelForm):
     class Meta:
         model = Service
-        fields = ['name', 'service_type']
+        fields = ['name', 'base_hours', 'service_type']
+        labels = {
+            'name': 'Название',
+            'base_hours': 'Нормо-часы (базовое время)',
+        }
+        widgets = {
+            'base_hours': forms.NumberInput(attrs={'min': '0', 'step': '0.5'}),
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if 'instance' in kwargs and kwargs['instance']:
-            self.fields['service_type'].disabled = True  # Делаем поле 'service_type' неактивным для редактирования
-        else:
-            self.fields['service_type'].widget = forms.HiddenInput()  # Скрываем поле 'service_type' при создании
-
-
-class ServicePriceForm(forms.ModelForm):
-    service_type = forms.ModelChoiceField(
-        queryset=ServiceType.objects.all(),
-        label="Тип услуги",
-        empty_label="---------",
-        required=True
-    )
-
-    class Meta:
-        model = ServicePrice
-        fields = ['car_make', 'car_model', 'service_type', 'service', 'price']
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # По умолчанию все поля редактируемы
-        self.fields['car_make'].queryset = CarMake.objects.all()
-        self.fields['car_model'].queryset = CarModel.objects.none()
-        self.fields['service_type'].queryset = ServiceType.objects.all()
-        self.fields['service'].queryset = Service.objects.none()
-
-        # Если это редактирование (instance существует)
-        if self.instance.pk:
-            # Блокируем все поля, кроме price
-            self.fields['car_make'].disabled = True
-            self.fields['car_model'].disabled = True
             self.fields['service_type'].disabled = True
-            self.fields['service'].disabled = True
-
-            # Устанавливаем текущие значения для отображения
-            self.fields['car_make'].queryset = CarMake.objects.filter(id=self.instance.car_make_id)
-            self.fields['car_model'].queryset = CarModel.objects.filter(id=self.instance.car_model_id)
-            self.fields['service'].queryset = Service.objects.filter(id=self.instance.service_id)
-            # Устанавливаем service_type на основе текущего service
-            if self.instance.service and self.instance.service.service_type:
-                self.fields['service_type'].queryset = ServiceType.objects.filter(
-                    id=self.instance.service.service_type_id)
-                self.fields['service_type'].initial = self.instance.service.service_type
-
-        # Если это создание (нет instance), добавляем динамическую фильтрацию
         else:
-            if 'car_make' in self.data:
-                try:
-                    car_make_id = int(self.data.get('car_make'))
-                    self.fields['car_model'].queryset = CarModel.objects.filter(make_id=car_make_id)
-                except (ValueError, TypeError):
-                    pass
-            if 'service_type' in self.data:
-                try:
-                    service_type_id = int(self.data.get('service_type'))
-                    self.fields['service'].queryset = Service.objects.filter(service_type_id=service_type_id)
-                except (ValueError, TypeError):
-                    pass
+            self.fields['service_type'].widget = forms.HiddenInput()
 
 
 class CarMakeSelectionForm(forms.Form):

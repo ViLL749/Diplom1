@@ -38,6 +38,7 @@
                         {% endif %}
                     </a>
                 </th>
+                <th>Нормо-часы</th>
             </tr>
         </thead>
         <tbody>
@@ -45,6 +46,7 @@
                 <tr data-id="{{ service.id }}" data-url-detail="{% url 'service_detail' service_type.id service.id %}" data-url-update="{% url 'service_update' service_type.id service.id %}" data-url-delete="{% url 'service_delete' service_type.id service.id %}">
                     <td>{{ service.id }}</td>
                     <td>{{ service.name }}</td>
+                    <td>{{ service.base_hours }} ч.</td>
                 </tr>
             {% endfor %}
         </tbody>

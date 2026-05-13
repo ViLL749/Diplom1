@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Цены закупки: {{ part.article }}{% endblock %}
+{% block content %}
+<h1>{{ part.article }} — {{ part.name }}</h1>
+{% if part.brand %}<p style="color:#555;">Производитель: {{ part.brand }}</p>{% endif %}
+
+<div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;">
+    <div style="background:#e8f5e9;border-left:4px solid #43a047;padding:10px 16px;border-radius:4px;">
+        <div style="font-size:0.82em;color:#555;">На складе (штук)</div>
+        <div style="font-size:1.5em;font-weight:bold;">{{ total_qty }}</div>
+    </div>
+    <div style="background:#e3f2fd;border-left:4px solid #1e88e5;padding:10px 16px;border-radius:4px;">
+        <div style="font-size:0.82em;color:#555;">Зарезервировано</div>
+        <div style="font-size:1.5em;font-weight:bold;color:#1e88e5;">{{ reserved_qty }}</div>
+    </div>
+    <div style="background:#fff3e0;border-left:4px solid #ef6c00;padding:10px 16px;border-radius:4px;">
+        <div style="font-size:0.82em;color:#555;">Доступно</div>
+        <div style="font-size:1.5em;font-weight:bold;">{{ available_qty }}</div>
+    </div>
+    {% if min_price %}
+    <div style="background:#fce4ec;border-left:4px solid #e53935;padding:10px 16px;border-radius:4px;">
+        <div style="font-size:0.82em;color:#555;">Цена в заказ (мин. закупочная)</div>
+        <div style="font-size:1.5em;font-weight:bold;color:#c62828;">{{ min_price|floatformat:2 }} руб./шт.</div>
+    </div>
+    {% endif %}
+</div>
+
+<a href="{% url 'purchase_prices_list' %}" class="btn">← К списку</a>
+<a href="{% url 'part_detail' part.id %}" class="btn">Карточка детали</a>
+
+<h2 class="top-title-margin">Партии в наличии на складе</h2>
+<p style="color:#666;font-size:0.9em;margin-top:-8px;margin-bottom:16px;">
+    Показаны только партии с остатком &gt; 0. Цена в заказ берётся как минимальная закупочная цена за штуку.
+</p>
+
+{% if in_stock %}
+<table>
+    <thead>
+        <tr>
+            <th>Приход</th>
+            <th>Дата</th>
+            <th>Место хранения</th>
+            <th>Штук в упаковке</th>
+            <th>Цена закупки / упак.</th>
+            <th>Цена за штуку</th>
+            <th>Остаток (шт.)</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for b in in_stock %}
+        <tr {% if b.price_per_unit == min_price %}style="background:#fff8e1;"{% endif %}>
+            <td><a href="{% url 'supply_detail' b.doc_id %}">Приход №{{ b.doc_id }}</a></td>
+            <td>{{ b.date|date:"d.m.Y" }}</td>
+            <td>{{ b.location }}</td>
+            <td style="text-align:center;">{{ b.pkg_qty }}</td>
+            <td style="text-align:right;">{{ b.price_per_pkg|floatformat:2 }} руб.</td>
+            <td style="text-align:right;font-weight:600;color:#1565c0;">
+                {{ b.price_per_unit|floatformat:2 }} руб.
+                {% if b.price_per_unit == min_price %}
+                <span style="color:#e53935;font-size:0.78em;font-weight:700;margin-left:4px;">★ мин.</span>
+                {% endif %}
+            </td>
+            <td style="text-align:center;font-weight:600;">{{ b.remaining }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p style="color:#888;">Нет партий в наличии.</p>
+{% endif %}
+
+{% endblock %}

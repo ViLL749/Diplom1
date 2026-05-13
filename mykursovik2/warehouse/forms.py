@@ -4,6 +4,7 @@ from .models import (
     SupplyDocument, SupplyItem,
     PurchaseOrder, PurchaseOrderItem,
     WorkOrderPart, WorkOrderService, WorkshopSettings,
+    Employee,
 )
 
 
@@ -129,27 +130,16 @@ class PurchaseOrderForm(forms.ModelForm):
         }),
         label='Поставщик'
     )
-    work_order_display = forms.CharField(
-        required=False,
-        widget=forms.TextInput(attrs={
-            'readonly': 'readonly',
-            'placeholder': 'Нажмите «Выбрать» (необязательно)',
-            'id': 'wo-display-input',
-        }),
-        label='Заказ-наряд'
-    )
 
     class Meta:
         model = PurchaseOrder
-        fields = ['supplier', 'work_order', 'status', 'comment']
+        fields = ['supplier', 'status', 'comment']
         widgets = {
             'comment': forms.Textarea(attrs={'rows': 2}),
             'supplier': forms.HiddenInput(attrs={'id': 'id_supplier'}),
-            'work_order': forms.HiddenInput(attrs={'id': 'id_work_order'}),
         }
         labels = {
             'supplier': 'Поставщик',
-            'work_order': 'Заказ-наряд (необязательно)',
             'status': 'Статус',
             'comment': 'Примечание',
         }
@@ -158,11 +148,6 @@ class PurchaseOrderForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['supplier'].queryset = Supplier.objects.all().order_by('name')
         self.fields['supplier'].required = False
-        from mainapp.models import Order
-        self.fields['work_order'].queryset = Order.objects.exclude(
-            status='Завершён'
-        ).order_by('-id')
-        self.fields['work_order'].required = False
         # Forbid setting received/partial manually — they are set automatically
         self.fields['status'].choices = [
             ('draft', 'Черновик'),
@@ -173,25 +158,11 @@ class PurchaseOrderForm(forms.ModelForm):
         if self.instance and self.instance.pk:
             if self.instance.supplier:
                 self.fields['supplier_display'].initial = self.instance.supplier.name
-            if self.instance.work_order:
-                wo = self.instance.work_order
-                client = wo.client_fio_static or '—'
-                car = wo.car_details_static or '—'
-                self.fields['work_order_display'].initial = f'#{wo.id} — {client} ({car})'
         elif self.data.get('supplier'):
             try:
                 s = Supplier.objects.get(pk=self.data['supplier'])
                 self.fields['supplier_display'].initial = s.name
             except Supplier.DoesNotExist:
-                pass
-        if self.data.get('work_order'):
-            from mainapp.models import Order
-            try:
-                wo = Order.objects.get(pk=self.data['work_order'])
-                client = wo.client_fio_static or '—'
-                car = wo.car_details_static or '—'
-                self.fields['work_order_display'].initial = f'#{wo.id} — {client} ({car})'
-            except Order.DoesNotExist:
                 pass
 
 
@@ -242,6 +213,16 @@ class PurchaseOrderStatusForm(forms.ModelForm):
 # ── Supply Documents ─────────────────────────────────────────
 
 class SupplyDocumentForm(forms.ModelForm):
+    supplier_display = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={
+            'readonly': 'readonly',
+            'placeholder': 'Нажмите «Выбрать»',
+            'id': 'supply-supplier-display',
+        }),
+        label='Поставщик',
+    )
+
     class Meta:
         model = SupplyDocument
         fields = ['supplier', 'purchase_order', 'comment', 'created_at']
@@ -250,6 +231,8 @@ class SupplyDocumentForm(forms.ModelForm):
             'created_at': forms.DateTimeInput(
                 attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M'
             ),
+            'supplier': forms.HiddenInput(attrs={'id': 'supply-supplier-id'}),
+            'purchase_order': forms.HiddenInput(),
         }
         labels = {
             'supplier': 'Поставщик',
@@ -266,6 +249,15 @@ class SupplyDocumentForm(forms.ModelForm):
             status__in=['ordered', 'in_transit', 'partial']
         ).order_by('-created_at')
         self.fields['purchase_order'].required = False
+        # Pre-populate supplier display text
+        if self.instance and self.instance.pk and self.instance.supplier:
+            self.fields['supplier_display'].initial = self.instance.supplier.name
+        elif self.data.get('supplier'):
+            try:
+                s = Supplier.objects.get(pk=self.data['supplier'])
+                self.fields['supplier_display'].initial = s.name
+            except Supplier.DoesNotExist:
+                pass
 
 
 class SupplyItemForm(forms.ModelForm):
@@ -358,11 +350,15 @@ class WorkOrderPartForm(forms.ModelForm):
 class WorkOrderPartStatusForm(forms.ModelForm):
     class Meta:
         model = WorkOrderPart
-        fields = ['status', 'sale_price', 'markup']
+        fields = ['quantity', 'status', 'sale_price', 'markup']
         labels = {
+            'quantity': 'Количество',
             'status': 'Статус',
-            'sale_price': 'Цена продажи',
+            'sale_price': 'Цена продажи (за шт.)',
             'markup': 'Наценка (%)',
+        }
+        widgets = {
+            'quantity': forms.NumberInput(attrs={'min': '1'}),
         }
 
 
@@ -382,8 +378,38 @@ class WorkOrderServiceForm(forms.ModelForm):
         self.fields['service'].queryset = Service.objects.all().order_by('name')
 
 
+class WorkOrderServiceUpdateForm(forms.ModelForm):
+    """Update form for an existing WOS — service field is read-only (shown as text in template)."""
+    class Meta:
+        model = WorkOrderService
+        fields = ['hours_applied', 'complexity_factor']
+        labels = {
+            'hours_applied': 'Часы',
+            'complexity_factor': 'Коэффициент сложности',
+        }
+
+
 class WorkshopSettingsForm(forms.ModelForm):
     class Meta:
         model = WorkshopSettings
         fields = ['hourly_rate']
         labels = {'hourly_rate': 'Стоимость нормо-часа (руб.)'}
+
+
+class EmployeeForm(forms.ModelForm):
+    class Meta:
+        model = Employee
+        fields = ['name', 'phone', 'position', 'is_active']
+        labels = {
+            'name': 'ФИО',
+            'phone': 'Телефон',
+            'position': 'Должность',
+            'is_active': 'Активен',
+        }
+
+    def clean_phone(self):
+        import re
+        phone = self.cleaned_data.get('phone', '').strip()
+        if phone and not re.match(r'^\+7\s\(\d{3}\)\s\d{3}-\d{2}-\d{2}$', phone):
+            raise forms.ValidationError('Введите номер в формате +7 (999) 999-99-99.')
+        return phone

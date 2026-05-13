@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Заработок: {{ employee.name }}{% endblock %}
+{% block content %}
+<h1>Заработок: {{ employee.name }}</h1>
+{% if employee.position %}<p style="color:#555;margin-bottom:16px;">{{ employee.position }}</p>{% endif %}
+
+<table>
+    <thead>
+        <tr>
+            <th>Заказ №</th>
+            <th>Услуга</th>
+            <th>Статус заказа</th>
+            <th>Часы (доля)</th>
+            <th>Заработок</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in rows %}
+        <tr {% if not row.is_done %}style="color:#9ca3af;"{% endif %}>
+            <td><a href="{% url 'order_detail' row.order_id %}">#{{ row.order_id }}</a></td>
+            <td>{{ row.service_name }}</td>
+            <td>{{ row.order_status }}</td>
+            <td>{{ row.hours|floatformat:2 }}</td>
+            <td>{% if row.is_done %}{{ row.earnings|floatformat:2 }} руб.{% else %}—{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" style="color:#888;">Нет данных.</td></tr>
+        {% endfor %}
+    </tbody>
+    {% if rows %}
+    <tfoot>
+        <tr style="font-weight:600;">
+            <td colspan="3">Итого</td>
+            <td>{{ total_hours|floatformat:2 }}</td>
+            <td>{{ total_earnings|floatformat:2 }} руб.</td>
+        </tr>
+    </tfoot>
+    {% endif %}
+</table>
+
+<div style="margin-top:16px;">
+    <a href="{% url 'employees_list' %}" class="btn">← Назад</a>
+</div>
+{% endblock %}

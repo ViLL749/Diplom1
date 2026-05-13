@@ -17,4 +17,22 @@
     <button type="submit" class="btn">Добавить</button>
     <a href="{% url 'order_detail' order.id %}" class="btn btn-danger">Отмена</a>
 </form>
+
+<script>
+var SERVICE_HOURS = {{ service_hours_json|safe }};
+
+document.addEventListener('DOMContentLoaded', function() {
+    var serviceSelect = document.getElementById('id_service');
+    var hoursInput   = document.getElementById('id_hours_applied');
+
+    if (serviceSelect && hoursInput) {
+        serviceSelect.addEventListener('change', function() {
+            var sid = parseInt(this.value);
+            if (sid && SERVICE_HOURS[sid] !== undefined) {
+                hoursInput.value = SERVICE_HOURS[sid];
+            }
+        });
+    }
+});
+</script>
 {% endblock %}

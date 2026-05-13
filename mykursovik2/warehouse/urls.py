@@ -3,11 +3,15 @@ from . import views
 
 urlpatterns = [
     # AJAX API
+    path('api/employees/', views.api_employees, name='api_employees'),
+    path('api/wos/<int:wos_pk>/assign/', views.api_assign_employee, name='api_assign_employee'),
+    path('api/wos/<int:wos_pk>/unassign/<int:emp_pk>/', views.api_unassign_employee, name='api_unassign_employee'),
     path('api/parts/', views.api_parts, name='api_parts'),
     path('api/suppliers/', views.api_suppliers, name='api_suppliers'),
     path('api/po-items/', views.api_po_items, name='api_po_items'),
     path('api/brands/', views.api_brands, name='api_brands'),
     path('api/work-orders/', views.api_work_orders, name='api_work_orders'),
+    path('api/services/', views.api_services, name='api_services'),
 
     # Brands
     path('brands/', views.brands_list, name='brands_list'),
@@ -39,6 +43,10 @@ urlpatterns = [
     path('stock/', views.stock_list, name='stock_list'),
     path('stock/<int:pk>/min/', views.stock_update_min, name='stock_update_min'),
 
+    # Purchase prices
+    path('purchase-prices/', views.purchase_prices_list, name='purchase_prices_list'),
+    path('purchase-prices/<int:part_pk>/', views.purchase_prices_detail, name='purchase_prices_detail'),
+
     # Supply Documents
     path('supply/', views.supply_list, name='supply_list'),
     path('supply/create/', views.supply_create, name='supply_create'),
@@ -56,6 +64,7 @@ urlpatterns = [
     path('workorderpart/<int:pk>/delete/', views.workorderpart_delete, name='workorderpart_delete'),
 
     # Work Order Services
+    path('orders/<int:order_pk>/services/add-bulk/', views.workorderservice_create_bulk, name='workorderservice_create_bulk'),
     path('orders/<int:order_pk>/services/add/', views.workorderservice_create, name='workorderservice_create'),
     path('workorderservice/<int:pk>/update/', views.workorderservice_update, name='workorderservice_update'),
     path('workorderservice/<int:pk>/delete/', views.workorderservice_delete, name='workorderservice_delete'),
@@ -65,4 +74,12 @@ urlpatterns = [
 
     # Settings
     path('settings/', views.settings_view, name='warehouse_settings'),
+
+    # Employees
+    path('employees/', views.employees_list, name='employees_list'),
+    path('employees/create/', views.employee_create, name='employee_create'),
+    path('employees/report/', views.employees_report_all, name='employees_report_all'),
+    path('employees/<int:pk>/update/', views.employee_update, name='employee_update'),
+    path('employees/<int:pk>/delete/', views.employee_delete, name='employee_delete'),
+    path('employees/<int:pk>/report/', views.employee_report, name='employee_report'),
 ]

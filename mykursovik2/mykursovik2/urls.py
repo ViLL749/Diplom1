@@ -15,8 +15,9 @@ urlpatterns = [
     path('orders/<int:pk>/', views.order_detail, name='order_detail'),
     path('orders/<int:pk>/update/', views.order_update, name='order_update'),
     path('orders/<int:pk>/delete/', views.order_delete, name='order_delete'),
+    path('orders/<int:pk>/mechanic-pdf/', views.order_mechanic_pdf, name='order_mechanic_pdf'),
+    path('orders/<int:pk>/customer-pdf/', views.order_customer_pdf, name='order_customer_pdf'),
     path('api/get_client_cars/', views.get_client_cars, name='get_client_cars'),
-    path('api/get_services_by_model/', views.get_services_by_model, name='get_services_by_model'),
 
     # Клиенты
     path('clients/', views.clients_list, name='clients_list'),
@@ -32,12 +33,9 @@ urlpatterns = [
     path('clients/<int:pk>/cars/<int:car_pk>/delete/', views.client_car_delete, name='client_car_delete'),
     path('api/get_models/', views.get_models, name='get_models'),  # Новый маршрут для AJAX
     path('api/get_services/', views.get_services, name='get_services'),
-    path('api/get_order_services/', views.get_order_services, name='get_order_services'),
     path('api/get_all_clients/', views.get_all_clients, name='get_all_clients'),
     path('api/get_service_types/', views.get_service_types, name='get_service_types'),
     path('api/gt_all_makes/', views.get_all_makes, name='get_all_makes'),
-    path('api/get_services_by_type_and_model/', views.get_services_by_type_and_model,
-         name='get_services_by_type_and_model'),
 
     # Марки и модели автомобилей
     path('cars/', views.car_management, name='car_management'),
@@ -61,14 +59,6 @@ urlpatterns = [
     path('services/types/<int:pk>/services/<int:service_pk>/update/', views.service_update, name='service_update'),
     path('services/types/<int:pk>/services/<int:service_pk>/delete/', views.service_delete, name='service_delete'),
 
-    # Цены на услуги
-    path('prices/', views.price_management, name='price_management'),
-    path('prices/create/', views.price_create, name='price_create'),
-    path('prices/<int:pk>/', views.price_detail, name='price_detail'),
-    path('prices/<int:pk>/update/', views.price_update, name='price_update'),
-    path('prices/<int:pk>/delete/', views.price_delete, name='price_delete'),
-    # path('prices/', views.price_management_dynamic, name='price_management_dynamic'),  # Обновлённый маршрут
-    # path('prices/update/', views.update_price, name='update_price'),  # Новый маршрут для AJAX
     path('check-vin-uniqueness/', views.check_vin_uniqueness, name='check_vin_uniqueness'),
     path('check-license-plate-uniqueness/', views.check_license_plate_uniqueness,
          name='check_license_plate_uniqueness'),
@@ -78,11 +68,10 @@ urlpatterns = [
     path('check-car-model-uniqueness/', views.check_car_model_uniqueness, name='check_car_model_uniqueness'),
     path('check-client-phone-uniqueness/', views.check_client_phone_uniqueness, name='check_client_phone_uniqueness'),
 
-    path('services-by-car/', views.services_by_car, name='services_by_car'),
-
     # База данных
     path('export/', views.export_db, name='export_db'),
     path('import/', views.import_db, name='import_db'),
+    path('accounting-export/', views.accounting_export, name='accounting_export'),
 
     # Аутентификация (login/logout)
     path('accounts/', include('accounts.urls')),

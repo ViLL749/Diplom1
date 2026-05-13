@@ -12,7 +12,7 @@
         </div>
         <div class="overflow-table">
             <table>
-                <thead><tr><th>Артикул</th><th>Название</th><th>Производитель</th><th>Уп.</th></tr></thead>
+                <thead><tr><th>Артикул</th><th>Название</th><th>Производитель</th><th>Уп.</th><th>Доступно</th></tr></thead>
                 <tbody id="part-modal-list"></tbody>
             </table>
         </div>
@@ -62,11 +62,14 @@ function searchParts(page) {
                 var pkgCell = pkg > 1
                     ? '<td style="color:#1976d2;font-weight:bold;">' + pkg + ' шт.</td>'
                     : '<td style="color:#aaa;">1 шт.</td>';
+                var avail = p.available || 0;
+                var availStyle = avail > 0 ? 'color:#2e7d32;font-weight:bold;' : 'color:#c62828;font-weight:bold;';
+                var availCell = '<td style="' + availStyle + '">' + avail + '</td>';
                 tbody.append(
                     '<tr class="part-row" data-id="' + p.id +
                     '" data-label="' + p.article + ' — ' + p.name +
-                    '" data-pkg="' + pkg + '">' +
-                    '<td>' + p.article + '</td><td>' + p.name + '</td><td>' + (p.brand || '') + '</td>' + pkgCell + '</tr>'
+                    '" data-pkg="' + pkg + '" data-available="' + avail + '">' +
+                    '<td>' + p.article + '</td><td>' + p.name + '</td><td>' + (p.brand || '') + '</td>' + pkgCell + availCell + '</tr>'
                 );
             });
             // Pagination
@@ -85,6 +88,7 @@ $(document).on('click', '.part-row', function() {
     var id    = $(this).data('id');
     var label = $(this).data('label');
     var pkg   = parseInt($(this).data('pkg')) || 1;
+    var avail = parseInt($(this).data('available')) || 0;
     $('#' + _partModalTarget).val(id);
     $('#' + _partModalDisplay).val(label);
     if (_partModalPkgId) {
@@ -93,6 +97,12 @@ $(document).on('click', '.part-row', function() {
             pkgEl.value = pkg;
             pkgEl.dispatchEvent(new Event('change', {bubbles: true}));
         }
+    }
+    // Show available qty hint next to the quantity field
+    var hint = document.getElementById('part-available-hint');
+    if (hint) {
+        hint.textContent = 'Доступно на складе: ' + avail + ' шт.';
+        hint.style.color = avail > 0 ? '#2e7d32' : '#c62828';
     }
     closePartModal();
 });

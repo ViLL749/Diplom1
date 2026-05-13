@@ -13,19 +13,126 @@ from .forms import (
     SupplyDocumentForm, SupplyItemFormSet,
     PurchaseOrderForm, PurchaseOrderItemFormSet, PurchaseOrderStatusForm,
     WorkOrderPartForm, WorkOrderPartStatusForm,
-    WorkOrderServiceForm, WorkshopSettingsForm,
+    WorkOrderServiceForm, WorkOrderServiceUpdateForm, WorkshopSettingsForm,
+    EmployeeForm,
 )
 from .models import (
     Brand, Supplier, Part, StorageLocation, StockEntry,
     SupplyDocument, SupplyItem,
     PurchaseOrder, PurchaseOrderItem,
     WorkOrderPart, WorkOrderService, WorkshopSettings,
+    Employee, WorkOrderServiceEmployee,
 )
 
 
 # ──────────────────────────────────────────────────────────────
 # AJAX API
 # ──────────────────────────────────────────────────────────────
+
+def _in_stock_batches(part, available_only=False):
+    """Return supply batches with remaining stock, per-unit prices and remaining qty.
+
+    available_only=True  → exclude reserved units (use for pricing new orders)
+    available_only=False → include reserved units (use for display of physical stock)
+    """
+    from django.db.models import Sum
+    from decimal import Decimal
+
+    total_received = SupplyItem.objects.filter(part=part).aggregate(s=Sum('quantity'))['s'] or 0
+    agg = StockEntry.objects.filter(part=part).aggregate(
+        tot=Sum('total_qty'), res=Sum('reserved_qty')
+    )
+    total_qty = agg['tot'] or 0
+    reserved_qty = agg['res'] or 0
+
+    if available_only:
+        pool = max(0, total_qty - reserved_qty)   # truly free stock
+    else:
+        pool = total_qty                           # all physical stock
+
+    not_in_pool = total_received - pool            # consumed (+ reserved if available_only)
+
+    skipped = 0
+    result = []
+    for item in SupplyItem.objects.filter(part=part).select_related('document', 'location').order_by('document__created_at', 'id'):
+        if skipped + item.quantity <= not_in_pool:
+            skipped += item.quantity
+            continue
+        pkg = item.pkg_qty or 1
+        # If pkg_qty wasn't recorded (= 1) but the catalog says the part comes in
+        # multi-unit packages, use the catalog value so the per-unit price is correct.
+        price_pkg = (part.package_qty or 1) if pkg == 1 and (part.package_qty or 1) > 1 else pkg
+        already_used = max(0, not_in_pool - skipped)
+        remaining = item.quantity - already_used
+        skipped = not_in_pool
+        result.append({
+            'price_per_pkg':  item.purchase_price,
+            'price_per_unit': item.purchase_price / Decimal(price_pkg),
+            'pkg_qty':  pkg,
+            'remaining': remaining,
+            'doc_id':   item.document_id,
+            'date':     item.document.created_at,
+            'location': item.location,
+        })
+    return result
+
+
+def _min_stock_price(part, quantity=1):
+    """Return weighted average per-unit price for ordering `quantity` units.
+
+    Uses cheapest available (unreserved) batches first.
+    If quantity exceeds total available, prices only what's available.
+    """
+    from decimal import Decimal
+    batches = _in_stock_batches(part, available_only=True)
+    if not batches:
+        return None
+
+    # cheapest first — give the best possible price
+    by_price = sorted(batches, key=lambda b: b['price_per_unit'])
+
+    remaining = quantity
+    total_cost = Decimal('0')
+    total_used = 0
+    for b in by_price:
+        if remaining <= 0:
+            break
+        use = min(b['remaining'], remaining)
+        total_cost += b['price_per_unit'] * Decimal(use)
+        total_used += use
+        remaining -= use
+
+    if not total_used:
+        return None
+    return total_cost / Decimal(total_used)
+
+
+def _recalculate_order_cost(order):
+    from decimal import Decimal as _D
+    wos_total = sum(
+        (w.final_price or _D('0')) for w in WorkOrderService.objects.filter(work_order=order)
+    )
+    wop_total = sum(
+        (w.sale_price or _D('0')) * w.quantity for w in WorkOrderPart.objects.filter(work_order=order)
+    )
+    order.cost = wos_total + wop_total
+    order.save(update_fields=['cost'])
+
+
+@login_required
+def api_services(request):
+    """Return all services grouped by type for the order detail service modal."""
+    from mainapp.models import Service, ServiceType
+    result = []
+    for stype in ServiceType.objects.prefetch_related('service_set').all():
+        svcs = [
+            {'id': s.id, 'name': s.name, 'base_hours': float(s.base_hours)}
+            for s in stype.service_set.all()
+        ]
+        if svcs:
+            result.append({'type': stype.name, 'services': svcs})
+    return JsonResponse({'groups': result})
+
 
 @login_required
 def api_parts(request):
@@ -50,11 +157,22 @@ def api_parts(request):
     parts = parts.order_by('article')
     paginator = Paginator(parts, 10)
     page_obj = paginator.get_page(page)
+    page_parts = list(page_obj)
+    # Build available stock map in one query
+    from django.db.models import Sum
+    stock_map = {}
+    for row in StockEntry.objects.filter(part__in=page_parts).values('part_id').annotate(
+        tot=Sum('total_qty'), res=Sum('reserved_qty')
+    ):
+        stock_map[row['part_id']] = (row['tot'] or 0) - (row['res'] or 0)
     return JsonResponse({
         'parts': [
-            {'id': p.id, 'article': p.article, 'name': p.name,
-             'brand': p.brand, 'package_qty': p.package_qty}
-            for p in page_obj
+            {
+                'id': p.id, 'article': p.article, 'name': p.name,
+                'brand': p.brand, 'package_qty': p.package_qty,
+                'available': stock_map.get(p.id, 0),
+            }
+            for p in page_parts
         ],
         'total_pages': paginator.num_pages,
         'current_page': page_obj.number,
@@ -468,6 +586,60 @@ def stock_update_min(request, pk):
 
 
 # ──────────────────────────────────────────────────────────────
+# Purchase Prices (cost by part)
+# ──────────────────────────────────────────────────────────────
+
+@login_required
+def purchase_prices_list(request):
+    """Parts that have at least one stock entry, with total qty and reserve."""
+    from django.db.models import Sum
+    search = request.GET.get('search', '')
+    parts = Part.objects.filter(
+        stock_entries__total_qty__gt=0
+    ).distinct()
+    if search:
+        parts = parts.filter(
+            Q(article__icontains=search) | Q(name__icontains=search)
+        )
+    parts = parts.order_by('article')
+    # Annotate totals across all locations
+    parts_data = []
+    for part in parts:
+        entries = part.stock_entries.all()
+        total = sum(e.total_qty for e in entries)
+        reserved = sum(e.reserved_qty for e in entries)
+        if total > 0:
+            parts_data.append({'part': part, 'total': total, 'reserved': reserved, 'available': total - reserved})
+    per_page = _get_per_page(request)
+    paginator = Paginator(parts_data, per_page)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+    return render(request, 'warehouse/purchase_prices/list.html', {
+        'page_obj': page_obj, 'per_page': per_page,
+    })
+
+
+@login_required
+def purchase_prices_detail(request, part_pk):
+    """Show only batches currently in stock with per-unit prices."""
+    part = get_object_or_404(Part, pk=part_pk)
+    entries = part.stock_entries.select_related('location').all()
+    total_qty = sum(e.total_qty for e in entries)
+    reserved_qty = sum(e.reserved_qty for e in entries)
+
+    in_stock = _in_stock_batches(part)
+    min_price = min((b['price_per_unit'] for b in in_stock), default=None)
+
+    return render(request, 'warehouse/purchase_prices/detail.html', {
+        'part': part,
+        'total_qty': total_qty,
+        'reserved_qty': reserved_qty,
+        'available_qty': total_qty - reserved_qty,
+        'in_stock': in_stock,
+        'min_price': min_price,
+    })
+
+
+# ──────────────────────────────────────────────────────────────
 # Supply Documents
 # ──────────────────────────────────────────────────────────────
 
@@ -550,6 +722,7 @@ def supply_create(request):
                     # Overrun check already passed using package-level quantities.
                     for item in valid_items:
                         pkg = getattr(item, '_pkg_qty', 1)
+                        item.pkg_qty = pkg  # persist so FIFO can compute per-unit price
                         if item.quantity and pkg > 1:
                             item.quantity *= pkg
 
@@ -636,9 +809,18 @@ def supply_create(request):
 
 @login_required
 def supply_detail(request, pk):
+    from decimal import Decimal
     doc = get_object_or_404(SupplyDocument, pk=pk)
-    items = doc.items.select_related('part', 'location', 'po_item').all()
-    return render(request, 'warehouse/supply/detail.html', {'doc': doc, 'items': items})
+    items = list(doc.items.select_related('part', 'location', 'po_item').all())
+    grand_total = Decimal('0')
+    for item in items:
+        pkg = item.pkg_qty or 1
+        item.computed_price_per_unit = item.purchase_price / Decimal(pkg)
+        item.computed_total_cost = item.computed_price_per_unit * item.quantity
+        grand_total += item.computed_total_cost
+    return render(request, 'warehouse/supply/detail.html', {
+        'doc': doc, 'items': items, 'grand_total': grand_total,
+    })
 
 
 # ──────────────────────────────────────────────────────────────
@@ -732,10 +914,16 @@ def workorderpart_create(request, order_pk):
         if form.is_valid():
             wop = form.save(commit=False)
             wop.work_order = order
-            last_item = SupplyItem.objects.filter(part=wop.part).order_by('-document__created_at').first()
-            if last_item:
+            # Weighted average price across the requested quantity of available batches
+            cost_price = _min_stock_price(wop.part, wop.quantity)
+            if cost_price is not None:
                 markup = wop.markup / Decimal('100')
-                wop.sale_price = last_item.purchase_price * (1 + markup)
+                wop.sale_price = cost_price * (1 + markup)
+            # Optional link to a WorkOrderService
+            wos_pk = request.POST.get('work_order_service') or ''
+            if wos_pk.strip():
+                wos = WorkOrderService.objects.filter(pk=wos_pk, work_order=order).first()
+                wop.work_order_service = wos
             wop.save()
             # Reserve from stock
             remaining = wop.quantity
@@ -748,13 +936,17 @@ def workorderpart_create(request, order_pk):
                     entry.save()
                     remaining -= can
             if remaining > 0:
-                messages.warning(request, f'Частичный резерв. Не хватает {remaining} шт.')
+                messages.warning(request, f'Частичный резерв: не хватает {remaining} шт.')
             else:
                 messages.success(request, 'Деталь добавлена и зарезервирована.')
+            _recalculate_order_cost(order)
             return redirect('order_detail', pk=order_pk)
     else:
         form = WorkOrderPartForm()
-    return render(request, 'warehouse/workorderpart/create.html', {'form': form, 'order': order})
+    wos_list = WorkOrderService.objects.filter(work_order=order).select_related('service')
+    return render(request, 'warehouse/workorderpart/create.html', {
+        'form': form, 'order': order, 'wos_list': wos_list,
+    })
 
 
 @login_required
@@ -762,10 +954,49 @@ def workorderpart_update(request, pk):
     wop = get_object_or_404(WorkOrderPart, pk=pk)
     order_pk = wop.work_order.pk
     if request.method == 'POST':
+        old_qty = wop.quantity
+        old_markup = wop.markup
+        old_sale_price = wop.sale_price
         form = WorkOrderPartStatusForm(request.POST, instance=wop)
         if form.is_valid():
+            new_qty = form.cleaned_data['quantity']
+            new_markup = form.cleaned_data['markup']
+            delta = new_qty - old_qty
+
+            # Recalculate sale_price when markup changed (derive cost from old price)
+            if new_markup != old_markup and old_sale_price:
+                old_factor = 1 + old_markup / Decimal('100')
+                cost = old_sale_price / old_factor
+                form.instance.sale_price = cost * (1 + new_markup / Decimal('100'))
+
+            if delta != 0 and wop.status == 'reserved':
+                if delta > 0:
+                    # Need to reserve more stock
+                    remaining = delta
+                    for entry in StockEntry.objects.filter(part=wop.part):
+                        if remaining <= 0:
+                            break
+                        can = min(entry.available_qty, remaining)
+                        if can > 0:
+                            entry.reserved_qty += can
+                            entry.save()
+                            remaining -= can
+                    if remaining > 0:
+                        messages.warning(request, f'Не удалось зарезервировать {remaining} шт. — недостаточно на складе.')
+                else:
+                    # Release excess reservation
+                    to_release = -delta
+                    for entry in StockEntry.objects.filter(part=wop.part):
+                        if to_release <= 0:
+                            break
+                        release = min(entry.reserved_qty, to_release)
+                        entry.reserved_qty -= release
+                        entry.save()
+                        to_release -= release
+
             form.save()
-            messages.success(request, 'Статус детали обновлён.')
+            _recalculate_order_cost(wop.work_order)
+            messages.success(request, 'Деталь обновлена.')
             return redirect('order_detail', pk=order_pk)
     else:
         form = WorkOrderPartStatusForm(instance=wop)
@@ -786,7 +1017,9 @@ def workorderpart_delete(request, pk):
                 entry.reserved_qty -= release
                 entry.save()
                 remaining -= release
+        order = wop.work_order
         wop.delete()
+        _recalculate_order_cost(order)
         messages.success(request, 'Деталь удалена.')
         return redirect('order_detail', pk=order_pk)
     return render(request, 'warehouse/workorderpart/delete.html', {'wop': wop})
@@ -797,6 +1030,37 @@ def workorderpart_delete(request, pk):
 # ──────────────────────────────────────────────────────────────
 
 @login_required
+def workorderservice_create_bulk(request, order_pk):
+    from mainapp.models import Order, Service
+    order = get_object_or_404(Order, pk=order_pk)
+    if request.method == 'POST':
+        service_ids = request.POST.getlist('service_id')
+        hours_list = request.POST.getlist('hours_applied')
+        factor_list = request.POST.getlist('complexity_factor')
+        settings = WorkshopSettings.objects.first()
+        rate_snapshot = settings.hourly_rate if settings else Decimal('0')
+        created = 0
+        for sid, hours, factor in zip(service_ids, hours_list, factor_list):
+            try:
+                service = Service.objects.get(pk=int(sid))
+                WorkOrderService.objects.create(
+                    work_order=order,
+                    service=service,
+                    service_name_snapshot=service.name,
+                    hourly_rate_snapshot=rate_snapshot,
+                    hours_applied=Decimal(hours),
+                    complexity_factor=Decimal(factor),
+                )
+                created += 1
+            except Exception:
+                pass
+        if created:
+            _recalculate_order_cost(order)
+            messages.success(request, f'Добавлено услуг: {created}.')
+    return redirect('order_detail', pk=order_pk)
+
+
+@login_required
 def workorderservice_create(request, order_pk):
     from mainapp.models import Order
     order = get_object_or_404(Order, pk=order_pk)
@@ -805,15 +1069,23 @@ def workorderservice_create(request, order_pk):
         if form.is_valid():
             wos = form.save(commit=False)
             wos.work_order = order
+            settings = WorkshopSettings.objects.first()
+            wos.service_name_snapshot = wos.service.name
+            wos.hourly_rate_snapshot = settings.hourly_rate if settings else Decimal('0')
             wos.save()
+            _recalculate_order_cost(order)
             messages.success(request, 'Услуга добавлена.')
             return redirect('order_detail', pk=order_pk)
     else:
         form = WorkOrderServiceForm()
+    from mainapp.models import Service as _Service
+    import json as _json
     settings = WorkshopSettings.objects.first()
+    service_hours = {s.id: float(s.base_hours) for s in _Service.objects.all()}
     return render(request, 'warehouse/workorderservice/create.html', {
         'form': form, 'order': order,
         'hourly_rate': settings.hourly_rate if settings else 0,
+        'service_hours_json': _json.dumps(service_hours),
     })
 
 
@@ -822,17 +1094,17 @@ def workorderservice_update(request, pk):
     wos = get_object_or_404(WorkOrderService, pk=pk)
     order_pk = wos.work_order.pk
     if request.method == 'POST':
-        form = WorkOrderServiceForm(request.POST, instance=wos)
+        form = WorkOrderServiceUpdateForm(request.POST, instance=wos)
         if form.is_valid():
             form.save()
+            _recalculate_order_cost(wos.work_order)
             messages.success(request, 'Услуга обновлена.')
             return redirect('order_detail', pk=order_pk)
     else:
-        form = WorkOrderServiceForm(instance=wos)
-    settings = WorkshopSettings.objects.first()
+        form = WorkOrderServiceUpdateForm(instance=wos)
     return render(request, 'warehouse/workorderservice/update.html', {
         'form': form, 'wos': wos,
-        'hourly_rate': settings.hourly_rate if settings else 0,
+        'hourly_rate': wos.hourly_rate_snapshot,
     })
 
 
@@ -841,7 +1113,9 @@ def workorderservice_delete(request, pk):
     wos = get_object_or_404(WorkOrderService, pk=pk)
     order_pk = wos.work_order.pk
     if request.method == 'POST':
+        order = wos.work_order
         wos.delete()
+        _recalculate_order_cost(order)
         messages.success(request, 'Услуга удалена.')
         return redirect('order_detail', pk=order_pk)
     return render(request, 'warehouse/workorderservice/delete.html', {'wos': wos})
@@ -854,11 +1128,86 @@ def workorderservice_delete(request, pk):
 @login_required
 def picking_list(request, order_pk):
     from mainapp.models import Order
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from django.http import HttpResponse
+    import io, os
+
     order = get_object_or_404(Order, pk=order_pk)
-    parts = WorkOrderPart.objects.filter(work_order=order).select_related('part').prefetch_related(
+    parts = list(WorkOrderPart.objects.filter(work_order=order).select_related('part').prefetch_related(
         'part__stock_entries__location'
-    )
-    return render(request, 'warehouse/picking_list.html', {'order': order, 'parts': parts})
+    ))
+
+    # Register Cyrillic-capable font
+    _font_candidates = [
+        '/Library/Fonts/Arial Unicode.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    ]
+    fn = 'Helvetica'
+    for _fp in _font_candidates:
+        if os.path.exists(_fp):
+            try:
+                pdfmetrics.registerFont(TTFont('_CyrFont', _fp))
+                fn = '_CyrFont'
+            except Exception:
+                pass
+            break
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+
+    h1 = ParagraphStyle('h1', fontName=fn, fontSize=13, spaceAfter=4, leading=16)
+    p  = ParagraphStyle('p',  fontName=fn, fontSize=10, spaceAfter=3, leading=13)
+
+    story = []
+    story.append(Paragraph(f'Лист отборки — Заказ-наряд №{order.id}', h1))
+    if order.client_fio_static:
+        story.append(Paragraph(f'Клиент: {order.client_fio_static}', p))
+    if order.car_details_static:
+        story.append(Paragraph(f'Автомобиль: {order.car_details_static}', p))
+    story.append(Paragraph(f'Дата: {order.order_date.strftime("%d.%m.%Y")}', p))
+    story.append(Spacer(1, 0.4*cm))
+
+    header = ['Место хранения', 'Артикул', 'Название', 'Кол-во', 'Статус', '✓']
+    rows = [header]
+    for wop in parts:
+        entry = wop.part.stock_entries.first()
+        loc = entry.location.label if entry else '—'
+        rows.append([loc, wop.part.article, wop.part.name,
+                     str(wop.quantity), wop.get_status_display(), ''])
+    if len(rows) == 1:
+        rows.append(['Деталей нет', '', '', '', '', ''])
+
+    col_w = [3.2*cm, 2.4*cm, 6.6*cm, 1.4*cm, 2.8*cm, 0.8*cm]
+    tbl = Table(rows, colWidths=col_w, repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ('FONTNAME',   (0, 0), (-1, -1), fn),
+        ('FONTSIZE',   (0, 0), (-1, -1), 9),
+        ('BACKGROUND', (0, 0), (-1, 0),  colors.HexColor('#1e40af')),
+        ('TEXTCOLOR',  (0, 0), (-1, 0),  colors.white),
+        ('GRID',       (0, 0), (-1, -1), 0.4, colors.HexColor('#cbd5e1')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+        ('VALIGN',     (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING',  (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    story.append(tbl)
+
+    doc.build(story)
+    buf.seek(0)
+    resp = HttpResponse(buf, content_type='application/pdf')
+    resp['Content-Disposition'] = f'inline; filename="picking_{order.pk}.pdf"'
+    return resp
 
 
 # ──────────────────────────────────────────────────────────────
@@ -894,6 +1243,187 @@ def _get_per_page(request):
 def models_remaining_filter():
     """Placeholder — not used, filtering done in Python."""
     return 0
+
+
+# ──────────────────────────────────────────────────────────────
+# Employees (Mechanics)
+# ──────────────────────────────────────────────────────────────
+
+@login_required
+def employees_list(request):
+    employees = Employee.objects.all()
+    search = request.GET.get('search', '')
+    if search:
+        employees = employees.filter(name__icontains=search)
+    return render(request, 'warehouse/employees/list.html', {
+        'employees': employees, 'search': search,
+    })
+
+
+@login_required
+def employee_create(request):
+    if request.method == 'POST':
+        form = EmployeeForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Сотрудник добавлен.')
+            return redirect('employees_list')
+    else:
+        form = EmployeeForm()
+    return render(request, 'warehouse/employees/create.html', {'form': form})
+
+
+@login_required
+def employee_update(request, pk):
+    employee = get_object_or_404(Employee, pk=pk)
+    if request.method == 'POST':
+        form = EmployeeForm(request.POST, instance=employee)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Сотрудник обновлён.')
+            return redirect('employees_list')
+    else:
+        form = EmployeeForm(instance=employee)
+    return render(request, 'warehouse/employees/update.html', {'form': form, 'employee': employee})
+
+
+@login_required
+def employee_delete(request, pk):
+    employee = get_object_or_404(Employee, pk=pk)
+    if request.method == 'POST':
+        employee.delete()
+        messages.success(request, 'Сотрудник удалён.')
+        return redirect('employees_list')
+    return render(request, 'warehouse/employees/delete.html', {'employee': employee})
+
+
+@login_required
+def employee_report(request, pk):
+    """Earnings report for a single employee. Only completed orders count."""
+    from decimal import Decimal
+    employee = get_object_or_404(Employee, pk=pk)
+    assignments = (
+        WorkOrderServiceEmployee.objects
+        .filter(employee=employee)
+        .select_related(
+            'work_order_service__work_order',
+            'work_order_service__service',
+        )
+        .order_by('-work_order_service__work_order__id')
+    )
+    rows = []
+    total_hours = Decimal('0')
+    total_earnings = Decimal('0')
+    for a in assignments:
+        wos = a.work_order_service
+        n = wos.assignments.count()
+        hours = wos.hours_applied / Decimal(n) if n else Decimal('0')
+        is_done = wos.work_order.status == 'Завершён'
+        earnings = (wos.final_price or Decimal('0')) / Decimal(n) if (n and is_done) else Decimal('0')
+        if is_done:
+            total_hours += hours
+            total_earnings += earnings
+        rows.append({
+            'order_id': wos.work_order.id,
+            'service_name': wos.service_name_snapshot or (wos.service.name if wos.service else '—'),
+            'hours': hours,
+            'earnings': earnings,
+            'order_status': wos.work_order.status,
+            'is_done': is_done,
+        })
+    return render(request, 'warehouse/employees/report.html', {
+        'employee': employee,
+        'rows': rows,
+        'total_hours': total_hours,
+        'total_earnings': total_earnings,
+    })
+
+
+@login_required
+def employees_report_all(request):
+    """Summary earnings for all employees. Only completed orders count."""
+    from decimal import Decimal
+    employees = Employee.objects.filter(is_active=True)
+    data = []
+    for emp in employees:
+        total_hours = Decimal('0')
+        total_earnings = Decimal('0')
+        qs = (WorkOrderServiceEmployee.objects
+              .filter(employee=emp, work_order_service__work_order__status='Завершён')
+              .select_related('work_order_service'))
+        for a in qs:
+            wos = a.work_order_service
+            n = wos.assignments.count()
+            if n:
+                total_hours += wos.hours_applied / Decimal(n)
+                total_earnings += (wos.final_price or Decimal('0')) / Decimal(n)
+        data.append({'employee': emp, 'total_hours': total_hours, 'total_earnings': total_earnings})
+    data.sort(key=lambda x: x['total_earnings'], reverse=True)
+    return render(request, 'warehouse/employees/report_all.html', {'data': data})
+
+
+@login_required
+def api_assign_employee(request, wos_pk):
+    """AJAX: assign an employee to a WorkOrderService."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    wos = get_object_or_404(WorkOrderService, pk=wos_pk)
+    emp_pk = request.POST.get('employee_id')
+    if not emp_pk:
+        return JsonResponse({'error': 'employee_id required'}, status=400)
+    employee = get_object_or_404(Employee, pk=emp_pk)
+    _, created = WorkOrderServiceEmployee.objects.get_or_create(
+        work_order_service=wos, employee=employee
+    )
+    n = wos.assignments.count()
+    from decimal import Decimal
+    assignments = [
+        {
+            'id': a.id,
+            'employee_id': a.employee.id,
+            'name': a.employee.name,
+            'hours': str(wos.hours_applied / Decimal(n)),
+            'earnings': str((wos.final_price or Decimal('0')) / Decimal(n)),
+        }
+        for a in wos.assignments.select_related('employee')
+    ]
+    return JsonResponse({'created': created, 'assignments': assignments})
+
+
+@login_required
+def api_unassign_employee(request, wos_pk, emp_pk):
+    """AJAX: remove an employee from a WorkOrderService."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    WorkOrderServiceEmployee.objects.filter(
+        work_order_service_id=wos_pk, employee_id=emp_pk
+    ).delete()
+    wos = get_object_or_404(WorkOrderService, pk=wos_pk)
+    n = wos.assignments.count()
+    from decimal import Decimal
+    assignments = [
+        {
+            'id': a.id,
+            'employee_id': a.employee.id,
+            'name': a.employee.name,
+            'hours': str(wos.hours_applied / Decimal(n)) if n else '0',
+            'earnings': str((wos.final_price or Decimal('0')) / Decimal(n)) if n else '0',
+        }
+        for a in wos.assignments.select_related('employee')
+    ]
+    return JsonResponse({'assignments': assignments})
+
+
+@login_required
+def api_employees(request):
+    """AJAX: list active employees for assignment modal."""
+    search = request.GET.get('search', '')
+    emps = Employee.objects.filter(is_active=True)
+    if search:
+        emps = emps.filter(name__icontains=search)
+    return JsonResponse({
+        'employees': [{'id': e.id, 'name': e.name, 'position': e.position} for e in emps[:50]]
+    })
 
 
 def _check_po_overrun(valid_items):

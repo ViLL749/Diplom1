@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Цены закупки{% endblock %}
+{% block content %}
+<h1>Цены закупки</h1>
+<p style="color:#666;font-size:0.92em;">Отображаются только детали с ненулевым остатком на складе. Нажмите на строку для просмотра партий.</p>
+
+<form method="GET" class="search-container">
+    <input type="text" name="search" placeholder="Поиск по артикулу или названию..." value="{{ request.GET.search|default:'' }}">
+    <button type="submit" class="btn">Искать</button>
+</form>
+
+<table id="prices-table">
+    <thead>
+        <tr>
+            <th>Артикул</th>
+            <th>Название</th>
+            <th>Производитель</th>
+            <th>Остаток</th>
+            <th>Резерв</th>
+            <th>Доступно</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in page_obj %}
+        <tr style="cursor:pointer;" onclick="window.location.href='{% url 'purchase_prices_detail' row.part.id %}'">
+            <td>{{ row.part.article }}</td>
+            <td>{{ row.part.name }}</td>
+            <td>{{ row.part.brand|default:"—" }}</td>
+            <td>{{ row.total }}</td>
+            <td>{% if row.reserved > 0 %}<span style="color:#1e88e5;font-weight:bold;">{{ row.reserved }}</span>{% else %}0{% endif %}</td>
+            <td><strong>{{ row.available }}</strong></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6">Нет деталей с остатком на складе.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if page_obj.has_other_pages %}
+<div class="pagination">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}" class="btn">Предыдущая</a>{% endif %}
+    {% for num in page_obj.paginator.page_range %}{% if num >= page_obj.number|add:-2 and num <= page_obj.number|add:2 %}<a href="?page={{ num }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}" class="btn {% if page_obj.number == num %}active{% endif %}">{{ num }}</a>{% endif %}{% endfor %}
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}" class="btn">Следующая</a>{% endif %}
+</div>
+{% endif %}
+
+<form method="GET" class="per-page-form">
+    <label>Записей на страницу:
+        <select name="per_page" onchange="this.form.submit()">
+            <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+            <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+            <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+        </select>
+    </label>
+    {% if request.GET.search %}<input type="hidden" name="search" value="{{ request.GET.search }}">{% endif %}
+</form>
+{% endblock %}

@@ -1,19 +1,28 @@
 import os
+import json as _json
 import chardet
 import tempfile
+from decimal import Decimal as _Decimal
 from io import StringIO
 
 from django.apps import apps
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.files.uploadedfile import UploadedFile
 from django.core.management import call_command
-from django.db import transaction
-from django.http import HttpResponse
+from django.core.paginator import Paginator, EmptyPage
+from django.db import transaction, connection
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from .models import (
+    CarMake, CarModel, Client, ClientCar, Order, Service, ServiceType
+)
 from .forms import (
     ClientForm, ClientCarForm, CarMakeForm, CarModelForm,
-    ServiceTypeForm, ServiceForm, ServicePriceForm
+    ServiceTypeForm, ServiceForm, ClientSelectionForm, OrderForm
 )
 
 @login_required
@@ -99,25 +108,7 @@ def client_create(request):
 
 import logging
 
-# Настраиваем логгер
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG)
-
-import logging
-
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG)
-
-import logging
-
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG)
-
-from django.contrib.auth.decorators import login_required
-import logging
-
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG)
 
 
 # Кастомная функция для приведения к нижнему регистру
@@ -220,8 +211,6 @@ def check_license_plate_uniqueness(request):
     return JsonResponse({'exists': exists})
 
 
-from django.views.decorators.http import require_POST
-
 @require_POST
 def check_service_type_uniqueness(request):
     name = request.POST.get("name", "").strip().lower()
@@ -273,13 +262,7 @@ def check_client_phone_uniqueness(request):
     exists = queryset.filter(phone=phone).exists()
     return JsonResponse({"exists": exists})
 
-from django.http import JsonResponse
-
-
 # Удаление клиента
-from .models import Client
-
-
 def client_delete(request, pk):
     client = get_object_or_404(Client, pk=pk)
     if request.method == 'POST':
@@ -399,74 +382,9 @@ def get_client_cars(request):
     return JsonResponse([], safe=False)
 
 
-def get_services_by_model(request):
-    client_car_id = request.GET.get('client_car_id')
-    if client_car_id:
-        client_car = ClientCar.objects.filter(id=client_car_id).first()
-        if client_car:
-            services = Service.objects.filter(serviceprice__car_model=client_car.model).values(
-                'id', 'name', 'serviceprice__price'
-            ).distinct()
-            return JsonResponse(list(services), safe=False)
-    return JsonResponse([], safe=False)
-
-
 def get_service_types(request):
     types = ServiceType.objects.all().values('id', 'name')
     return JsonResponse(list(types), safe=False)
-
-
-def get_services_by_type_and_model(request):
-    service_type_id = request.GET.get('service_type_id')
-    client_car_id = request.GET.get('client_car_id')
-    order_id = request.GET.get('order_id')
-
-    if service_type_id and client_car_id:
-        client_car = ClientCar.objects.filter(id=client_car_id).first()
-        order = Order.objects.filter(id=order_id).first() if order_id else None
-
-        if client_car:
-            services = Service.objects.filter(
-                service_type_id=service_type_id,
-                serviceprice__car_model=client_car.model
-            ).distinct()
-
-            services_list = []
-            for service in services:
-                service_price = ServicePrice.objects.filter(
-                    service=service,
-                    car_model=client_car.model
-                ).first()
-                current_price = service_price.price if service_price else Decimal('0.00')
-
-                if order:
-                    order_service = OrderService.objects.filter(
-                        order=order,
-                        service=service
-                    ).first()
-                    price_to_use = order_service.price_at_order if order_service else current_price
-                    is_in_order = bool(order_service)
-                else:
-                    price_to_use = current_price
-                    is_in_order = False  # Услуга не в заказе, если заказа нет
-
-                services_list.append({
-                    'id': service.id,
-                    'name': service.name,
-                    'price': float(price_to_use),
-                    'is_in_order': is_in_order
-                })
-
-            return JsonResponse(services_list, safe=False)
-    return JsonResponse([], safe=False)
-
-
-def get_order_services(request):
-    order_id = request.GET.get('order_id')
-    if order_id:
-        service_ids = OrderService.objects.filter(order_id=order_id).values_list('service_id', flat=True)
-        return JsonResponse(list(service_ids), safe=False)
-    return JsonResponse([], safe=False)
 
 
 def client_car_detail(request, pk, car_pk):
@@ -940,214 +858,10 @@ def service_update(request, pk, service_pk):  # Изменил на pk (ID ти�
     })
 
 
-import logging
-
-from .models import CarMake, CarModel
-
-
-
-from django.contrib.auth.decorators import login_required
-
-
-
-@login_required
-def services_by_car(request):
-    register_custom_functions()
-
-    selected_car_model_id = request.GET.get('car_model_id', '')
-    search = request.GET.get('search', '')
-    sort = request.GET.get('sort', 'service__name')
-    direction = request.GET.get('direction', 'asc')
-    per_page = request.GET.get('per_page', 10)
-    reset = request.GET.get('reset', False)
-
-    if reset:
-        selected_car_model_id = ''
-
-    services = ServicePrice.objects.select_related('service', 'car_model', 'car_make', 'service__service_type')
-    if selected_car_model_id:
-        services = services.filter(car_model_id=selected_car_model_id)
-
-    if search:
-        search_lower = search.lower()
-        services = services.extra(
-            select={'service_lower': 'custom_lower(mainapp_service.name)'},
-            tables=['mainapp_service'],
-            where=[
-                'mainapp_service.id = mainapp_serviceprice.service_id',
-                'custom_lower(mainapp_service.name) LIKE %s'
-            ],
-            params=[f'%{search_lower}%']
-        )
-
-    valid_sort_fields = ['service__name', 'price', 'car_model__name', 'car_make__name']
-    if sort in valid_sort_fields:
-        order_field = f'-{sort}' if direction == 'desc' else sort
-        services = services.order_by(order_field)
-    else:
-        services = services.order_by('service__name')
-
-    try:
-        per_page = int(per_page)
-        if per_page not in [5, 10, 20]:
-            per_page = 10
-    except ValueError:
-        per_page = 10
-
-    paginator = Paginator(services, per_page)
-    page_obj = paginator.get_page(request.GET.get('page'))
-
-    context = {
-        'selected_car_model_id': selected_car_model_id,
-        'page_obj': page_obj,
-        'per_page': per_page,
-        'search': search,
-        'sort': sort,
-        'direction': direction,
-    }
-    return render(request, 'services/service_by_car.html', context)
-
-
-from django.contrib.auth.decorators import login_required
-from django.db import connection
 
 
 
 
-@login_required
-def price_management(request):
-    # Регистрируем функцию для регистронезависимого поиска
-    register_custom_functions()
-
-    service_prices = ServicePrice.objects.select_related('car_make', 'car_model', 'service')
-
-    # Сортировка
-    sort = request.GET.get('sort', 'id')
-    direction = request.GET.get('direction', 'asc')
-    valid_sort_fields = ['id', 'car_make__name', 'car_model__name', 'service__name', 'price']
-    if sort in valid_sort_fields:
-        order_field = f'-{sort}' if direction == 'desc' else sort
-        service_prices = service_prices.order_by(order_field)
-    else:
-        service_prices = service_prices.order_by('id')
-
-    # Поиск
-    search = request.GET.get('search', '')
-    column = request.GET.get('column', 'car_make')
-    if search:
-        search_lower = search.lower()
-        if column == 'id':
-            service_prices = service_prices.filter(id__contains=search)
-        elif column == 'car_make':
-            service_prices = service_prices.extra(
-                select={'car_make_lower': 'custom_lower(mainapp_carmake.name)'},
-                tables=['mainapp_carmake'],
-                where=[
-                    'mainapp_carmake.id = mainapp_serviceprice.car_make_id',
-                    'custom_lower(mainapp_carmake.name) LIKE %s'
-                ],
-                params=[f'%{search_lower}%']
-            )
-        elif column == 'car_model':
-            service_prices = service_prices.extra(
-                select={'car_model_lower': 'custom_lower(mainapp_carmodel.name)'},
-                tables=['mainapp_carmodel'],
-                where=[
-                    'mainapp_carmodel.id = mainapp_serviceprice.car_model_id',
-                    'custom_lower(mainapp_carmodel.name) LIKE %s'
-                ],
-                params=[f'%{search_lower}%']
-            )
-        elif column == 'service':
-            service_prices = service_prices.extra(
-                select={'service_lower': 'custom_lower(mainapp_service.name)'},
-                tables=['mainapp_service'],
-                where=[
-                    'mainapp_service.id = mainapp_serviceprice.service_id',
-                    'custom_lower(mainapp_service.name) LIKE %s'
-                ],
-                params=[f'%{search_lower}%']
-            )
-
-    # Пагинация
-    per_page = request.GET.get('per_page', 5)
-    try:
-        per_page = int(per_page)
-        if per_page not in [5, 10, 20]:
-            per_page = 5
-    except ValueError:
-        per_page = 5
-
-    paginator = Paginator(service_prices, per_page)
-    page_number = request.GET.get('page', 1)
-    try:
-        page_obj = paginator.get_page(page_number)
-    except EmptyPage:
-        page_obj = paginator.page(1)
-
-    return render(request, 'prices/price_management.html', {
-        'page_obj': page_obj,
-        'per_page': per_page
-    })
-
-# Создание цены на услугу для модели автомобиля
-def price_create(request):
-    if request.method == 'POST':
-        form = ServicePriceForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Цена на услугу успешно создана!')
-            return redirect('price_management')
-    else:
-        form = ServicePriceForm()
-    return render(request, 'prices/price_create.html', {'form': form, 'cancel_url': reverse('price_management')})
-
-
-# Просмотр деталей цены на услугу
-def price_detail(request, pk):
-    service_price = get_object_or_404(ServicePrice, pk=pk)
-    return render(request, 'prices/price_detail.html',
-                  {'service_price': service_price, 'cancel_url': reverse('price_management')})
-
-
-def price_update(request, pk):
-    service_price = get_object_or_404(ServicePrice, pk=pk)
-    if request.method == 'POST':
-        form = ServicePriceForm(request.POST, instance=service_price)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Цена на услугу успешно обновлена!')
-            return redirect('price_management')
-    else:
-        form = ServicePriceForm(instance=service_price)
-    return render(request, 'prices/price_update.html', {
-        'form': form,
-        'cancel_url': reverse('price_management')
-    })
-
-
-# Удаление цены на услугу
-
-def price_delete(request, pk):
-    service_price = get_object_or_404(ServicePrice, pk=pk)
-    if request.method == 'POST':
-        service_price.delete()
-        messages.success(request, 'Цена на услугу успешно удалена!')
-        return redirect('price_management')
-    return render(request, 'confirm_delete.html', {
-        'object': service_price,
-        'deleted_object_type': 'ServicePrice',
-        'cancel_url': reverse('price_management')
-    })
-
-
-from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator, EmptyPage
-
-
-from django.core.paginator import Paginator, EmptyPage
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
 from .models import Order
 
 @login_required
@@ -1218,260 +932,209 @@ def orders_list(request):
         'per_page': per_page,
     })
 
-from .models import OrderService, CustomService, Service, ServicePrice, ClientCar
-from .forms import ClientSelectionForm, OrderForm, CustomServiceForm
+# ── Order helpers ─────────────────────────────────────────────
+
+def _unreserve_order_parts(order):
+    """Release stock reservations for all reserved parts in this order."""
+    from warehouse.models import WorkOrderPart, StockEntry
+    for wop in WorkOrderPart.objects.filter(work_order=order, status='reserved'):
+        remaining = wop.quantity
+        for entry in StockEntry.objects.filter(part=wop.part):
+            if remaining <= 0:
+                break
+            release = min(entry.reserved_qty, remaining)
+            entry.reserved_qty -= release
+            entry.save()
+            remaining -= release
+        wop.status = 'cancelled'
+        wop.save()
 
 
+def _issue_order_parts(order):
+    """Move reserved parts out of stock when an order is completed."""
+    from warehouse.models import WorkOrderPart, StockEntry
+    for wop in WorkOrderPart.objects.filter(work_order=order, status='reserved'):
+        remaining = wop.quantity
+        for entry in StockEntry.objects.filter(part=wop.part):
+            if remaining <= 0:
+                break
+            take = min(entry.reserved_qty, remaining)
+            entry.reserved_qty -= take
+            entry.total_qty -= take
+            entry.save()
+            remaining -= take
+        wop.status = 'issued'
+        wop.save()
+
+
+def _freeze_service_snapshots(order):
+    """Ensure all WorkOrderService records for this order have snapshots saved."""
+    from warehouse.models import WorkOrderService, WorkshopSettings
+    settings = WorkshopSettings.objects.first()
+    current_rate = settings.hourly_rate if settings else _Decimal('0')
+    for wos in WorkOrderService.objects.filter(work_order=order).select_related('service'):
+        changed = False
+        if not wos.service_name_snapshot:
+            wos.service_name_snapshot = wos.service.name if wos.service else '—'
+            changed = True
+        if wos.hourly_rate_snapshot is None:
+            wos.hourly_rate_snapshot = current_rate
+            changed = True
+        if changed:
+            wos.save(update_fields=['service_name_snapshot', 'hourly_rate_snapshot'])
+
+
+def _recalculate_order_cost(order):
+    from warehouse.models import WorkOrderService, WorkOrderPart
+    wos_total = sum(
+        (w.final_price or _Decimal('0')) for w in WorkOrderService.objects.filter(work_order=order)
+    )
+    wop_total = sum(
+        (w.sale_price or _Decimal('0')) * w.quantity
+        for w in WorkOrderPart.objects.filter(work_order=order)
+    )
+    order.cost = wos_total + wop_total
+    order.save(update_fields=['cost'])
+
+
+# ── Order CRUD ────────────────────────────────────────────────
+
+@login_required
 def order_create(request):
     if request.method == 'POST':
-        print("POST data:", request.POST)  # Выводим все данные POST для отладки
         client_form = ClientSelectionForm(request.POST)
         order_form = OrderForm(request.POST)
-
         if client_form.is_valid() and order_form.is_valid():
-            # Сохраняем заказ
-            order = order_form.save(commit=False)
-            total_cost = request.POST.get('total_cost', '0.00')  # Получаем стоимость из формы
-            order.cost = Decimal(total_cost)  # Сохраняем стоимость в поле cost
-            order.save()
-
-            # Получаем выбранные услуги из POST
-            selected_service_ids = request.POST.getlist('selected_services')
-            client_car = order.client_car  # Получаем автомобиль клиента из заказа
-
-            # Обрабатываем выбранные услуги
-            for service_id in selected_service_ids:
-                try:
-                    service = Service.objects.get(id=service_id)
-                    # Получаем цену услуги для модели автомобиля
-                    service_price = ServicePrice.objects.get(
-                        car_model=client_car.model,
-                        service=service
-                    )
-                    # Создаём запись в OrderService с ценой на момент заказа
-                    OrderService.objects.create(
-                        order=order,
-                        service=service,
-                        price_at_order=service_price.price
-                    )
-                except Service.DoesNotExist:
-                    print(f"Услуга с ID {service_id} не найдена")
-                    continue
-                except ServicePrice.DoesNotExist:
-                    print(f"Цена для услуги {service.name} и модели {client_car.model} не найдена")
-                    # Создаём запись без цены, если её нет в ServicePrice
-                    OrderService.objects.create(
-                        order=order,
-                        service=service,
-                        price_at_order=None
-                    )
-                    continue
-
-            # Обрабатываем кастомные услуги
-            custom_names = request.POST.getlist('custom_service_name[]')
-            custom_prices = request.POST.getlist('custom_service_price[]')
-            for name, price in zip(custom_names, custom_prices):
-                if name and price:  # Проверяем, что поля заполнены
-                    CustomService.objects.create(
-                        order=order,
-                        name=name,
-                        price=Decimal(price)
-                    )
-
-            messages.success(request, 'Заказ успешно создан!')
-            return redirect('orders_list')
-        else:
-            print("Client form errors:", client_form.errors)
-            print("Order form errors:", order_form.errors)
+            order = order_form.save()
+            messages.success(request, 'Заказ создан.')
+            return redirect('order_detail', pk=order.pk)
     else:
         client_form = ClientSelectionForm()
         order_form = OrderForm()
-
-    custom_service_form = CustomServiceForm()
     return render(request, 'orders/order_create.html', {
         'client_form': client_form,
         'order_form': order_form,
-        'custom_service_form': custom_service_form,
-        'cancel_url': reverse('orders_list')
+        'cancel_url': reverse('orders_list'),
     })
 
 
+@login_required
 def order_detail(request, pk):
+    from warehouse.models import WorkOrderService, WorkOrderPart, WorkshopSettings
+    from mainapp.models import ServiceType, Service as _Service
     order = get_object_or_404(Order, pk=pk)
 
-    if order.status != 'Завершён':
-        standard_services_cost = OrderService.objects.filter(order=order).aggregate(
-            total=Sum('price_at_order')
-        )['total'] or Decimal('0.00')
+    wos_list = list(order.work_order_services.select_related('service').prefetch_related(
+        'parts__part', 'assignments__employee'
+    ).all())
+    wop_list = list(order.work_order_parts.select_related(
+        'part', 'work_order_service__service'
+    ).all())
 
-        custom_services_cost = CustomService.objects.filter(order=order).aggregate(
-            total=Sum('price')
-        )['total'] or Decimal('0.00')
+    services_total = sum((w.final_price or _Decimal('0')) for w in wos_list)
+    parts_total = sum((w.sale_price or _Decimal('0')) * w.quantity for w in wop_list)
+    total = services_total + parts_total
 
-        recalculated_cost = standard_services_cost + custom_services_cost
-        order.cost = recalculated_cost
-        order.save()  # Сохраняем пересчитанную стоимость в БД
+    if order.status not in ('Завершён', 'Отменён') and order.cost != total:
+        order.cost = total
+        order.save(update_fields=['cost'])
 
-    return render(request, 'orders/order_detail.html', {'order': order})
+    settings = WorkshopSettings.objects.first()
+
+    grouped_services = []
+    for stype in ServiceType.objects.prefetch_related('service_set').all():
+        svcs = list(stype.service_set.all())
+        if svcs:
+            grouped_services.append((stype.name, svcs))
+
+    service_hours = {s.id: float(s.base_hours) for stype_name, svcs in grouped_services for s in svcs}
+
+    return render(request, 'orders/order_detail.html', {
+        'order': order,
+        'wos_list': wos_list,
+        'wop_list': wop_list,
+        'services_total': services_total,
+        'parts_total': parts_total,
+        'total': total,
+        'hourly_rate': settings.hourly_rate if settings else 0,
+        'grouped_services': grouped_services,
+        'service_hours_json': _json.dumps(service_hours),
+        'editable': order.status not in ('Завершён', 'Отменён'),
+    })
 
 
-from django.db.models import Sum
-from decimal import Decimal
-import json
-
-
+@login_required
 def order_update(request, pk):
     order = get_object_or_404(Order, pk=pk)
 
-    # Проверяем, завершён ли заказ
-    if order.status == 'Завершён':
-        messages.error(request, 'Редактирование завершённого заказа запрещено.')
+    if order.status in ('Завершён', 'Отменён'):
+        messages.error(request, 'Редактирование завершённого или отменённого заказа запрещено.')
         return redirect('order_detail', pk=pk)
 
     if request.method == 'POST':
         form = OrderForm(request.POST, instance=order)
         if form.is_valid():
-            order = form.save(commit=False)  # Не сохраняем сразу
+            new_status = form.cleaned_data['status']
+            order_obj = form.save(commit=False)
 
-            # Получаем выбранные услуги
-            selected_service_ids = request.POST.getlist('selected_services')
-            print(f"Selected service IDs in update: {selected_service_ids}")
-
-            # Удаляем только те услуги, которые больше не выбраны
-            current_service_ids = [str(service.service.id) for service in order.orderservice_set.all()]
-            services_to_remove = set(current_service_ids) - set(selected_service_ids)
-            OrderService.objects.filter(order=order, service__id__in=services_to_remove).delete()
-
-            # Обрабатываем выбранные услуги
-            services_data = []  # Для статичного хранения
-            for service_id in selected_service_ids:
-                try:
-                    service = Service.objects.get(id=service_id)
-                    order_service, created = OrderService.objects.get_or_create(
-                        order=order,
-                        service=service,
+            if new_status == 'Отменён':
+                _unreserve_order_parts(order)
+                _freeze_service_snapshots(order)
+            elif new_status == 'Завершён':
+                _freeze_service_snapshots(order)
+                _issue_order_parts(order)
+                if order.client_car:
+                    order_obj.client_fio_static = order_obj.client_fio_static or order.client_car.client.fio
+                    order_obj.car_details_static = order_obj.car_details_static or (
+                        f"{order.client_car.make.name} {order.client_car.model.name} "
+                        f"({order.client_car.license_plate or ''})"
                     )
-                    if created:
-                        service_price = ServicePrice.objects.filter(
-                            service=service,
-                            car_model=order.client_car.model
-                        ).first()
-                        order_service.price_at_order = service_price.price if service_price else Decimal('0.00')
-                        order_service.save()
-                        print(f"Новая услуга {service.name}: price_at_order = {order_service.price_at_order}")
-                    else:
-                        print(f"Существующая услуга {service.name}: price_at_order = {order_service.price_at_order}")
-                    # Собираем данные для статичного хранения
-                    services_data.append(
-                        f"{service.service_type.name}: {service.name} ({order_service.price_at_order})")
-                except Service.DoesNotExist:
-                    print(f"Услуга с ID {service_id} не найдена")
-                    continue
-                except ServicePrice.DoesNotExist:
-                    print(f"Цена для услуги {service.name} не найдена")
-                    if created:
-                        order_service.price_at_order = Decimal('0.00')
-                        order_service.save()
+                    from warehouse.models import WorkOrderService as _WOS, WorkOrderPart as _WOP
+                    wos_sum = "; ".join(
+                        f"{w.service_name_snapshot or (w.service.name if w.service else '—')} ({w.final_price} руб.)"
+                        for w in _WOS.objects.filter(work_order=order).select_related('service')
+                    )
+                    wop_sum = "; ".join(
+                        f"{w.part.article} × {w.quantity}"
+                        for w in _WOP.objects.filter(work_order=order).select_related('part')
+                    )
+                    order_obj.services_static = wos_sum or "Нет услуг"
+                    order_obj.custom_services_static = wop_sum or "Нет деталей"
 
-            # Обрабатываем кастомные услуги
-            custom_names = request.POST.getlist('custom_service_name[]')
-            custom_prices = request.POST.getlist('custom_service_price[]')
-            CustomService.objects.filter(order=order).delete()
-            custom_services_data = []  # Для статичного хранения
-            for name, price in zip(custom_names, custom_prices):
-                if name and price:
-                    CustomService.objects.create(order=order, name=name, price=Decimal(price))
-                    custom_services_data.append(f"{name} ({price})")
-
-            # Расчет общей стоимости
-            service_cost = sum(
-                Decimal(str(service.price_at_order or Decimal('0.00')))
-                for service in order.orderservice_set.all()
-            )
-            custom_cost = CustomService.objects.filter(order=order).aggregate(Sum('price'))['price__sum'] or Decimal(
-                '0.00')
-            order.cost = service_cost + custom_cost
-
-            # Если статус "Завершён", сохраняем статичные данные
-            if form.cleaned_data['status'] == 'Завершён':
-                order.client_fio_static = order.client_car.client.fio
-                order.car_details_static = f"{order.client_car.make.name} {order.client_car.model.name} ({order.client_car.license_plate or ''})"
-                order.services_static = "; ".join(services_data) if services_data else "Нет услуг"
-                order.custom_services_static = "; ".join(
-                    custom_services_data) if custom_services_data else "Нет кастомных услуг"
-
-            order.save()
-            messages.success(request, 'Заказ успешно обновлен!')
+            order_obj.save()
+            _recalculate_order_cost(order_obj)
+            messages.success(request, 'Заказ обновлён.')
             return redirect('order_detail', pk=pk)
     else:
         form = OrderForm(instance=order)
-
-    # Подготовка данных для отображения
-    service_dict = {}
-    for order_service in order.orderservice_set.all():
-        service = order_service.service
-        price = order_service.price_at_order if order_service.price_at_order is not None else (
-            ServicePrice.objects.filter(
-                service=service,
-                car_model=order.client_car.model
-            ).first().price if ServicePrice.objects.filter(
-                service=service,
-                car_model=order.client_car.model
-            ).exists() else Decimal('0.00')
-        )
-        service_dict[service.id] = {
-            'id': service.id,
-            'name': service.name,
-            'price': float(price),
-            'type': service.service_type.name,
-            'typeId': service.service_type.id
-        }
-
-    selected_services = list(service_dict.values())
-    services_with_prices = [
-        {
-            'id': s['id'],
-            'type_name': s['type'],
-            'name': s['name'],
-            'price': Decimal(str(s['price']))
-        } for s in selected_services
-    ]
 
     return render(request, 'orders/order_update.html', {
         'order_form': form,
         'order': order,
         'cancel_url': reverse('order_detail', kwargs={'pk': pk}),
-        'selected_services_json': json.dumps(selected_services),
-        'services_with_prices': services_with_prices
     })
 
 
-
-
-
-
-from django.contrib import messages
-from django.shortcuts import render, redirect, get_object_or_404
-from django.urls import reverse
-from .models import Order
-
-
+@login_required
 def order_delete(request, pk):
     order = get_object_or_404(Order, pk=pk)
     if request.method == 'POST':
+        _unreserve_order_parts(order)
         order.delete()
-        messages.success(request, 'Заказ успешно удалён!')
+        messages.success(request, 'Заказ удалён.')
         return redirect('orders_list')
     return render(request, 'confirm_delete.html', {
         'object': order,
         'deleted_object_type': 'Order',
-        'cancel_url': reverse('orders_list')
+        'cancel_url': reverse('order_detail', kwargs={'pk': pk}),
     })
+
 
 from django.shortcuts import render
 
 def help_page(request):
     return render(request, 'help/help.html')
+
 
 # Кастомный декоратор для проверки прав администратора
 def staff_required(view_func):
@@ -1481,6 +1144,341 @@ def staff_required(view_func):
             return redirect('orders_list')  # Перенаправляем не-админов на список заказов
         return view_func(request, *args, **kwargs)
     return wrapper
+
+@login_required
+@staff_required
+def accounting_export(request):
+    import openpyxl
+    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from decimal import Decimal
+    import io
+    from datetime import date, datetime
+    from warehouse.models import WorkOrderService, WorkOrderPart, SupplyItem, WorkOrderServiceEmployee
+
+    today = date.today()
+    first_of_month = today.replace(day=1)
+
+    params = request.POST if request.method == 'POST' else request.GET
+    date_from_str = params.get('date_from', first_of_month.strftime('%Y-%m-%d'))
+    date_to_str   = params.get('date_to',   today.strftime('%Y-%m-%d'))
+
+    try:
+        date_from = datetime.strptime(date_from_str, '%Y-%m-%d').date()
+        date_to   = datetime.strptime(date_to_str,   '%Y-%m-%d').date()
+    except ValueError:
+        date_from = first_of_month
+        date_to   = today
+
+    if request.method != 'POST':
+        return render(request, 'admin/accounting_export.html', {
+            'date_from': date_from_str,
+            'date_to':   date_to_str,
+        })
+
+    # ── Стили ──────────────────────────────────────────────────────────────
+    BLUE     = 'FF1E40AF'
+    LBLUE    = 'FFF0F4FF'
+    WHITE    = 'FFFFFFFF'
+    TOTAL_BG = 'FFE2E8F0'
+    WARN_BG  = 'FFFFF3CD'
+
+    hdr_font  = Font(bold=True, color='FFFFFFFF', name='Calibri', size=10)
+    data_font = Font(name='Calibri', size=10)
+    bold_font = Font(bold=True, name='Calibri', size=10)
+    thin_side = Side(style='thin', color='FFCBD5E1')
+    thin_border = Border(left=thin_side, right=thin_side,
+                         top=thin_side, bottom=thin_side)
+
+    def hdr_fill():  return PatternFill('solid', fgColor=BLUE)
+    def alt_fill(i): return PatternFill('solid', fgColor=LBLUE if i % 2 == 0 else WHITE)
+    def tot_fill():  return PatternFill('solid', fgColor=TOTAL_BG)
+
+    def style_header(ws, headers, col_widths):
+        ws.append(headers)
+        for col, w in enumerate(col_widths, 1):
+            cell = ws.cell(1, col)
+            cell.fill   = hdr_fill()
+            cell.font   = hdr_font
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            cell.border = thin_border
+            ws.column_dimensions[get_column_letter(col)].width = w
+        ws.row_dimensions[1].height = 30
+        ws.freeze_panes = 'A2'
+
+    def style_row(ws, row_idx, n_cols, is_money_cols=None):
+        fill = alt_fill(row_idx)
+        for col in range(1, n_cols + 1):
+            cell = ws.cell(row_idx + 1, col)
+            cell.fill   = fill
+            cell.font   = data_font
+            cell.border = thin_border
+            cell.alignment = Alignment(vertical='center')
+            if is_money_cols and col in is_money_cols:
+                cell.number_format = '#,##0.00'
+
+    def add_total_row(ws, row_idx, n_cols, sum_cols, label_col=1, label='ИТОГО'):
+        ws.cell(row_idx + 1, label_col).value = label
+        for col in range(1, n_cols + 1):
+            cell = ws.cell(row_idx + 1, col)
+            cell.fill   = tot_fill()
+            cell.font   = bold_font
+            cell.border = thin_border
+            cell.alignment = Alignment(vertical='center')
+            if col in sum_cols:
+                cell.number_format = '#,##0.00'
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)  # убираем Sheet по умолчанию
+
+    period_label = f'{date_from.strftime("%d.%m.%Y")} – {date_to.strftime("%d.%m.%Y")}'
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Лист 1: Реализация (завершённые заказы)
+    # ══════════════════════════════════════════════════════════════════════
+    ws1 = wb.create_sheet('Реализация')
+    headers1 = [
+        'Дата завершения', '№ заказа', 'Клиент', 'Телефон клиента',
+        'Автомобиль', 'Гос. номер', 'Сумма услуг (руб.)',
+        'Сумма запчастей (руб.)', 'ИТОГО (руб.)',
+    ]
+    widths1 = [16, 10, 28, 18, 24, 14, 20, 22, 16]
+    style_header(ws1, headers1, widths1)
+
+    orders = Order.objects.filter(
+        status='Завершён',
+        completion_date__gte=date_from,
+        completion_date__lte=date_to,
+    ).order_by('completion_date')
+
+    total_svcs = Decimal('0'); total_parts_sum = Decimal('0'); total_all = Decimal('0')
+    for i, o in enumerate(orders):
+        svcs_sum  = sum(w.final_price or Decimal('0') for w in o.work_order_services.all())
+        parts_sum = sum((w.sale_price or Decimal('0')) * w.quantity for w in o.work_order_parts.all())
+        grand     = svcs_sum + parts_sum
+        total_svcs  += svcs_sum
+        total_parts_sum += parts_sum
+        total_all   += grand
+
+        client_name  = o.client_fio_static or (o.client_car.client.fio if o.client_car else '—')
+        client_phone = (o.client_car.client.phone if o.client_car else '') or ''
+        car_str      = o.car_details_static or '—'
+        plate        = (o.client_car.license_plate if o.client_car else '') or ''
+
+        ws1.append([
+            o.completion_date, o.pk, client_name, client_phone,
+            car_str, plate, float(svcs_sum), float(parts_sum), float(grand),
+        ])
+        style_row(ws1, i + 1, len(headers1), is_money_cols={7, 8, 9})
+        ws1.cell(i + 2, 1).number_format = 'DD.MM.YYYY'
+
+    total_row1 = len(orders) + 1
+    add_total_row(ws1, total_row1, len(headers1), sum_cols={7, 8, 9})
+    ws1.cell(total_row1 + 1, 7).value = float(total_svcs)
+    ws1.cell(total_row1 + 1, 8).value = float(total_parts_sum)
+    ws1.cell(total_row1 + 1, 9).value = float(total_all)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Лист 2: Услуги
+    # ══════════════════════════════════════════════════════════════════════
+    ws2 = wb.create_sheet('Услуги')
+    headers2 = [
+        'Дата заказа', 'Дата завершения', '№ заказа', 'Статус заказа',
+        'Клиент', 'Автомобиль', 'Тип услуги', 'Наименование услуги',
+        'Нормо-часов', 'Коэффициент', 'Ставка (руб./ч)', 'Стоимость (руб.)',
+    ]
+    widths2 = [14, 16, 10, 18, 26, 24, 22, 30, 12, 12, 15, 16]
+    style_header(ws2, headers2, widths2)
+
+    wos_qs = WorkOrderService.objects.select_related(
+        'work_order', 'work_order__client_car__client',
+        'service__service_type',
+    ).filter(
+        work_order__order_date__gte=date_from,
+        work_order__order_date__lte=date_to,
+    ).order_by('work_order__order_date', 'work_order__pk')
+
+    total_hours = Decimal('0'); total_svc_cost = Decimal('0')
+    for i, wos in enumerate(wos_qs):
+        o      = wos.work_order
+        cname  = o.client_fio_static or (o.client_car.client.fio if o.client_car else '—')
+        car    = o.car_details_static or '—'
+        stype  = (wos.service.service_type.name if wos.service and wos.service.service_type else '—')
+        sname  = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
+        rate   = wos.hourly_rate_snapshot or Decimal('0')
+        price  = wos.final_price or Decimal('0')
+        total_hours    += wos.hours_applied
+        total_svc_cost += price
+
+        ws2.append([
+            o.order_date, o.completion_date or '', o.pk, o.status,
+            cname, car, stype, sname,
+            float(wos.hours_applied), float(wos.complexity_factor),
+            float(rate), float(price),
+        ])
+        style_row(ws2, i + 1, len(headers2), is_money_cols={11, 12})
+        ws2.cell(i + 2, 1).number_format = 'DD.MM.YYYY'
+        if o.completion_date:
+            ws2.cell(i + 2, 2).number_format = 'DD.MM.YYYY'
+
+    tr2 = len(list(wos_qs)) + 1
+    add_total_row(ws2, tr2, len(headers2), sum_cols={9, 11, 12})
+    ws2.cell(tr2 + 1, 9).value  = float(total_hours)
+    ws2.cell(tr2 + 1, 12).value = float(total_svc_cost)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Лист 3: Запасные части
+    # ══════════════════════════════════════════════════════════════════════
+    ws3 = wb.create_sheet('Запасные части')
+    headers3 = [
+        'Дата заказа', 'Дата завершения', '№ заказа', 'Статус заказа',
+        'Клиент', 'Артикул', 'Наименование детали', 'Бренд', 'Категория',
+        'Кол-во (шт.)', 'Цена реализации (руб.)', 'Наценка (%)', 'Сумма (руб.)',
+    ]
+    widths3 = [14, 16, 10, 18, 26, 14, 30, 16, 18, 12, 22, 12, 15]
+    style_header(ws3, headers3, widths3)
+
+    wop_qs = WorkOrderPart.objects.select_related(
+        'work_order', 'work_order__client_car__client', 'part',
+    ).filter(
+        work_order__order_date__gte=date_from,
+        work_order__order_date__lte=date_to,
+    ).order_by('work_order__order_date', 'work_order__pk')
+
+    total_parts_amt = Decimal('0')
+    for i, wop in enumerate(wop_qs):
+        o      = wop.work_order
+        cname  = o.client_fio_static or (o.client_car.client.fio if o.client_car else '—')
+        price  = wop.sale_price or Decimal('0')
+        total  = price * wop.quantity
+        total_parts_amt += total
+
+        ws3.append([
+            o.order_date, o.completion_date or '', o.pk, o.status,
+            cname,
+            wop.part.article, wop.part.name,
+            wop.part.brand or '—', wop.part.category or '—',
+            wop.quantity, float(price), float(wop.markup), float(total),
+        ])
+        style_row(ws3, i + 1, len(headers3), is_money_cols={11, 13})
+        ws3.cell(i + 2, 1).number_format = 'DD.MM.YYYY'
+        if o.completion_date:
+            ws3.cell(i + 2, 2).number_format = 'DD.MM.YYYY'
+
+    tr3 = len(list(wop_qs)) + 1
+    add_total_row(ws3, tr3, len(headers3), sum_cols={10, 11, 13})
+    ws3.cell(tr3 + 1, 10).value = sum(wop.quantity for wop in wop_qs)
+    ws3.cell(tr3 + 1, 13).value = float(total_parts_amt)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Лист 4: Поступление товаров
+    # ══════════════════════════════════════════════════════════════════════
+    ws4 = wb.create_sheet('Поступление товаров')
+    headers4 = [
+        'Дата приёмки', '№ документа', 'Поставщик',
+        'Артикул', 'Наименование', 'Бренд', 'Категория',
+        'Место хранения', 'Кол-во (шт.)', 'Шт. в упаковке',
+        'Цена за упаковку (руб.)', 'Цена за шт. (руб.)', 'Сумма (руб.)',
+    ]
+    widths4 = [14, 12, 22, 14, 30, 16, 18, 16, 12, 14, 22, 20, 15]
+    style_header(ws4, headers4, widths4)
+
+    si_qs = SupplyItem.objects.select_related(
+        'document', 'document__supplier', 'part', 'location',
+    ).filter(
+        document__created_at__date__gte=date_from,
+        document__created_at__date__lte=date_to,
+    ).order_by('document__created_at', 'document__pk')
+
+    total_supply = Decimal('0')
+    for i, si in enumerate(si_qs):
+        doc      = si.document
+        supplier = doc.supplier.name if doc.supplier else '—'
+        loc      = f'{si.location.rack}-{si.location.shelf}-{si.location.cell}'
+        cpu      = si.price_per_unit
+        row_sum  = cpu * si.quantity
+        total_supply += row_sum
+
+        ws4.append([
+            doc.created_at.date(), doc.pk, supplier,
+            si.part.article, si.part.name,
+            si.part.brand or '—', si.part.category or '—',
+            loc, si.quantity, si.pkg_qty,
+            float(si.purchase_price), float(cpu), float(row_sum),
+        ])
+        style_row(ws4, i + 1, len(headers4), is_money_cols={11, 12, 13})
+        ws4.cell(i + 2, 1).number_format = 'DD.MM.YYYY'
+
+    tr4 = len(list(si_qs)) + 1
+    add_total_row(ws4, tr4, len(headers4), sum_cols={9, 11, 12, 13})
+    ws4.cell(tr4 + 1, 9).value  = sum(si.quantity for si in si_qs)
+    ws4.cell(tr4 + 1, 13).value = float(total_supply)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Лист 5: Фонд оплаты труда
+    # ══════════════════════════════════════════════════════════════════════
+    ws5 = wb.create_sheet('Фонд оплаты труда')
+    headers5 = [
+        'Дата завершения', '№ заказа', 'Клиент', 'Автомобиль',
+        'Сотрудник', 'Должность', 'Услуга',
+        'Нормо-часов', 'Коэффициент', 'Ставка (руб./ч)', 'Заработок (руб.)',
+    ]
+    widths5 = [16, 10, 26, 24, 28, 18, 30, 12, 12, 15, 16]
+    style_header(ws5, headers5, widths5)
+
+    emp_qs = WorkOrderServiceEmployee.objects.select_related(
+        'employee',
+        'work_order_service__work_order',
+        'work_order_service__work_order__client_car__client',
+        'work_order_service',
+    ).filter(
+        work_order_service__work_order__status='Завершён',
+        work_order_service__work_order__completion_date__gte=date_from,
+        work_order_service__work_order__completion_date__lte=date_to,
+    ).order_by(
+        'work_order_service__work_order__completion_date',
+        'work_order_service__work_order__pk',
+    )
+
+    total_fot = Decimal('0')
+    for i, asgn in enumerate(emp_qs):
+        wos   = asgn.work_order_service
+        o     = wos.work_order
+        emp   = asgn.employee
+        rate  = wos.hourly_rate_snapshot or Decimal('0')
+        earn  = (wos.hours_applied * rate * wos.complexity_factor).quantize(Decimal('0.01'))
+        total_fot += earn
+        cname = o.client_fio_static or (o.client_car.client.fio if o.client_car else '—')
+        car   = o.car_details_static or '—'
+        sname = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
+
+        ws5.append([
+            o.completion_date, o.pk, cname, car,
+            emp.name, emp.position or '—', sname,
+            float(wos.hours_applied), float(wos.complexity_factor),
+            float(rate), float(earn),
+        ])
+        style_row(ws5, i + 1, len(headers5), is_money_cols={10, 11})
+        ws5.cell(i + 2, 1).number_format = 'DD.MM.YYYY'
+
+    tr5 = len(list(emp_qs)) + 1
+    add_total_row(ws5, tr5, len(headers5), sum_cols={8, 10, 11})
+    ws5.cell(tr5 + 1, 8).value  = float(sum(asgn.work_order_service.hours_applied for asgn in emp_qs))
+    ws5.cell(tr5 + 1, 11).value = float(total_fot)
+
+    # ── Генерация файла ──────────────────────────────────────────────────
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f'accounting_{date_from.strftime("%Y%m%d")}_{date_to.strftime("%Y%m%d")}.xlsx'
+    resp = HttpResponse(
+        buf.read(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
 
 @login_required  # Требует авторизацию
 @staff_required
@@ -1493,15 +1491,6 @@ def export_db(request):
     response['Content-Disposition'] = 'attachment; filename="full_db_export.json"'
     return response
 
-
-from django.http import HttpResponse
-from django.contrib import messages
-from django.db import transaction
-from django.core.management import call_command
-from django.apps import apps
-import tempfile
-import os
-from io import StringIO
 
 @login_required
 @staff_required
@@ -1557,3 +1546,459 @@ def import_db(request):
                 messages.error(request, f'Ошибка при импорте: {str(e)}')
             return redirect('orders_list')
     return render(request, 'import_db.html', {'cancel_url': request.META.get('HTTP_REFERER', '/')})
+
+
+
+@login_required
+def order_mechanic_pdf(request, pk):
+    """Generate a detailed PDF work order for the mechanic."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle,
+        Paragraph, Spacer, HRFlowable,
+    )
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    import io, os
+    from warehouse.models import WorkOrderService, WorkOrderPart
+
+    order = get_object_or_404(Order, pk=pk)
+
+    # Register Cyrillic font
+    _fonts = [
+        '/Library/Fonts/Arial Unicode.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    ]
+    fn = 'Helvetica'
+    for _fp in _fonts:
+        if os.path.exists(_fp):
+            try:
+                pdfmetrics.registerFont(TTFont('_MechFont', _fp))
+                fn = '_MechFont'
+            except Exception:
+                pass
+            break
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+
+    BLUE_HDR  = colors.HexColor('#1e40af')
+    STRIPE    = colors.HexColor('#f0f4ff')
+    GREY_RULE = colors.HexColor('#cbd5e1')
+
+    H1   = ParagraphStyle('H1',   fontName=fn, fontSize=14, spaceAfter=4,  leading=18, textColor=colors.HexColor('#1e3a5f'))
+    H2   = ParagraphStyle('H2',   fontName=fn, fontSize=11, spaceAfter=3,  leading=14, textColor=BLUE_HDR)
+    NR   = ParagraphStyle('NR',   fontName=fn, fontSize=9,  spaceAfter=2,  leading=12)
+    SM   = ParagraphStyle('SM',   fontName=fn, fontSize=8,  spaceAfter=1,  leading=11, textColor=colors.HexColor('#6b7280'))
+    # Cell styles — Paragraph inside a table cell wraps text automatically
+    CH   = ParagraphStyle('CH',   fontName=fn, fontSize=8,  leading=10, textColor=colors.white)
+    CB   = ParagraphStyle('CB',   fontName=fn, fontSize=8,  leading=10)
+
+    def p(text, style=None):
+        """Wrap a value in Paragraph so it word-wraps inside table cells."""
+        return Paragraph(str(text) if text is not None else '—', style or CB)
+
+    def ph(text):
+        """Header cell — white text."""
+        return Paragraph(str(text), CH)
+
+    def tbl(data, col_widths, header_rows=1):
+        t = Table(data, colWidths=col_widths, repeatRows=header_rows)
+        t.setStyle(TableStyle([
+            ('BACKGROUND',    (0, 0), (-1, header_rows - 1), BLUE_HDR),
+            ('GRID',          (0, 0), (-1, -1), 0.3, GREY_RULE),
+            ('ROWBACKGROUNDS',(0, header_rows), (-1, -1), [colors.white, STRIPE]),
+            ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING',    (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 5),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 4),
+        ]))
+        return t
+
+    story = []
+
+    # ── Title ────────────────────────────────────
+    story.append(Paragraph(f'Заказ-наряд №{order.id}', H1))
+    story.append(Paragraph(f'Дата: {order.order_date.strftime("%d.%m.%Y")}   |   Статус: {order.status}', SM))
+    story.append(HRFlowable(width='100%', thickness=1, color=BLUE_HDR, spaceAfter=8))
+
+    # ── Client & Car ─────────────────────────────
+    story.append(Paragraph('Клиент и автомобиль', H2))
+    client_name = order.client_fio_static or (order.client_car.client.fio if order.client_car else '—')
+    client_phone = ''
+    if order.client_car and order.client_car.client.phone:
+        client_phone = order.client_car.client.phone
+
+    car_str = order.car_details_static or '—'
+    car_extra = ''
+    if order.client_car:
+        cc = order.client_car
+        parts_extra = []
+        if cc.vin:   parts_extra.append(f'VIN: {cc.vin}')
+        if cc.year:  parts_extra.append(f'Год: {cc.year}')
+        if cc.color: parts_extra.append(f'Цвет: {cc.color}')
+        car_extra = '   '.join(parts_extra)
+
+    LBL = ParagraphStyle('LBL', fontName=fn, fontSize=8, leading=10, textColor=colors.HexColor('#374151'))
+    info_data = [[ph('Параметр'), ph('Значение')]]
+    info_data.append([p('Клиент', LBL), p(client_name)])
+    if client_phone:
+        info_data.append([p('Телефон', LBL), p(client_phone)])
+    info_data.append([p('Автомобиль', LBL), p(car_str)])
+    if car_extra:
+        info_data.append([p('Доп. данные', LBL), p(car_extra)])
+    if order.comment:
+        info_data.append([p('Описание', LBL), p(order.comment)])
+    story.append(tbl(info_data, [3.5*cm, 13.7*cm]))
+    story.append(Spacer(1, 0.4*cm))
+
+    # ── Services ─────────────────────────────────
+    wos_list = list(
+        order.work_order_services
+        .prefetch_related('assignments__employee')
+        .all()
+    )
+    if wos_list:
+        story.append(Paragraph('Услуги', H2))
+        # Widths: Услуга(4.4) Часы(1.3) Коэф.(1.1) Нормо-час(2.0) Стоимость(2.3) Исполнители(6.1) = 17.2
+        svc_data = [[ph('Услуга'), ph('Часы'), ph('Коэф.'), ph('Нормо-час'), ph('Стоимость'), ph('Исполнители')]]
+        for wos in wos_list:
+            name  = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
+            rate  = str(wos.hourly_rate_snapshot or '—')
+            emps  = ', '.join(a.employee.name for a in wos.assignments.all()) or '—'
+            price = f'{wos.final_price:.2f} руб.' if wos.final_price else '—'
+            svc_data.append([
+                p(name), p(wos.hours_applied), p(wos.complexity_factor),
+                p(rate), p(price), p(emps),
+            ])
+        story.append(tbl(svc_data, [4.4*cm, 1.3*cm, 1.1*cm, 2.0*cm, 2.3*cm, 6.1*cm]))
+        story.append(Spacer(1, 0.4*cm))
+
+    # ── Parts ────────────────────────────────────
+    wop_list = list(
+        order.work_order_parts
+        .select_related('part', 'work_order_service')
+        .prefetch_related('part__stock_entries__location')
+        .all()
+    )
+    if wop_list:
+        story.append(Paragraph('Запчасти', H2))
+        # Widths: Артикул(2.1) Название(5.5) Кол-во(1.3) Место(2.8) Статус(2.2) Услуга(3.3) = 17.2
+        part_data = [[ph('Артикул'), ph('Название'), ph('Кол-во'), ph('Место хранения'), ph('Статус'), ph('Услуга')]]
+        for wop in wop_list:
+            entry = wop.part.stock_entries.first()
+            loc   = entry.location.label if entry else '—'
+            svc_name = '—'
+            if wop.work_order_service:
+                svc_name = (wop.work_order_service.service_name_snapshot or
+                            (wop.work_order_service.service.name if wop.work_order_service.service else '—'))
+            part_data.append([
+                p(wop.part.article),
+                p(wop.part.name),
+                p(wop.quantity),
+                p(loc),
+                p(wop.get_status_display()),
+                p(svc_name),
+            ])
+        story.append(tbl(part_data, [2.1*cm, 5.5*cm, 1.3*cm, 2.8*cm, 2.2*cm, 3.3*cm]))
+        story.append(Spacer(1, 0.4*cm))
+
+    # ── Total ────────────────────────────────────
+    from decimal import Decimal
+    svc_total  = sum(w.final_price or Decimal('0') for w in wos_list)
+    part_total = sum((w.sale_price or Decimal('0')) * w.quantity for w in wop_list)
+    story.append(HRFlowable(width='100%', thickness=0.5, color=GREY_RULE, spaceAfter=4))
+    story.append(Paragraph(
+        f'Итого услуги: {svc_total:.2f} руб.   |   Запчасти: {part_total:.2f} руб.   |   '
+        f'Всего: {svc_total + part_total:.2f} руб.', NR
+    ))
+
+    doc.build(story)
+    buf.seek(0)
+    resp = HttpResponse(buf, content_type='application/pdf')
+    resp['Content-Disposition'] = f'inline; filename="order_{order.pk}_mechanic.pdf"'
+    return resp
+
+
+def _make_customer_pdf(order, is_final: bool):
+    """Shared builder for customer-facing work order PDFs."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle,
+        Paragraph, Spacer, HRFlowable,
+    )
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from decimal import Decimal
+    import io, os
+    from warehouse.models import WorkOrderService, WorkOrderPart
+
+    _fonts = [
+        '/Library/Fonts/Arial Unicode.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    ]
+    fn = 'Helvetica'
+    for _fp in _fonts:
+        if os.path.exists(_fp):
+            try:
+                pdfmetrics.registerFont(TTFont('_CustFont', _fp))
+                fn = '_CustFont'
+            except Exception:
+                pass
+            break
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+
+    BLUE     = colors.HexColor('#1e40af')
+    GREY     = colors.HexColor('#cbd5e1')
+    STRIPE   = colors.HexColor('#f0f4ff')
+    DARKTEXT = colors.HexColor('#1e293b')
+
+    H1  = ParagraphStyle('H1',  fontName=fn, fontSize=15, leading=20, textColor=BLUE, spaceAfter=2)
+    SUB = ParagraphStyle('SUB', fontName=fn, fontSize=9,  leading=12, textColor=colors.HexColor('#64748b'), spaceAfter=6)
+    H2  = ParagraphStyle('H2',  fontName=fn, fontSize=10, leading=13, textColor=BLUE, spaceBefore=8, spaceAfter=3)
+    NR  = ParagraphStyle('NR',  fontName=fn, fontSize=9,  leading=12, textColor=DARKTEXT)
+    SIG = ParagraphStyle('SIG', fontName=fn, fontSize=9,  leading=14, textColor=DARKTEXT)
+    PRE = ParagraphStyle('PRE', fontName=fn, fontSize=8,  leading=11,
+                         textColor=colors.HexColor('#b45309'),
+                         backColor=colors.HexColor('#fef9c3'),
+                         spaceAfter=8, leftIndent=6, rightIndent=6)
+
+    def ch(text):
+        return Paragraph(str(text), ParagraphStyle('ch', fontName=fn, fontSize=8, leading=10,
+                                                    textColor=colors.white))
+    def cb(text, bold=False):
+        st = ParagraphStyle('cb', fontName=fn, fontSize=8, leading=10)
+        if bold:
+            st = ParagraphStyle('cbb', fontName=fn, fontSize=8, leading=10,
+                                textColor=DARKTEXT)
+        return Paragraph(str(text) if text is not None else '—', st)
+
+    def make_table(data, col_widths):
+        t = Table(data, colWidths=col_widths, repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND',    (0, 0), (-1, 0), BLUE),
+            ('GRID',          (0, 0), (-1, -1), 0.3, GREY),
+            ('ROWBACKGROUNDS',(0, 1), (-1, -1), [colors.white, STRIPE]),
+            ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING',    (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 5),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 4),
+        ]))
+        return t
+
+    story = []
+
+    # ── Header ──────────────────────────────────
+    title = 'Заказ-наряд' if is_final else 'Предварительный заказ-наряд'
+    story.append(Paragraph(f'{title} №{order.id}', H1))
+
+    date_line = f'Дата оформления: {order.order_date.strftime("%d.%m.%Y")}'
+    if is_final and order.completion_date:
+        date_line += f'   |   Дата завершения: {order.completion_date.strftime("%d.%m.%Y")}'
+    story.append(Paragraph(date_line, SUB))
+
+    if not is_final:
+        story.append(Paragraph(
+            'Предварительный документ — стоимость работ и запчастей может измениться.',
+            PRE
+        ))
+
+    story.append(HRFlowable(width='100%', thickness=1, color=BLUE, spaceAfter=6))
+
+    # ── Client / Car info ────────────────────────
+    client_name = order.client_fio_static or (order.client_car.client.fio if order.client_car else '—')
+    client_phone = (order.client_car.client.phone if order.client_car else '') or ''
+    car_str = order.car_details_static or '—'
+    vin_str = ''
+    if order.client_car and order.client_car.vin:
+        vin_str = order.client_car.vin
+
+    LBL = ParagraphStyle('LBL', fontName=fn, fontSize=8, leading=10,
+                          textColor=colors.HexColor('#475569'))
+    VAL = ParagraphStyle('VAL', fontName=fn, fontSize=8, leading=10, textColor=DARKTEXT)
+
+    info_rows = [[Paragraph('Параметр', ParagraphStyle('lh', fontName=fn, fontSize=8, leading=10, textColor=colors.white)),
+                  Paragraph('Значение',  ParagraphStyle('lh', fontName=fn, fontSize=8, leading=10, textColor=colors.white))]]
+    def irow(label, val):
+        return [Paragraph(label, LBL), Paragraph(str(val) if val else '—', VAL)]
+
+    info_rows.append(irow('Клиент', client_name))
+    if client_phone:
+        info_rows.append(irow('Телефон', client_phone))
+    info_rows.append(irow('Автомобиль', car_str))
+    if vin_str:
+        info_rows.append(irow('VIN', vin_str))
+    if order.comment:
+        info_rows.append(irow('Описание', order.comment))
+
+    story.append(make_table(info_rows, [3.5*cm, 13.7*cm]))
+    story.append(Spacer(1, 0.3*cm))
+
+    # ── Services ────────────────────────────────
+    wos_list = list(order.work_order_services.all())
+    wop_list = list(
+        order.work_order_parts
+        .select_related('part')
+        .all()
+    )
+
+    if wos_list:
+        story.append(Paragraph('Работы', H2))
+        # Услуга | Часы | Коэф. | Стоимость
+        svc_rows = [[ch('Наименование работы'), ch('Часы'), ch('Коэф.'), ch('Стоимость, руб.')]]
+        for wos in wos_list:
+            name  = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
+            price = f'{wos.final_price:.2f}' if wos.final_price else '—'
+            svc_rows.append([cb(name), cb(wos.hours_applied), cb(wos.complexity_factor), cb(price)])
+        story.append(make_table(svc_rows, [9.7*cm, 2.0*cm, 2.0*cm, 3.5*cm]))
+        story.append(Spacer(1, 0.3*cm))
+
+    # ── Parts ────────────────────────────────────
+    if wop_list:
+        story.append(Paragraph('Запчасти и материалы', H2))
+        # Артикул | Наименование | Кол-во | Цена | Сумма
+        part_rows = [[ch('Артикул'), ch('Наименование'), ch('Кол-во'), ch('Цена, руб.'), ch('Сумма, руб.')]]
+        for wop in wop_list:
+            unit_price = f'{wop.sale_price:.2f}' if wop.sale_price else '—'
+            total      = f'{wop.sale_price * wop.quantity:.2f}' if wop.sale_price else '—'
+            part_rows.append([
+                cb(wop.part.article),
+                cb(wop.part.name),
+                cb(wop.quantity),
+                cb(unit_price),
+                cb(total),
+            ])
+        story.append(make_table(part_rows, [2.2*cm, 7.5*cm, 1.5*cm, 2.5*cm, 3.5*cm]))
+        story.append(Spacer(1, 0.3*cm))
+
+    # ── Totals ───────────────────────────────────
+    svc_total  = sum(w.final_price or Decimal('0') for w in wos_list)
+    part_total = sum((w.sale_price or Decimal('0')) * w.quantity for w in wop_list)
+    grand      = svc_total + part_total
+
+    total_rows = [
+        [Paragraph('', NR), Paragraph('Работы:', NR), Paragraph(f'{svc_total:.2f} руб.', NR)],
+        [Paragraph('', NR), Paragraph('Запчасти:', NR), Paragraph(f'{part_total:.2f} руб.', NR)],
+    ]
+    # Bold total row
+    BOLD_NR = ParagraphStyle('BNR', fontName=fn, fontSize=10, leading=13, textColor=DARKTEXT)
+    total_rows.append([
+        Paragraph('', BOLD_NR),
+        Paragraph('ИТОГО:', BOLD_NR),
+        Paragraph(f'{grand:.2f} руб.', BOLD_NR),
+    ])
+    tot_tbl = Table(total_rows, colWidths=[9.7*cm, 4.0*cm, 3.5*cm])
+    tot_tbl.setStyle(TableStyle([
+        ('ALIGN',       (1, 0), (-1, -1), 'RIGHT'),
+        ('LINEABOVE',   (0, 2), (-1, 2), 0.5, GREY),
+        ('TOPPADDING',  (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING',(0, 0), (-1, -1), 3),
+        ('FONTNAME',    (0, 0), (-1, -1), fn),
+        ('FONTSIZE',    (0, 0), (-1, 1), 8),
+        ('FONTSIZE',    (0, 2), (-1, 2), 10),
+    ]))
+    story.append(tot_tbl)
+
+    # ── Signatures (final only) ──────────────────
+    if is_final:
+        story.append(Spacer(1, 0.8*cm))
+        story.append(HRFlowable(width='100%', thickness=0.5, color=GREY, spaceAfter=6))
+
+        HINT = ParagraphStyle('hint', fontName=fn, fontSize=7,
+                              leading=9, textColor=colors.HexColor('#9ca3af'))
+        BLANK = [Paragraph('', SIG)] * 4
+        date_str = (order.completion_date.strftime('%d.%m.%Y')
+                    if order.completion_date else '________________')
+
+        # Collect unique employees across all work order services
+        seen_emp_ids = set()
+        unique_employees = []
+        for wos in order.work_order_services.prefetch_related('assignments__employee').all():
+            for asgn in wos.assignments.all():
+                emp = asgn.employee
+                if emp.pk not in seen_emp_ids:
+                    seen_emp_ids.add(emp.pk)
+                    unique_employees.append(emp)
+        if not unique_employees:
+            unique_employees = [None]  # one blank row
+
+        sig_data = []
+        for emp in unique_employees:
+            fio_fill = emp.name if emp else '______________________'
+            sig_data.append([
+                Paragraph('Работу выполнил:', SIG),
+                Paragraph('_______________________', SIG),
+                Paragraph(f'/ {fio_fill} /', SIG),
+                Paragraph(f'Дата: {date_str}', SIG),
+            ])
+            sig_data.append([
+                Paragraph('', SIG),
+                Paragraph('(подпись)', HINT),
+                Paragraph('(ФИО)', HINT),
+                Paragraph('', SIG),
+            ])
+            sig_data.append(BLANK)
+
+        sig_data += [
+            [
+                Paragraph('Работу принял:', SIG),
+                Paragraph('_______________________', SIG),
+                Paragraph('/ ______________________ /', SIG),
+                Paragraph('Дата: ________________', SIG),
+            ],
+            [
+                Paragraph('', SIG),
+                Paragraph('(подпись)', HINT),
+                Paragraph('(ФИО)', HINT),
+                Paragraph('', SIG),
+            ],
+        ]
+
+        sig_tbl = Table(sig_data, colWidths=[3.5*cm, 4.5*cm, 5.0*cm, 4.2*cm])
+        sig_tbl.setStyle(TableStyle([
+            ('FONTNAME',    (0,0), (-1,-1), fn),
+            ('FONTSIZE',    (0,0), (-1,-1), 9),
+            ('VALIGN',      (0,0), (-1,-1), 'BOTTOM'),
+            ('TOPPADDING',  (0,0), (-1,-1), 2),
+            ('BOTTOMPADDING',(0,0), (-1,-1), 2),
+        ]))
+        story.append(sig_tbl)
+        story.append(Spacer(1, 0.4*cm))
+        story.append(Paragraph(
+            'Подписывая данный документ, клиент подтверждает, что выполненные работы '
+            'приняты в полном объёме, претензий к качеству не имеется.',
+            ParagraphStyle('note', fontName=fn, fontSize=7, leading=10,
+                           textColor=colors.HexColor('#94a3b8'))
+        ))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf
+
+
+@login_required
+def order_customer_pdf(request, pk):
+    """Customer-facing work order PDF — preliminary or final based on order status."""
+    order = get_object_or_404(Order, pk=pk)
+    is_final = order.status in ('Готов', 'Завершён')
+    buf = _make_customer_pdf(order, is_final=is_final)
+    prefix = 'final' if is_final else 'preview'
+    resp = HttpResponse(buf, content_type='application/pdf')
+    resp['Content-Disposition'] = f'inline; filename="order_{order.pk}_{prefix}.pdf"'
+    return resp

@@ -3,7 +3,6 @@
 {% block content %}
 {% include "warehouse/_part_search_modal.html" %}
 {% include "warehouse/_supplier_search_modal.html" %}
-{% include "warehouse/_workorder_search_modal.html" %}
 
 <h1>Создать заказ поставщику</h1>
 <form method="post" id="po-form">
@@ -22,18 +21,6 @@
         </div>
         {% elif field.html_name == 'supplier' %}
         {{ field }}
-        {% elif field.html_name == 'work_order_display' %}
-        <div>
-            <label>{{ field.label }}:</label>
-            <div style="display:flex;gap:8px;align-items:center;">
-                {{ field }}
-                <button type="button" class="btn" onclick="openWorkOrderModal('id_work_order', 'wo-display-input')">Выбрать</button>
-                <button type="button" class="btn btn-secondary" onclick="clearWorkOrder()">Очистить</button>
-            </div>
-            {% if form.work_order.errors %}<p class="error">{{ form.work_order.errors|join:", " }}</p>{% endif %}
-        </div>
-        {% elif field.html_name == 'work_order' %}
-        {{ field }}
         {% else %}
         <div>
             <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
@@ -50,7 +37,7 @@
             <tr>
                 <th>Деталь</th>
                 <th>Количество</th>
-                <th>Удалить</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -69,7 +56,10 @@
                     {% if item_form.part.errors %}<p class="error">{{ item_form.part.errors|join:", " }}</p>{% endif %}
                 </td>
                 <td>{{ item_form.quantity }}</td>
-                <td>{{ item_form.DELETE }}</td>
+                <td>
+                    <div style="display:none;">{{ item_form.DELETE }}</div>
+                    <button type="button" class="btn btn-danger" onclick="removePORow(this)">Удалить</button>
+                </td>
                 {{ item_form.id }}
                 {% endwith %}
             </tr>
@@ -90,9 +80,11 @@ function clearSupplier() {
     document.getElementById('id_supplier').value = '';
     document.getElementById('supplier-display-input').value = '';
 }
-function clearWorkOrder() {
-    document.getElementById('id_work_order').value = '';
-    document.getElementById('wo-display-input').value = '';
+function removePORow(btn) {
+    var row = btn.closest('tr');
+    var chk = row.querySelector('input[type=checkbox]');
+    if (chk) chk.checked = true;
+    row.style.display = 'none';
 }
 
 (function() {

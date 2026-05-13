@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Сводка заработка сотрудников{% endblock %}
+{% block content %}
+<h1>Сводка заработка сотрудников</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>ФИО</th>
+            <th>Должность</th>
+            <th>Всего часов</th>
+            <th>Всего заработано</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in data %}
+        <tr>
+            <td>{{ item.employee.name }}</td>
+            <td>{{ item.employee.position|default:"—" }}</td>
+            <td>{{ item.total_hours|floatformat:2 }}</td>
+            <td>{{ item.total_earnings|floatformat:2 }} руб.</td>
+            <td><a href="{% url 'employee_report' item.employee.pk %}" class="btn btn-sm">Подробнее</a></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" style="color:#888;">Нет активных сотрудников.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div style="margin-top:16px;">
+    <a href="{% url 'employees_list' %}" class="btn">← К списку</a>
+</div>
+{% endblock %}

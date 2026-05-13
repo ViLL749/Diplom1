@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Бухгалтерский экспорт{% endblock %}
+{% block content %}
+
+<h1>Бухгалтерский экспорт в Excel</h1>
+
+<form method="post" style="max-width:520px;margin-top:20px;">
+    {% csrf_token %}
+    <input type="hidden" name="date_from" id="h_date_from" value="{{ date_from }}">
+    <input type="hidden" name="date_to"   id="h_date_to"   value="{{ date_to }}">
+
+    <div class="ord-info-card" style="margin-bottom:20px;">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
+            <div>
+                <label style="display:block;font-weight:600;margin-bottom:4px;">Период с</label>
+                <input type="date" id="date_from" value="{{ date_from }}"
+                       style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;">
+            </div>
+            <div>
+                <label style="display:block;font-weight:600;margin-bottom:4px;">по</label>
+                <input type="date" id="date_to" value="{{ date_to }}"
+                       style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;">
+            </div>
+        </div>
+
+        <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-secondary" onclick="setPreset('month')">Текущий месяц</button>
+            <button type="button" class="btn btn-secondary" onclick="setPreset('prev_month')">Прошлый месяц</button>
+            <button type="button" class="btn btn-secondary" onclick="setPreset('quarter')">Текущий квартал</button>
+            <button type="button" class="btn btn-secondary" onclick="setPreset('year')">Текущий год</button>
+        </div>
+    </div>
+
+    <button type="submit" class="btn" style="gap:8px;display:inline-flex;align-items:center;">
+        <i class="fas fa-file-excel"></i> Скачать Excel
+    </button>
+</form>
+
+<div style="margin-top:32px;max-width:720px;">
+    <h2 style="font-size:15px;margin-bottom:12px;">Состав выгрузки</h2>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+            <tr style="background:#1e40af;color:#fff;">
+                <th style="padding:8px 12px;text-align:left;">Лист</th>
+                <th style="padding:8px 12px;text-align:left;">Содержимое</th>
+                <th style="padding:8px 12px;text-align:left;">Фильтр периода</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr style="background:#f0f4ff;">
+                <td style="padding:8px 12px;font-weight:600;">Реализация</td>
+                <td style="padding:8px 12px;">Завершённые заказы: клиент, автомобиль, сумма услуг, запчастей, итого</td>
+                <td style="padding:8px 12px;">Дата завершения заказа</td>
+            </tr>
+            <tr>
+                <td style="padding:8px 12px;font-weight:600;">Услуги</td>
+                <td style="padding:8px 12px;">Все оказанные услуги: наименование, нормо-часы, коэффициент, ставка, стоимость</td>
+                <td style="padding:8px 12px;">Дата создания заказа</td>
+            </tr>
+            <tr style="background:#f0f4ff;">
+                <td style="padding:8px 12px;font-weight:600;">Запасные части</td>
+                <td style="padding:8px 12px;">Проданные запчасти: артикул, наименование, кол-во, цена реализации, наценка, сумма</td>
+                <td style="padding:8px 12px;">Дата создания заказа</td>
+            </tr>
+            <tr>
+                <td style="padding:8px 12px;font-weight:600;">Поступление товаров</td>
+                <td style="padding:8px 12px;">Приходные документы: поставщик, деталь, кол-во, цена закупки, сумма поступления</td>
+                <td style="padding:8px 12px;">Дата приёмки</td>
+            </tr>
+            <tr style="background:#f0f4ff;">
+                <td style="padding:8px 12px;font-weight:600;">Фонд оплаты труда</td>
+                <td style="padding:8px 12px;">Начисления сотрудникам по завершённым заказам: ФИО, должность, услуга, заработок</td>
+                <td style="padding:8px 12px;">Дата завершения заказа</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+function setPreset(type) {
+    const today = new Date();
+    let from, to;
+    if (type === 'month') {
+        from = new Date(today.getFullYear(), today.getMonth(), 1);
+        to   = today;
+    } else if (type === 'prev_month') {
+        from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        to   = new Date(today.getFullYear(), today.getMonth(), 0);
+    } else if (type === 'quarter') {
+        const q = Math.floor(today.getMonth() / 3);
+        from = new Date(today.getFullYear(), q * 3, 1);
+        to   = today;
+    } else if (type === 'year') {
+        from = new Date(today.getFullYear(), 0, 1);
+        to   = today;
+    }
+    const fmt = d => d.toISOString().split('T')[0];
+    document.getElementById('date_from').value = fmt(from);
+    document.getElementById('date_to').value   = fmt(to);
+}
+
+document.querySelector('form').addEventListener('submit', function() {
+    document.getElementById('h_date_from').value = document.getElementById('date_from').value;
+    document.getElementById('h_date_to').value   = document.getElementById('date_to').value;
+});
+</script>
+{% endblock %}

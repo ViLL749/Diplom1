@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Добавить сотрудника{% endblock %}
+{% block content %}
+<h1>Добавить сотрудника</h1>
+<form method="post">
+    {% csrf_token %}
+    {% for field in form %}
+    <div style="margin-bottom:12px;">
+        <label for="{{ field.id_for_label }}" style="display:block;margin-bottom:4px;font-weight:500;">{{ field.label }}:</label>
+        {{ field }}
+        {% if field.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ field.errors|join:", " }}</p>{% endif %}
+    </div>
+    {% endfor %}
+    <div style="margin-top:16px;display:flex;gap:8px;">
+        <button type="submit" class="btn">Сохранить</button>
+        <a href="{% url 'employees_list' %}" class="btn btn-danger">Отмена</a>
+    </div>
+</form>
+{% endblock %}

@@ -32,14 +32,13 @@ class CarMake(models.Model):
         return self.name
 
     def delete(self, *args, **kwargs):
-        from .models import CarModel, ClientCar, Order, ServicePrice
+        from .models import CarModel, ClientCar, Order
         car_models = CarModel.objects.filter(make=self)
         client_cars = ClientCar.objects.filter(make=self)
         orders = Order.objects.filter(client_car__in=client_cars)
         orders.filter(status__in=['Первичный осмотр', 'Диагностика', 'В работе', 'Готов']).delete()
         orders.filter(status='Завершён').update(client_car=None)
         client_cars.delete()
-        ServicePrice.objects.filter(car_make=self).delete()
         car_models.delete()
         super().delete(*args, **kwargs)
 
@@ -56,13 +55,12 @@ class CarModel(models.Model):
         return f"{self.make.name} {self.name}"
 
     def delete(self, *args, **kwargs):
-        from .models import ClientCar, Order, ServicePrice
+        from .models import ClientCar, Order
         client_cars = ClientCar.objects.filter(model=self)
         orders = Order.objects.filter(client_car__in=client_cars)
         orders.filter(status__in=['Первичный осмотр', 'Диагностика', 'В работе', 'Готов']).delete()
         orders.filter(status='Завершён').update(client_car=None)
         client_cars.delete()
-        ServicePrice.objects.filter(car_model=self).delete()
         super().delete(*args, **kwargs)
 
     class Meta:
@@ -125,22 +123,6 @@ class Service(models.Model):
         verbose_name_plural = "Услуги"
 
 
-# Модель цен на услуги для конкретных моделей автомобилей
-class ServicePrice(models.Model):
-    car_make = models.ForeignKey(CarMake, on_delete=models.CASCADE, verbose_name="Марка автомобиля")
-    car_model = models.ForeignKey(CarModel, on_delete=models.CASCADE, verbose_name="Модель автомобиля")
-    service = models.ForeignKey(Service, on_delete=models.CASCADE, verbose_name="Услуга")
-    price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Цена", null=True, blank=True)
-
-    def __str__(self):
-        return f"{self.car_make.name} {self.car_model.name} - {self.service.name} - {self.price or 'Не установлена'}"
-
-    class Meta:
-        verbose_name = "Цена услуги"
-        verbose_name_plural = "Цены услуг"
-        unique_together = ('car_model', 'service')
-
-
 # Модель заказа
 
 
@@ -151,6 +133,7 @@ class Order(models.Model):
         ('В работе', 'В работе'),
         ('Готов', 'Готов'),
         ('Завершён', 'Завершён'),
+        ('Отменён', 'Отменён'),
     ]
 
     client_car = models.ForeignKey(
@@ -194,32 +177,3 @@ class Order(models.Model):
         ordering = ['-id']
 
 
-class OrderService(models.Model):
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, verbose_name="Заказ")
-    service = models.ForeignKey(Service, on_delete=models.CASCADE, verbose_name="Услуга")
-    price_at_order = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        verbose_name="Цена на момент заказа",
-        null=True,
-        blank=True
-    )
-
-    def __str__(self):
-        return f"{self.service.name} для заказа {self.order.id}"
-
-    class Meta:
-        verbose_name = "Услуга в заказе"
-        verbose_name_plural = "Услуги в заказах"
-
-class CustomService(models.Model):
-    order = models.ForeignKey('Order', on_delete=models.CASCADE, verbose_name="Заказ", related_name="custom_services")
-    name = models.CharField(max_length=255, verbose_name="Название услуги")
-    price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Цена")
-
-    def __str__(self):
-        return f"{self.name} ({self.price})"
-
-    class Meta:
-        verbose_name = "Кастомная услуга"
-        verbose_name_plural = "Кастомные услуги"

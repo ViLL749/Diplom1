@@ -21,12 +21,31 @@
     <div>
         <label for="{{ form.quantity.id_for_label }}">{{ form.quantity.label }}:</label>
         {{ form.quantity }}
+        <span id="part-available-hint" style="font-size:0.88em;margin-left:8px;"></span>
     </div>
     <div>
         <label for="{{ form.markup.id_for_label }}">{{ form.markup.label }}:</label>
         {{ form.markup }}
     </div>
-    <button type="submit" class="btn">Добавить и зарезервировать</button>
-    <a href="{% url 'order_detail' order.id %}" class="btn btn-danger">Отмена</a>
+    {% if wos_list %}
+    <div>
+        <label>Привязать к услуге (необязательно):</label>
+        <select name="work_order_service" style="width:320px;">
+            <option value="">— не привязывать —</option>
+            {% for wos in wos_list %}
+            <option value="{{ wos.id }}">{{ wos.service.name }} ({{ wos.hours_applied }} ч.)</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+    <div style="margin-top:12px;">
+        <button type="submit" class="btn">Добавить и зарезервировать</button>
+        <a href="{% url 'order_detail' order.id %}" class="btn btn-danger">Отмена</a>
+    </div>
 </form>
+
+<style>
+.error { color: #dc3545; font-size: 0.9em; }
+div { margin-bottom: 10px; }
+</style>
 {% endblock %}

@@ -2,6 +2,7 @@
 {% block title %}Создать приход товара{% endblock %}
 {% block content %}
 {% include "warehouse/_part_search_modal.html" %}
+{% include "warehouse/_supplier_search_modal.html" %}
 
 <h1>Создать приход товара</h1>
 
@@ -22,24 +23,40 @@
 <form method="post" id="supply-form">
     {% csrf_token %}
     <h2>Документ</h2>
-    {% for field in doc_form %}
-    {% if initial_po and field.html_name == "supplier" %}
-        {# When PO is set, supplier is shown combined with PO below — skip separate row #}
-        {{ field.as_hidden }}
-    {% elif initial_po and field.html_name == "purchase_order" %}
-        <div>
-            <label>Заказ поставщику:</label>
-            <span style="font-weight:500;">
-                №{{ initial_po.id }}{% if initial_po.supplier %} — {{ initial_po.supplier.name }}{% endif %}
-            </span>
-            {{ field.as_hidden }}
-        </div>
+
+    {% if initial_po %}
+    {# Режим «по заказу поставщику» — поставщик и заказ уже зафиксированы #}
+    <div style="background:#e8f5e9;padding:10px 14px;border-left:4px solid #4caf50;margin-bottom:12px;">
+        <strong>На основе заказа №{{ initial_po.id }}</strong>
+        {% if initial_po.supplier %} — {{ initial_po.supplier.name }}{% endif %}
+        ({{ initial_po.get_status_display }})
+    </div>
+    {{ doc_form.supplier }}
+    {{ doc_form.purchase_order }}
     {% else %}
-        <div>
-            <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
-            {{ field }}
-            {% if field.errors %}<p class="error">{{ field.errors|join:", " }}</p>{% endif %}
+    {# Режим «вручную» — выбор поставщика через модальное окно #}
+    {{ doc_form.supplier }}
+    {{ doc_form.purchase_order }}
+    <div style="margin-bottom:12px;">
+        <label>Поставщик:</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+            {{ doc_form.supplier_display }}
+            <button type="button" class="btn"
+                    onclick="openSupplierModal('supply-supplier-id', 'supply-supplier-display')">Выбрать</button>
+            <button type="button" class="btn btn-secondary"
+                    onclick="document.getElementById('supply-supplier-id').value='';document.getElementById('supply-supplier-display').value='';">Очистить</button>
         </div>
+        {% if doc_form.supplier.errors %}<p class="error">{{ doc_form.supplier.errors|join:", " }}</p>{% endif %}
+    </div>
+    {% endif %}
+
+    {% for field in doc_form %}
+    {% if field.html_name != "supplier" and field.html_name != "purchase_order" and field.html_name != "supplier_display" %}
+    <div style="margin-bottom:10px;">
+        <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
+        {{ field }}
+        {% if field.errors %}<p class="error">{{ field.errors|join:", " }}</p>{% endif %}
+    </div>
     {% endif %}
     {% endfor %}
 
@@ -51,8 +68,9 @@
             <tr>
                 <th>Деталь</th>
                 <th>Место хранения</th>
-                <th>Количество</th>
-                <th>Цена закупки</th>
+                <th>Шт. в уп.</th>
+                <th>Кол-во упак.</th>
+                <th>Цена за уп., руб.</th>
                 <th></th>
             </tr>
         </thead>
@@ -61,7 +79,6 @@
             <tr class="supply-row">
                 {% with prefix=item_form.prefix %}
                 <td>
-                    {# name attribute ensures display text is submitted and survives POST re-render #}
                     <input type="text"
                            id="{{ prefix }}-part_display"
                            name="{{ prefix }}-part_display"
@@ -73,16 +90,19 @@
                     </button>
                     {{ item_form.part }}
                     {{ item_form.po_item }}
-                    {# Non-model field — carries package count entered by user to the view #}
-                    <input type="hidden"
-                           id="{{ prefix }}-package_qty"
-                           name="{{ prefix }}-package_qty"
-                           value="{{ item_form.package_qty.value|default:'1' }}">
                     {% if item_form.part.errors %}<p class="error">{{ item_form.part.errors|join:", " }}</p>{% endif %}
                 </td>
                 <td>
                     {{ item_form.location }}
                     {% if item_form.location.errors %}<p class="error">{{ item_form.location.errors|join:", " }}</p>{% endif %}
+                </td>
+                <td style="width:80px;">
+                    {# Visible pkg_qty input — штук в упаковке #}
+                    <input type="number" min="1"
+                           id="{{ prefix }}-package_qty"
+                           name="{{ prefix }}-package_qty"
+                           value="{{ item_form.package_qty.value|default:'1' }}"
+                           style="width:70px;">
                 </td>
                 <td>
                     <div style="display:flex;align-items:center;gap:6px;">
@@ -226,8 +246,16 @@
     }
 
     tbody.addEventListener('input', function(e) {
+        var row = e.target.closest('tr');
+        if (!row) return;
         if (e.target.name && e.target.name.endsWith('-quantity')) {
-            updatePkgHint(e.target.closest('tr'));
+            updatePkgHint(row);
+            updateQtyWarnings();
+        }
+        if (e.target.name && e.target.name.endsWith('-package_qty')) {
+            var v = parseInt(e.target.value) || 1;
+            row.dataset.pkgQty = v;
+            updatePkgHint(row);
             updateQtyWarnings();
         }
     });
@@ -268,7 +296,7 @@
                 var pkgEl = document.getElementById(prefix + '-package_qty');
                 if (pkgEl && parseInt(pkgEl.value) > 1) row.dataset.pkgQty = pkgEl.value;
             }
-            applyPoMeta(row);   // may override pkgQty from PO_META — that's fine
+            applyPoMeta(row);
             updatePkgHint(row);
         });
         updateQtyWarnings();

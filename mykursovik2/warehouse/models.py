@@ -213,10 +213,17 @@ class SupplyItem(models.Model):
     location = models.ForeignKey(
         StorageLocation, on_delete=models.CASCADE, verbose_name="Место хранения"
     )
-    quantity = models.IntegerField(verbose_name="Количество")
+    quantity = models.IntegerField(verbose_name="Количество (штук)")
+    pkg_qty = models.PositiveIntegerField(default=1, verbose_name="Штук в упаковке")
     purchase_price = models.DecimalField(
-        max_digits=10, decimal_places=2, verbose_name="Цена закупки"
+        max_digits=10, decimal_places=2, verbose_name="Цена закупки (за упаковку)"
     )
+
+    @property
+    def price_per_unit(self):
+        from decimal import Decimal
+        pkg = self.pkg_qty or 1
+        return self.purchase_price / Decimal(pkg)
 
     def __str__(self):
         return f"{self.part.article} x{self.quantity} @ {self.purchase_price} руб."
@@ -231,6 +238,7 @@ class WorkOrderPart(models.Model):
         ('reserved', 'Зарезервировано'),
         ('issued', 'Выдано'),
         ('installed', 'Установлено'),
+        ('cancelled', 'Отменено'),
     ]
 
     work_order = models.ForeignKey(
@@ -238,6 +246,13 @@ class WorkOrderPart(models.Model):
         on_delete=models.CASCADE,
         verbose_name="Заказ-наряд",
         related_name='work_order_parts'
+    )
+    work_order_service = models.ForeignKey(
+        'WorkOrderService',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        verbose_name="Услуга в заказ-наряде",
+        related_name='parts',
     )
     part = models.ForeignKey(Part, on_delete=models.CASCADE, verbose_name="Деталь")
     quantity = models.IntegerField(verbose_name="Количество")
@@ -277,8 +292,17 @@ class WorkOrderService(models.Model):
     )
     service = models.ForeignKey(
         'mainapp.Service',
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
         verbose_name="Услуга"
+    )
+    # Snapshots — frozen at the moment the service is added to the order
+    service_name_snapshot = models.CharField(
+        max_length=255, verbose_name="Название услуги (снапшот)", blank=True
+    )
+    hourly_rate_snapshot = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        verbose_name="Нормо-час (снапшот)", null=True, blank=True
     )
     hours_applied = models.DecimalField(
         max_digits=5, decimal_places=2,
@@ -294,8 +318,12 @@ class WorkOrderService(models.Model):
     )
 
     def calculate_price(self):
-        settings = WorkshopSettings.objects.first()
-        rate = settings.hourly_rate if settings else 0
+        # Use the rate that was locked in at time of service creation
+        if self.hourly_rate_snapshot is not None:
+            rate = self.hourly_rate_snapshot
+        else:
+            settings = WorkshopSettings.objects.first()
+            rate = settings.hourly_rate if settings else 0
         return self.hours_applied * rate * self.complexity_factor
 
     def save(self, *args, **kwargs):
@@ -308,6 +336,53 @@ class WorkOrderService(models.Model):
     class Meta:
         verbose_name = "Услуга в заказ-наряде (нормо-часы)"
         verbose_name_plural = "Услуги в заказ-наряде (нормо-часы)"
+
+
+class Employee(models.Model):
+    name = models.CharField(max_length=255, verbose_name="ФИО")
+    phone = models.CharField(max_length=30, blank=True, verbose_name="Телефон")
+    position = models.CharField(max_length=100, blank=True, verbose_name="Должность")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "Сотрудник"
+        verbose_name_plural = "Сотрудники"
+        ordering = ['name']
+
+
+class WorkOrderServiceEmployee(models.Model):
+    work_order_service = models.ForeignKey(
+        WorkOrderService, on_delete=models.CASCADE,
+        verbose_name="Услуга в заказ-наряде",
+        related_name='assignments'
+    )
+    employee = models.ForeignKey(
+        Employee, on_delete=models.CASCADE,
+        verbose_name="Сотрудник",
+        related_name='assignments'
+    )
+
+    @property
+    def hours_share(self):
+        n = self.work_order_service.assignments.count()
+        return self.work_order_service.hours_applied / n if n else 0
+
+    @property
+    def earnings(self):
+        n = self.work_order_service.assignments.count()
+        price = self.work_order_service.final_price or 0
+        return price / n if n else 0
+
+    def __str__(self):
+        return f"{self.employee.name} → {self.work_order_service}"
+
+    class Meta:
+        unique_together = ('work_order_service', 'employee')
+        verbose_name = "Назначение сотрудника"
+        verbose_name_plural = "Назначения сотрудников"
 
 
 class WorkshopSettings(models.Model):

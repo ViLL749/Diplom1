@@ -4,6 +4,7 @@
     <h1>Информация об услуге</h1>
     <p><strong>Тип услуги:</strong> {{ service.service_type.name }}</p>
     <p><strong>Название:</strong> {{ service.name }}</p>
+    <p><strong>Нормо-часы (базовое время):</strong> {{ service.base_hours }} ч.</p>
     <a href="{{ cancel_url }}" class="btn">Вернуться к списку</a>
     <a href="{% url 'service_update' service.service_type.id service.id %}" class="btn">Изменить</a>  <!-- Обновлено -->
     <a href="{% url 'service_delete' service.service_type.id service.id %}" class="btn btn-danger">Удалить</a>  <!-- Обновлено -->

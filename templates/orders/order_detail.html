@@ -1,122 +1,710 @@
 {% extends "base.html" %}
-{% block title %}Детали заказа{% endblock %}
+{% load static %}
+{% block title %}Заказ №{{ order.id }}{% endblock %}
 {% block content %}
-    <h1>Детали заказа {{ order.id }}</h1>
-    {% if order.status == 'Завершён' %}
-        <p><strong>Клиент:</strong> {{ order.client_fio_static }}</p>
-        <p><strong>Автомобиль:</strong> {{ order.car_details_static }}</p>
-        <p><strong>Дата заказа:</strong> {{ order.order_date }}</p>
-        <p><strong>Статус:</strong> {{ order.status }}</p>
-        <p><strong>Услуги:</strong> {{ order.services_static }}</p>
-        <p><strong>Кастомные услуги:</strong> {{ order.custom_services_static }}</p>
-        <p><strong>Стоимость:</strong> {{ order.cost|floatformat:2|default:"Не указана" }}</p>
-        <p><strong>Дата завершения:</strong> {{ order.completion_date|default:"Не указана" }}</p>
-        <p><strong>Комментарий:</strong> {{ order.comment|default:"Нет комментария" }}</p>
+<script src="{% static 'js/jquery-3.6.0.min.js' %}"></script>
+
+<!-- ── Header ── -->
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+    <h1 style="margin:0;">Заказ №{{ order.id }}</h1>
+    <span class="ord-badge ord-{{ order.status }}">{{ order.status }}</span>
+</div>
+
+<!-- ── Info card ── -->
+<div class="ord-info-card">
+    {% if order.status == 'Завершён' or order.status == 'Отменён' %}
+        <div class="ord-info-row"><span>Клиент:</span> {{ order.client_fio_static|default:order.client_car.client.fio }}</div>
+        <div class="ord-info-row"><span>Автомобиль:</span> {{ order.car_details_static|default:"—" }}</div>
     {% else %}
-        <p><strong>Клиент:</strong> {{ order.client_car.client.fio }}</p>
-        <p><strong>Автомобиль:</strong> {{ order.client_car.make.name }} {{ order.client_car.model.name }} ({{ order.client_car.license_plate|default:'' }})</p>
-        <p><strong>Дата заказа:</strong> {{ order.order_date }}</p>
-        <p><strong>Статус:</strong> {{ order.status }}</p>
-        <p><strong>Услуги:</strong>
-            {% for order_service in order.orderservice_set.all %}
-                {{ order_service.service.name }}{% if not forloop.last %}, {% endif %}
-            {% empty %}
-                Нет услуг
-            {% endfor %}
-        </p>
-        <p><strong>Кастомные услуги:</strong>
-            {% for custom_service in order.custom_services.all %}
-                {{ custom_service.name }} ({{ custom_service.price|floatformat:2 }}){% if not forloop.last %}, {% endif %}
-            {% empty %}
-                Нет кастомных услуг
-            {% endfor %}
-        </p>
-        <p><strong>Стоимость:</strong> {{ order.cost|floatformat:2|default:"Не указана" }}</p>
-        <p><strong>Дата завершения:</strong> {{ order.completion_date|default:"Не указана" }}</p>
-        <p><strong>Комментарий:</strong> {{ order.comment|default:"Нет комментария" }}</p>
+        <div class="ord-info-row"><span>Клиент:</span> {{ order.client_car.client.fio }}</div>
+        <div class="ord-info-row"><span>Автомобиль:</span> {{ order.client_car.make.name }} {{ order.client_car.model.name }}{% if order.client_car.license_plate %} ({{ order.client_car.license_plate }}){% endif %}</div>
     {% endif %}
-    <a href="{% url 'orders_list' %}" class="btn">Вернуться к списку</a>
-    {% if order.status != 'Завершён' %}
-        <a href="{% url 'order_update' order.id %}" class="btn">Изменить</a>
+    <div class="ord-info-row"><span>Дата заказа:</span> {{ order.order_date }}</div>
+    {% if order.completion_date %}<div class="ord-info-row"><span>Дата завершения:</span> {{ order.completion_date }}</div>{% endif %}
+    {% if order.comment %}<div class="ord-info-row"><span>Комментарий:</span> {{ order.comment }}</div>{% endif %}
+</div>
+
+<!-- ── Actions ── -->
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0;">
+    <a href="{% url 'orders_list' %}" class="btn">← Список</a>
+    {% if editable %}
+        <a href="{% url 'order_update' order.id %}" class="btn">Изменить статус</a>
         <a href="{% url 'order_delete' order.id %}" class="btn btn-danger">Удалить</a>
+        <button type="button" class="btn btn-primary" id="open-svc-modal">+ Добавить услуги</button>
     {% endif %}
+    <div class="pdf-dropdown" style="position:relative;display:inline-block;">
+        <button type="button" class="btn" onclick="togglePdfDropdown(event)">Печать ▾</button>
+        <div class="pdf-dropdown-menu" id="pdf-dropdown-menu" style="display:none;position:absolute;top:100%;left:0;z-index:100;background:#fff;border:1px solid #ccc;border-radius:4px;min-width:200px;box-shadow:0 2px 8px rgba(0,0,0,.15);">
+            <a href="{% url 'order_mechanic_pdf' order.id %}" target="_blank" class="pdf-dropdown-item">Для механика</a>
+            {% if wop_list %}<a href="{% url 'picking_list' order.id %}" class="pdf-dropdown-item">Лист отборки</a>{% endif %}
+            <a href="{% url 'order_customer_pdf' order.id %}" target="_blank" class="pdf-dropdown-item">
+                Заказ-наряд клиенту{% if order.status == 'Готов' or order.status == 'Завершён' %} (финальный){% else %} (предварительный){% endif %}
+            </a>
+        </div>
+    </div>
+</div>
+<style>
+.pdf-dropdown-item {
+    display:block;
+    padding:8px 14px;
+    color:#222;
+    text-decoration:none;
+    white-space:nowrap;
+}
+.pdf-dropdown-item:hover { background:#f0f0f0; }
+</style>
+<script>
+function togglePdfDropdown(e) {
+    e.stopPropagation();
+    var menu = document.getElementById('pdf-dropdown-menu');
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', function() {
+    var menu = document.getElementById('pdf-dropdown-menu');
+    if (menu) menu.style.display = 'none';
+});
+</script>
 
-    {% if order.status != 'Завершён' %}
-    <!-- Услуги по нормо-часам -->
-    <h2 class="top-title-margin">Услуги (нормо-часы)</h2>
-    {% with wos_list=order.work_order_services.all %}
-    {% if wos_list %}
-    <table>
-        <thead>
-            <tr>
-                <th>Услуга</th>
-                <th>Часы</th>
-                <th>Коэф.</th>
-                <th>Цена</th>
-                <th>Действия</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for wos in wos_list %}
-            <tr>
-                <td>{{ wos.service.name }}</td>
-                <td>{{ wos.hours_applied }}</td>
-                <td>{{ wos.complexity_factor }}</td>
-                <td>{{ wos.final_price|floatformat:2 }} руб.</td>
-                <td>
-                    <a href="{% url 'workorderservice_update' wos.id %}" class="btn">Изм.</a>
-                    <a href="{% url 'workorderservice_delete' wos.id %}" class="btn btn-danger">Удал.</a>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <p>Услуги (нормо-часы) не добавлены.</p>
-    {% endif %}
-    {% endwith %}
-    <a href="{% url 'workorderservice_create' order.id %}" class="btn">+ Добавить услугу</a>
+<!-- ═══════════════════════════════════════════
+     SERVICES — card layout
+════════════════════════════════════════════ -->
+<h2 style="margin-bottom:12px;">Услуги</h2>
 
-    <!-- Детали со склада -->
-    <h2 class="top-title-margin">Детали из склада</h2>
-    {% with parts_list=order.work_order_parts.all %}
-    {% if parts_list %}
-    <table>
-        <thead>
-            <tr>
-                <th>Артикул</th>
-                <th>Название</th>
-                <th>Кол-во</th>
-                <th>Цена за ед.</th>
-                <th>Наценка %</th>
-                <th>Сумма</th>
-                <th>Статус</th>
-                <th>Действия</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for wop in parts_list %}
-            <tr>
-                <td>{{ wop.part.article }}</td>
-                <td>{{ wop.part.name }}</td>
-                <td>{{ wop.quantity }}</td>
-                <td>{{ wop.sale_price|floatformat:2|default:"—" }} руб.</td>
-                <td>{{ wop.markup }}</td>
-                <td>{{ wop.total_price|floatformat:2|default:"—" }} руб.</td>
-                <td>{{ wop.get_status_display }}</td>
-                <td>
-                    <a href="{% url 'workorderpart_update' wop.id %}" class="btn">Изм.</a>
-                    <a href="{% url 'workorderpart_delete' wop.id %}" class="btn btn-danger">Удал.</a>
-                </td>
-            </tr>
+{% for wos in wos_list %}
+<div class="svc-card">
+    <div class="svc-card-head">
+        <div>
+            <div class="svc-card-name">{{ wos.service_name_snapshot|default:wos.service.name }}</div>
+            <div class="svc-card-meta">
+                {{ wos.hours_applied }} ч. × {{ wos.complexity_factor }} × {% if wos.hourly_rate_snapshot %}{{ wos.hourly_rate_snapshot }}{% else %}{{ hourly_rate }}{% endif %} р/ч
+            </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <div class="svc-card-price">{{ wos.final_price|floatformat:2 }} руб.</div>
+            {% if editable %}
+            <a href="{% url 'workorderservice_update' wos.id %}" class="btn btn-sm">Изм.</a>
+            <a href="{% url 'workorderservice_delete' wos.id %}" class="btn btn-sm btn-danger">Удал.</a>
+            <button type="button" class="btn btn-sm btn-success open-part-for-svc" data-wos-id="{{ wos.id }}" data-wos-name="{{ wos.service_name_snapshot|default:wos.service.name }}">+ Деталь</button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Parts linked to this service -->
+    <div class="svc-card-body">
+        {% for wop in wos.parts.all %}
+        <div class="svc-part-row">
+            <span class="svc-part-article">{{ wop.part.article }}</span>
+            <span class="svc-part-name">{{ wop.part.name }}</span>
+            <span class="svc-part-qty">× {{ wop.quantity }} шт.</span>
+            <span class="svc-part-price">{{ wop.total_price|floatformat:2 }} руб.</span>
+            <span class="svc-status-pill svc-status-{{ wop.status }}">{{ wop.get_status_display }}</span>
+            {% if editable %}
+            <a href="{% url 'workorderpart_update' wop.id %}" class="btn btn-xs">Изм.</a>
+            <a href="{% url 'workorderpart_delete' wop.id %}" class="btn btn-xs btn-danger">Удал.</a>
+            {% endif %}
+        </div>
+        {% empty %}
+        <div style="color:#aaa;font-size:0.85em;padding:6px 0;">Нет привязанных деталей</div>
+        {% endfor %}
+    </div>
+
+    <!-- Employees assigned to this service -->
+    <div class="svc-employees" id="svc-emp-{{ wos.id }}" style="border-top:1px solid #e5e7eb;padding:8px 16px;background:#f9fafb;">
+        <div style="font-size:0.82em;font-weight:600;color:#6b7280;margin-bottom:6px;">Исполнители:</div>
+        <div class="svc-emp-list" id="svc-emp-list-{{ wos.id }}">
+            {% for a in wos.assignments.all %}
+            <div class="svc-emp-row" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:0.88em;">
+                <span style="min-width:160px;">{{ a.employee.name }}</span>
+                {% if a.employee.position %}<span style="color:#6b7280;">{{ a.employee.position }}</span>{% endif %}
+                <span style="color:#374151;">— {{ a.hours_share|floatformat:2 }} ч. / {{ a.earnings|floatformat:2 }} руб.</span>
+                {% if editable %}
+                <button type="button" class="btn btn-xs btn-danger emp-unassign-btn"
+                    data-wos="{{ wos.id }}" data-emp="{{ a.employee.id }}">✕</button>
+                {% endif %}
+            </div>
+            {% empty %}
+            <div style="color:#aaa;font-size:0.85em;" class="emp-empty-hint">Не назначены</div>
             {% endfor %}
-        </tbody>
-    </table>
-    <a href="{% url 'picking_list' order.id %}" class="btn">Лист отборки</a>
-    {% else %}
-    <p>Детали не добавлены.</p>
-    {% endif %}
-    {% endwith %}
-    <a href="{% url 'workorderpart_create' order.id %}" class="btn">+ Добавить деталь</a>
-    {% endif %}
+        </div>
+        {% if editable %}
+        <button type="button" class="btn btn-xs emp-add-btn" style="margin-top:6px;"
+            data-wos="{{ wos.id }}">+ Назначить</button>
+        {% endif %}
+    </div>
+</div>
+{% empty %}
+<p style="color:#888;">Услуги не добавлены.</p>
+{% endfor %}
+
+<!-- ═══════════════════════════════════════════
+     UNLINKED PARTS
+════════════════════════════════════════════ -->
+{% with has_unlinked=False %}
+{% for wop in wop_list %}{% if not wop.work_order_service %}{% if not has_unlinked %}
+<h2 style="margin:24px 0 12px;">Детали без привязки к услуге</h2>
+{% endif %}
+<div class="svc-card" style="margin-bottom:6px;">
+    <div class="svc-card-body" style="padding:10px 16px;">
+        <div class="svc-part-row" style="border:none;">
+            <span class="svc-part-article">{{ wop.part.article }}</span>
+            <span class="svc-part-name">{{ wop.part.name }}</span>
+            <span class="svc-part-qty">× {{ wop.quantity }} шт.</span>
+            <span class="svc-part-price">{{ wop.total_price|floatformat:2 }} руб.</span>
+            <span class="svc-status-pill svc-status-{{ wop.status }}">{{ wop.get_status_display }}</span>
+            {% if editable %}
+            <a href="{% url 'workorderpart_update' wop.id %}" class="btn btn-xs">Изм.</a>
+            <a href="{% url 'workorderpart_delete' wop.id %}" class="btn btn-xs btn-danger">Удал.</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}{% endfor %}
+{% endwith %}
+
+{% if editable %}
+<div style="margin:12px 0 24px;">
+    <button type="button" class="btn" id="open-part-modal">+ Добавить деталь без привязки</button>
+</div>
+{% endif %}
+
+<!-- ═══════════════════════════════════════════
+     COST SUMMARY
+════════════════════════════════════════════ -->
+<div class="ord-cost-card">
+    <div class="ord-cost-row"><span>Услуги:</span><strong>{{ services_total|floatformat:2 }} руб.</strong></div>
+    <div class="ord-cost-row"><span>Детали:</span><strong>{{ parts_total|floatformat:2 }} руб.</strong></div>
+    <div class="ord-cost-row ord-cost-total"><span>Итого:</span><strong>{{ total|floatformat:2 }} руб.</strong></div>
+</div>
+
+{% if editable %}
+
+<!-- ═══════════════════════════════════════════
+     MODAL: SERVICE SELECTION (two-panel)
+════════════════════════════════════════════ -->
+<div id="svc-modal" class="modal">
+    <div class="modal-content modal-wide">
+        <span class="modal-close" data-modal="svc-modal">×</span>
+        <h2 style="margin-top:0;">Добавить услуги в заказ №{{ order.id }}</h2>
+        <p style="color:#666;margin-top:-8px;margin-bottom:16px;font-size:0.9em;">
+            Нормо-час: <strong>{{ hourly_rate }} руб.</strong> &nbsp;|&nbsp; Цена = часы × нормо-час × коэффициент
+        </p>
+
+        <form method="post" action="{% url 'workorderservice_create_bulk' order.id %}" id="svc-bulk-form">
+            {% csrf_token %}
+            <div class="svc-modal-panels">
+
+                <!-- LEFT: available services -->
+                <div class="svc-panel-left">
+                    <div style="font-weight:600;margin-bottom:8px;">Доступные услуги</div>
+                    <input type="text" id="svc-search" placeholder="Поиск по названию..." style="width:100%;margin-bottom:8px;padding:6px;box-sizing:border-box;">
+                    <div class="svc-scroll">
+                        <table style="width:100%;border-collapse:collapse;">
+                            <tbody id="svc-left-body">
+                                {% for type_name, services in grouped_services %}
+                                <tr class="svc-type-hdr"><td colspan="2">{{ type_name }}</td></tr>
+                                {% for svc in services %}
+                                <tr class="svc-avail-row" data-id="{{ svc.id }}" data-name="{{ svc.name }}" data-hours="{{ svc.base_hours }}">
+                                    <td style="padding:6px 8px;">{{ svc.name }}</td>
+                                    <td style="padding:6px 8px;color:#888;white-space:nowrap;">{{ svc.base_hours }} ч.</td>
+                                </tr>
+                                {% endfor %}
+                                {% empty %}
+                                <tr><td colspan="2" style="color:#888;padding:8px;">Нет услуг</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- RIGHT: selected services -->
+                <div class="svc-panel-right">
+                    <div style="font-weight:600;margin-bottom:8px;">Выбранные услуги</div>
+                    <div class="svc-scroll">
+                        <table style="width:100%;border-collapse:collapse;" id="svc-right-table">
+                            <thead>
+                                <tr style="font-size:0.8em;color:#666;border-bottom:1px solid #ddd;">
+                                    <th style="padding:4px 6px;text-align:left;">Услуга</th>
+                                    <th style="padding:4px 6px;text-align:center;">Часы</th>
+                                    <th style="padding:4px 6px;text-align:center;">Коэф.</th>
+                                    <th style="padding:4px 6px;text-align:right;">Цена</th>
+                                    <th style="padding:4px 6px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="svc-right-body">
+                                <tr id="svc-right-empty"><td colspan="5" style="text-align:center;color:#aaa;padding:16px;font-size:0.9em;">Нажмите на услугу слева чтобы добавить</td></tr>
+                            </tbody>
+                            <tfoot>
+                                <tr style="border-top:1px solid #ddd;">
+                                    <td colspan="3" style="padding:6px 6px;font-weight:600;">Итого:</td>
+                                    <td id="svc-modal-total" style="padding:6px 6px;font-weight:700;text-align:right;color:#2c7be5;">0.00 руб.</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:16px;display:flex;gap:10px;align-items:center;">
+                <button type="submit" class="btn btn-primary" id="svc-submit-btn" disabled>Добавить выбранные</button>
+                <button type="button" class="btn" data-modal="svc-modal" onclick="closeModal('svc-modal')">Отмена</button>
+                <span id="svc-count-hint" style="color:#888;font-size:0.9em;"></span>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     MODAL: PART SELECTION
+════════════════════════════════════════════ -->
+<div id="part-modal" class="modal">
+    <div class="modal-content">
+        <span class="modal-close" data-modal="part-modal">×</span>
+        <h2 style="margin-top:0;">Добавить деталь в заказ №{{ order.id }}</h2>
+        <div id="part-svc-hint" style="font-size:0.9em;color:#2c7be5;margin-bottom:12px;display:none;"></div>
+
+        <!-- Phase 1: search -->
+        <div id="part-phase-search">
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+                <input type="text" id="part-search-input" placeholder="Поиск по артикулу или названию..." style="flex:1;padding:6px;">
+                <button type="button" class="btn" id="part-search-btn">Искать</button>
+            </div>
+            <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;">
+                    <thead><tr style="font-size:0.85em;color:#666;border-bottom:1px solid #ddd;">
+                        <th style="padding:6px 8px;text-align:left;">Артикул</th>
+                        <th style="padding:6px 8px;text-align:left;">Название</th>
+                        <th style="padding:6px 8px;text-align:left;">Бренд</th>
+                        <th style="padding:6px 8px;text-align:center;">В наличии</th>
+                    </tr></thead>
+                    <tbody id="part-table-body">
+                        <tr><td colspan="4" style="text-align:center;color:#aaa;padding:16px;">Загрузка...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                <button type="button" class="btn btn-sm" id="part-prev-btn" disabled>← Назад</button>
+                <span id="part-page-info" style="font-size:0.85em;color:#666;"></span>
+                <button type="button" class="btn btn-sm" id="part-next-btn" disabled>Вперёд →</button>
+            </div>
+        </div>
+
+        <!-- Phase 2: confirm -->
+        <div id="part-phase-confirm" style="display:none;">
+            <p><strong>Выбранная деталь:</strong> <span id="part-selected-display" style="color:#2c7be5;"></span></p>
+            <form method="post" action="{% url 'workorderpart_create' order.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="part" id="part-hidden-id">
+                <div style="margin-bottom:10px;">
+                    <label>Количество:</label>
+                    <input type="number" name="quantity" id="part-qty" min="1" value="1" style="width:80px;margin-left:8px;">
+                    <span id="part-available-hint" style="font-size:0.85em;color:#888;margin-left:8px;"></span>
+                </div>
+                <div style="margin-bottom:10px;">
+                    <label>Наценка (%):</label>
+                    <input type="number" name="markup" id="part-markup" min="0" step="1" value="30" style="width:80px;margin-left:8px;">
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label>Привязать к услуге:</label>
+                    <select name="work_order_service" id="part-service-select" style="margin-left:8px;min-width:200px;">
+                        <option value="">— без привязки —</option>
+                        {% for wos in wos_list %}
+                        <option value="{{ wos.id }}">{{ wos.service_name_snapshot|default:wos.service.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button type="submit" class="btn btn-primary">Добавить и зарезервировать</button>
+                    <button type="button" class="btn" id="part-back-btn">← Назад к поиску</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Employee assignment modal -->
+{% if editable %}
+<div id="emp-modal" class="modal">
+    <div class="modal-content" style="max-width:480px;">
+        <span class="modal-close" data-modal="emp-modal">×</span>
+        <h3 style="margin-bottom:12px;">Назначить исполнителя</h3>
+        <input type="text" id="emp-search-input" placeholder="Поиск по имени..." style="width:100%;box-sizing:border-box;margin-bottom:10px;">
+        <div id="emp-modal-list" style="max-height:300px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;"></div>
+        <div style="margin-top:12px;">
+            <button type="button" class="btn" onclick="closeModal('emp-modal')">Закрыть</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endif %}{# editable #}
+
+
+<script>
+var SERVICE_HOURS = {{ service_hours_json|safe }};
+var HOURLY_RATE = parseFloat('{{ hourly_rate }}') || 0;
+var selectedSvcs = []; // {id, name, hours, factor}
+var partPage = 1;
+var partTotalPages = 1;
+var preselectedWosId = null;
+
+// ── Modal helpers ──────────────────────────────────
+function openModal(id) { $('#' + id).show(); }
+function closeModal(id) { $('#' + id).hide(); }
+
+$('.modal-close').click(function() { closeModal($(this).data('modal')); });
+$(window).click(function(e) {
+    if ($(e.target).hasClass('modal')) closeModal($(e.target).attr('id'));
+});
+
+{% if editable %}
+
+// ── SERVICE MODAL ──────────────────────────────────
+
+$('#open-svc-modal').click(function() {
+    openModal('svc-modal');
+});
+
+// Search filter (client-side)
+$('#svc-search').on('input', function() {
+    var q = $(this).val().toLowerCase();
+    $('#svc-left-body .svc-avail-row').each(function() {
+        var name = $(this).data('name').toLowerCase();
+        $(this).toggle(!q || name.indexOf(q) >= 0);
+    });
+    // hide type headers with no visible rows
+    $('#svc-left-body .svc-type-hdr').each(function() {
+        var hasVisible = false;
+        var $next = $(this).nextUntil('.svc-type-hdr');
+        $next.each(function() { if ($(this).is(':visible')) hasVisible = true; });
+        $(this).toggle(hasVisible);
+    });
+});
+
+// Click on available service → add to right panel
+$('#svc-left-body').on('click', '.svc-avail-row', function() {
+    var id = parseInt($(this).data('id'));
+    var name = $(this).data('name');
+    var hours = parseFloat($(this).data('hours')) || 1;
+
+    if (selectedSvcs.find(function(s) { return s.id === id; })) {
+        // already selected — deselect
+        removeSvc(id);
+        return;
+    }
+    addSvc(id, name, hours);
+});
+
+function addSvc(id, name, hours) {
+    selectedSvcs.push({id: id, name: name, hours: hours, factor: 1.0});
+    $('#svc-right-empty').hide();
+    var price = calcPrice(hours, 1.0);
+    $('#svc-right-body').append(
+        '<tr data-id="' + id + '">' +
+        '<td style="padding:5px 6px;font-size:0.9em;">' + name + '</td>' +
+        '<td style="padding:5px 4px;"><input type="number" name="hours_applied" value="' + hours + '" step="0.5" min="0.5" class="svc-hours-inp" data-id="' + id + '" style="width:76px;"></td>' +
+        '<td style="padding:5px 4px;"><input type="number" name="complexity_factor" value="1.0" step="0.1" min="0.1" class="svc-factor-inp" data-id="' + id + '" style="width:72px;"></td>' +
+        '<td class="svc-row-price" style="padding:5px 6px;text-align:right;font-weight:600;white-space:nowrap;">' + price + ' р.</td>' +
+        '<td style="padding:5px 4px;"><input type="hidden" name="service_id" value="' + id + '"><button type="button" class="btn btn-xs btn-danger svc-row-remove" data-id="' + id + '">✕</button></td>' +
+        '</tr>'
+    );
+    $('[data-id="' + id + '"].svc-avail-row').addClass('svc-row-selected');
+    updateSvcTotal();
+    updateSvcSubmit();
+}
+
+function removeSvc(id) {
+    selectedSvcs = selectedSvcs.filter(function(s) { return s.id !== id; });
+    $('#svc-right-body tr[data-id="' + id + '"]').remove();
+    $('[data-id="' + id + '"].svc-avail-row').removeClass('svc-row-selected');
+    if (!selectedSvcs.length) $('#svc-right-empty').show();
+    updateSvcTotal();
+    updateSvcSubmit();
+}
+
+$(document).on('click', '.svc-row-remove', function() {
+    removeSvc(parseInt($(this).data('id')));
+});
+
+$(document).on('input', '.svc-hours-inp', function() {
+    var id = parseInt($(this).data('id'));
+    var svc = selectedSvcs.find(function(s) { return s.id === id; });
+    if (svc) { svc.hours = parseFloat($(this).val()) || 0; updateSvcRowPrice(id); }
+});
+
+$(document).on('input', '.svc-factor-inp', function() {
+    var id = parseInt($(this).data('id'));
+    var svc = selectedSvcs.find(function(s) { return s.id === id; });
+    if (svc) { svc.factor = parseFloat($(this).val()) || 0; updateSvcRowPrice(id); }
+});
+
+function updateSvcRowPrice(id) {
+    var svc = selectedSvcs.find(function(s) { return s.id === id; });
+    if (!svc) return;
+    var price = calcPrice(svc.hours, svc.factor);
+    $('#svc-right-body tr[data-id="' + id + '"] .svc-row-price').text(price + ' р.');
+    updateSvcTotal();
+}
+
+function calcPrice(hours, factor) {
+    return (hours * HOURLY_RATE * factor).toFixed(2);
+}
+
+function updateSvcTotal() {
+    var total = selectedSvcs.reduce(function(sum, s) { return sum + s.hours * HOURLY_RATE * s.factor; }, 0);
+    $('#svc-modal-total').text(total.toFixed(2) + ' руб.');
+}
+
+function updateSvcSubmit() {
+    var n = selectedSvcs.length;
+    $('#svc-submit-btn').prop('disabled', n === 0);
+    $('#svc-count-hint').text(n ? 'Выбрано: ' + n : '');
+}
+
+// Reset modal on close
+$('#svc-bulk-form').on('submit', function() {
+    if (!selectedSvcs.length) { return false; }
+});
+
+
+// ── PART MODAL ──────────────────────────────────
+
+function openPartModal(wosId, wosName) {
+    preselectedWosId = wosId || null;
+    resetPartModal();
+    if (wosId) {
+        $('#part-svc-hint').text('Услуга: ' + wosName).show();
+        $('#part-service-select').val(wosId);
+    } else {
+        $('#part-svc-hint').hide();
+        $('#part-service-select').val('');
+    }
+    openModal('part-modal');
+    loadParts(1);
+}
+
+$('#open-part-modal').click(function() { openPartModal(null, null); });
+
+$('.open-part-for-svc').click(function() {
+    openPartModal($(this).data('wos-id'), $(this).data('wos-name'));
+});
+
+function resetPartModal() {
+    partPage = 1; partTotalPages = 1;
+    $('#part-phase-search').show();
+    $('#part-phase-confirm').hide();
+    $('#part-search-input').val('');
+    $('#part-table-body').html('<tr><td colspan="4" style="text-align:center;color:#aaa;padding:16px;">Загрузка...</td></tr>');
+    $('#part-page-info').text('');
+    $('#part-prev-btn, #part-next-btn').prop('disabled', true);
+}
+
+function loadParts(page) {
+    var q = $('#part-search-input').val();
+    $.getJSON('{% url "api_parts" %}', {search: q, page: page}, function(data) {
+        var tbody = $('#part-table-body');
+        tbody.empty();
+        if (!data.parts.length) {
+            tbody.html('<tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">Ничего не найдено</td></tr>');
+        } else {
+            $.each(data.parts, function(_, p) {
+                var avail = p.available;
+                var cls = avail > 0 ? '' : ' style="color:#bbb;"';
+                tbody.append(
+                    '<tr class="part-avail-row" data-id="' + p.id + '" data-article="' + p.article +
+                    '" data-name="' + p.name + '" data-available="' + avail + '"' + cls + '>' +
+                    '<td style="padding:6px 8px;">' + p.article + '</td>' +
+                    '<td style="padding:6px 8px;">' + p.name + '</td>' +
+                    '<td style="padding:6px 8px;color:#888;">' + (p.brand || '—') + '</td>' +
+                    '<td style="padding:6px 8px;text-align:center;font-weight:600;' + (avail > 0 ? 'color:#27ae60;' : 'color:#bbb;') + '">' + avail + '</td>' +
+                    '</tr>'
+                );
+            });
+        }
+        partPage = data.current_page;
+        partTotalPages = data.total_pages;
+        $('#part-page-info').text('Стр. ' + partPage + ' из ' + partTotalPages);
+        $('#part-prev-btn').prop('disabled', partPage <= 1);
+        $('#part-next-btn').prop('disabled', partPage >= partTotalPages);
+    });
+}
+
+$('#part-search-btn').click(function() { partPage = 1; loadParts(1); });
+$('#part-search-input').on('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); partPage = 1; loadParts(1); }
+});
+$('#part-prev-btn').click(function() { if (partPage > 1) loadParts(partPage - 1); });
+$('#part-next-btn').click(function() { if (partPage < partTotalPages) loadParts(partPage + 1); });
+
+$('#part-table-body').on('click', '.part-avail-row', function() {
+    var id = $(this).data('id');
+    var article = $(this).data('article');
+    var name = $(this).data('name');
+    var avail = parseInt($(this).data('available'));
+    $('#part-hidden-id').val(id);
+    $('#part-selected-display').text(article + ' — ' + name);
+    $('#part-qty').val(1).attr('max', avail);
+    $('#part-available-hint').text('Доступно: ' + avail + ' шт.');
+    $('#part-phase-search').hide();
+    $('#part-phase-confirm').show();
+    // restore preselected service
+    if (preselectedWosId) $('#part-service-select').val(preselectedWosId);
+});
+
+$('#part-back-btn').click(function() {
+    $('#part-phase-confirm').hide();
+    $('#part-phase-search').show();
+});
+
+// ── EMPLOYEE ASSIGNMENT ────────────────────────────
+var currentWosId = null;
+
+function renderEmpList(wosId, assignments) {
+    var $list = $('#svc-emp-list-' + wosId);
+    $list.empty();
+    if (!assignments.length) {
+        $list.append('<div style="color:#aaa;font-size:0.85em;" class="emp-empty-hint">Не назначены</div>');
+        return;
+    }
+    $.each(assignments, function(i, a) {
+        var hours = parseFloat(a.hours).toFixed(2);
+        var earn  = parseFloat(a.earnings).toFixed(2);
+        var row = $('<div class="svc-emp-row" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:0.88em;">' +
+            '<span style="min-width:160px;">' + $('<span>').text(a.name).html() + '</span>' +
+            '<span style="color:#6b7280;">' + hours + ' ч. / ' + earn + ' руб.</span>' +
+            '<button type="button" class="btn btn-xs btn-danger emp-unassign-btn" data-wos="' + wosId + '" data-emp="' + a.employee_id + '">✕</button>' +
+            '</div>');
+        $list.append(row);
+    });
+}
+
+$(document).on('click', '.emp-add-btn', function() {
+    currentWosId = $(this).data('wos');
+    $('#emp-modal-list').empty();
+    $('#emp-search-input').val('');
+    loadEmpSearch('');
+    openModal('emp-modal');
+});
+
+function loadEmpSearch(q) {
+    $.getJSON('{% url "api_employees" %}', {search: q}, function(data) {
+        var $ul = $('#emp-modal-list');
+        $ul.empty();
+        if (!data.employees.length) {
+            $ul.append('<div style="padding:10px;color:#aaa;">Нет результатов</div>');
+            return;
+        }
+        $.each(data.employees, function(i, e) {
+            var pos = e.position ? ' <span style="color:#6b7280;font-size:0.85em;">— ' + $('<span>').text(e.position).html() + '</span>' : '';
+            var row = $('<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;" class="emp-pick-row">' +
+                $('<span>').text(e.name).html() + pos + '</div>').data('emp-id', e.id);
+            $ul.append(row);
+        });
+    });
+}
+
+var empSearchTimer;
+$('#emp-search-input').on('input', function() {
+    var q = $(this).val();
+    clearTimeout(empSearchTimer);
+    empSearchTimer = setTimeout(function() { loadEmpSearch(q); }, 300);
+});
+
+$(document).on('click', '.emp-pick-row', function() {
+    var empId = $(this).data('emp-id');
+    $.post('{% url "api_assign_employee" 0 %}'.replace('/0/', '/' + currentWosId + '/'),
+        {employee_id: empId, csrfmiddlewaretoken: '{{ csrf_token }}'},
+        function(data) {
+            renderEmpList(currentWosId, data.assignments);
+            closeModal('emp-modal');
+        }
+    );
+});
+
+$(document).on('click', '.emp-unassign-btn', function() {
+    var wosId = $(this).data('wos');
+    var empId = $(this).data('emp');
+    var url = '{% url "api_unassign_employee" 0 0 %}'.replace('/0/unassign/0/', '/' + wosId + '/unassign/' + empId + '/');
+    $.post(url, {csrfmiddlewaretoken: '{{ csrf_token }}'}, function(data) {
+        renderEmpList(wosId, data.assignments);
+    });
+});
+
+{% endif %}
+</script>
+
+<style>
+/* ── Order info ── */
+.ord-badge { padding:3px 12px; border-radius:12px; font-size:0.82em; font-weight:700; }
+.ord-badge.ord-Новый      { background:#dbeafe; color:#1e40af; }
+.ord-badge.ord-Впроцессе  { background:#fef9c3; color:#854d0e; }
+.ord-badge.ord-Завершён   { background:#dcfce7; color:#166534; }
+.ord-badge.ord-Отменён    { background:#fee2e2; color:#991b1b; }
+
+.ord-info-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px 18px; margin-bottom:16px; }
+.ord-info-row  { padding:3px 0; font-size:0.95em; }
+.ord-info-row span { color:#64748b; min-width:130px; display:inline-block; }
+
+/* ── Service cards ── */
+.svc-card { border:1px solid #e2e8f0; border-radius:8px; margin-bottom:14px; overflow:hidden; }
+.svc-card-head { background:#f8fafc; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; }
+.svc-card-name { font-weight:700; font-size:1.02em; color:#1e293b; }
+.svc-card-meta { font-size:0.82em; color:#64748b; margin-top:2px; }
+.svc-card-price { font-size:1.1em; font-weight:700; color:#2563eb; white-space:nowrap; }
+.svc-card-body  { padding:8px 16px; }
+
+.svc-part-row { display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid #f1f5f9; font-size:0.88em; flex-wrap:wrap; }
+.svc-part-row:last-child { border-bottom:none; }
+.svc-part-article { font-weight:600; color:#475569; min-width:90px; }
+.svc-part-name    { flex:1; color:#334155; }
+.svc-part-qty     { color:#64748b; white-space:nowrap; }
+.svc-part-price   { font-weight:600; color:#16a34a; white-space:nowrap; }
+
+.svc-status-pill { padding:2px 8px; border-radius:10px; font-size:0.75em; font-weight:600; white-space:nowrap; }
+.svc-status-reserved  { background:#fef9c3; color:#854d0e; }
+.svc-status-issued    { background:#dcfce7; color:#166534; }
+.svc-status-installed { background:#dbeafe; color:#1e40af; }
+.svc-status-cancelled { background:#fee2e2; color:#991b1b; }
+
+/* ── Cost card ── */
+.ord-cost-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px 18px; max-width:300px; margin-top:20px; }
+.ord-cost-row  { display:flex; justify-content:space-between; padding:4px 0; font-size:0.95em; }
+.ord-cost-total { border-top:2px solid #e2e8f0; margin-top:4px; padding-top:8px; font-size:1.05em; }
+
+/* ── Buttons ── */
+.btn-primary { background:#2563eb; color:#fff; border:none; }
+.btn-primary:hover { background:#1d4ed8; }
+.btn-success { background:#16a34a; color:#fff; border:none; }
+.btn-success:hover { background:#15803d; }
+.btn-xs { padding:2px 8px; font-size:0.78em; }
+
+/* ── Modals ── */
+.modal { display:none; position:fixed; z-index:200; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); overflow-y:auto; }
+.modal-content { background:#fff; margin:3% auto; padding:24px; border-radius:8px; width:92%; max-width:680px; position:relative; }
+.modal-wide    { max-width:960px; }
+.modal-close   { position:absolute; top:12px; right:16px; font-size:24px; cursor:pointer; color:#94a3b8; line-height:1; }
+.modal-close:hover { color:#334155; }
+
+/* ── Service modal panels ── */
+.svc-modal-panels { display:flex; gap:16px; }
+.svc-panel-left, .svc-panel-right { flex:1; min-width:0; }
+.svc-scroll { border:1px solid #e2e8f0; border-radius:6px; max-height:300px; overflow-y:auto; }
+.svc-type-hdr td { background:#f1f5f9; color:#64748b; font-size:0.78em; font-weight:700; text-transform:uppercase; padding:5px 8px; }
+.svc-avail-row { cursor:pointer; }
+.svc-avail-row:hover { background:#eff6ff; }
+.svc-row-selected td { background:#dbeafe !important; }
+.svc-avail-row td { border-bottom:1px solid #f1f5f9; font-size:0.9em; }
+
+/* ── Part table ── */
+.part-avail-row { cursor:pointer; }
+.part-avail-row:hover { background:#f0fdf4; }
+.part-avail-row td { border-bottom:1px solid #f1f5f9; }
+
+@media(max-width:640px) {
+    .svc-modal-panels { flex-direction:column; }
+    .svc-card-head { flex-direction:column; align-items:flex-start; gap:8px; }
+}
+</style>
+
 {% endblock %}

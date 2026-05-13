@@ -36,14 +36,11 @@
                     </a>
                 </div>
 
-                <!-- Группа: Услуги и цены -->
+                <!-- Группа: Услуги -->
                 <div class="menu-group">
-                    <h3 class="menu-group-title">Услуги и цены</h3>
+                    <h3 class="menu-group-title">Услуги</h3>
                     <a href="{% url 'service_management' %}" class="{% if request.resolver_match.url_name == 'service_management' %}active{% endif %}">
                         <i class="fas fa-wrench"></i> Услуги
-                    </a>
-                    <a href="{% url 'price_management' %}" class="{% if request.resolver_match.url_name == 'price_management' %}active{% endif %}">
-                        <i class="fas fa-tags"></i> Цены на услуги
                     </a>
                 </div>
 
@@ -52,9 +49,6 @@
                     <h3 class="menu-group-title">Марки и модели</h3>
                     <a href="{% url 'car_management' %}" class="{% if request.resolver_match.url_name == 'car_management' %}active{% endif %}">
                         <i class="fas fa-car"></i> Марки и модели
-                    </a>
-                    <a href="{% url 'services_by_car' %}" class="{% if request.resolver_match.url_name == 'services_by_car' %}active{% endif %}">
-                        <i class="fas fa-list"></i> Услуги по авто
                     </a>
                 </div>
 
@@ -73,8 +67,19 @@
                     <a href="{% url 'locations_list' %}" class="{% if request.resolver_match.url_name in 'locations_list,location_detail,location_create,location_update,location_delete' %}active{% endif %}">
                         <i class="fas fa-map-marker-alt"></i> Места хранения
                     </a>
+                    <a href="{% url 'purchase_prices_list' %}" class="{% if request.resolver_match.url_name in 'purchase_prices_list,purchase_prices_detail' %}active{% endif %}">
+                        <i class="fas fa-ruble-sign"></i> Цены закупки
+                    </a>
                     <a href="{% url 'warehouse_settings' %}" class="{% if request.resolver_match.url_name == 'warehouse_settings' %}active{% endif %}">
                         <i class="fas fa-sliders-h"></i> Настройки
+                    </a>
+                </div>
+
+                <!-- Группа: Персонал -->
+                <div class="menu-group">
+                    <h3 class="menu-group-title">Персонал</h3>
+                    <a href="{% url 'employees_list' %}" class="{% if request.resolver_match.url_name in 'employees_list,employee_create,employee_update,employee_delete,employee_report,employees_report_all' %}active{% endif %}">
+                        <i class="fas fa-users"></i> Сотрудники
                     </a>
                 </div>
 
@@ -101,6 +106,9 @@
                     </a>
                     <a href="{% url 'import_db' %}">
                         <i class="fas fa-upload"></i> Импорт БД
+                    </a>
+                    <a href="{% url 'accounting_export' %}" class="{% if request.resolver_match.url_name == 'accounting_export' %}active{% endif %}">
+                        <i class="fas fa-file-excel"></i> Бухгалтерия (Excel)
                     </a>
                 </div>
                 {% endif %}

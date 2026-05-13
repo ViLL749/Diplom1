@@ -3,10 +3,11 @@
 {% block content %}
 <h1>Приход товара №{{ doc.id }}</h1>
 <p><strong>Дата:</strong> {{ doc.created_at|date:"d.m.Y H:i" }}</p>
-<p><strong>Поставщик:</strong> {{ doc.supplier }}</p>
+<p><strong>Поставщик:</strong> {{ doc.supplier|default:"—" }}</p>
+{% if doc.purchase_order %}<p><strong>Заказ поставщику:</strong> <a href="{% url 'purchase_detail' doc.purchase_order.id %}">№{{ doc.purchase_order.id }}</a></p>{% endif %}
 {% if doc.comment %}<p><strong>Примечание:</strong> {{ doc.comment }}</p>{% endif %}
 
-<a href="{% url 'supply_list' %}" class="btn">К списку</a>
+<a href="{% url 'supply_list' %}" class="btn" style="margin-bottom:16px;display:inline-block;">К списку</a>
 
 <h2 class="top-title-margin">Строки прихода</h2>
 <table>
@@ -15,9 +16,11 @@
             <th>Артикул</th>
             <th>Название</th>
             <th>Место хранения</th>
-            <th>Количество</th>
-            <th>Цена закупки</th>
-            <th>Сумма</th>
+            <th>Шт. в уп.</th>
+            <th>Кол-во (шт.)</th>
+            <th>Цена за уп., руб.</th>
+            <th>Цена за шт., руб.</th>
+            <th>Сумма, руб.</th>
         </tr>
     </thead>
     <tbody>
@@ -26,13 +29,23 @@
             <td>{{ item.part.article }}</td>
             <td>{{ item.part.name }}</td>
             <td>{{ item.location.label }}</td>
+            <td>{{ item.pkg_qty }}</td>
             <td>{{ item.quantity }}</td>
-            <td>{{ item.purchase_price|floatformat:2 }} руб.</td>
-            <td>{% widthratio item.purchase_price 1 item.quantity %} руб.</td>
+            <td>{{ item.purchase_price|floatformat:2 }}</td>
+            <td>{{ item.computed_price_per_unit|floatformat:2 }}</td>
+            <td>{{ item.computed_total_cost|floatformat:2 }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="6">Строки не найдены.</td></tr>
+        <tr><td colspan="8" style="color:#888;">Строки не найдены.</td></tr>
         {% endfor %}
     </tbody>
+    {% if items %}
+    <tfoot>
+        <tr style="font-weight:600;">
+            <td colspan="7">Итого</td>
+            <td>{{ grand_total|floatformat:2 }}</td>
+        </tr>
+    </tfoot>
+    {% endif %}
 </table>
 {% endblock %}
