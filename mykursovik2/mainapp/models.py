@@ -6,6 +6,15 @@ from django.utils import timezone
 class Client(models.Model):
     fio = models.CharField(max_length=255, verbose_name="ФИО")
     phone = models.CharField(max_length=20, verbose_name="Телефон", blank=True, null=True, unique=True) # Убрать null True и blank True
+    phone_country = models.CharField(
+        max_length=2, verbose_name="Страна телефона", default='RU',
+        choices=[
+            ('RU', 'Россия'), ('BY', 'Беларусь'), ('KZ', 'Казахстан'),
+            ('UA', 'Украина'), ('UZ', 'Узбекистан'), ('MD', 'Молдова'),
+            ('AM', 'Армения'), ('AZ', 'Азербайджан'), ('KG', 'Кыргызстан'),
+            ('TJ', 'Таджикистан'), ('TM', 'Туркменистан'),
+        ]
+    )
 
     def __str__(self):
         return self.fio
@@ -74,6 +83,15 @@ class ClientCar(models.Model):
     make = models.ForeignKey(CarMake, on_delete=models.CASCADE, verbose_name="Марка")
     model = models.ForeignKey(CarModel, on_delete=models.CASCADE, verbose_name="Модель")
     license_plate = models.CharField(max_length=20, verbose_name="Госномер", blank=True, null=True)
+    plate_country = models.CharField(
+        max_length=2, verbose_name="Страна номера", default='RU',
+        choices=[
+            ('RU','Россия'), ('BY','Беларусь'), ('KZ','Казахстан'),
+            ('UA','Украина'), ('UZ','Узбекистан'), ('MD','Молдова'),
+            ('AM','Армения'), ('AZ','Азербайджан'), ('KG','Кыргызстан'),
+            ('TJ','Таджикистан'), ('TM','Туркменистан'),
+        ]
+    )
     color = models.CharField(max_length=50, verbose_name="Цвет", blank=True, null=True)
     vin = models.CharField(max_length=17, verbose_name="VIN-номер", blank=True, null=True)
     year = models.PositiveIntegerField(verbose_name="Год выпуска", blank=True, null=True)

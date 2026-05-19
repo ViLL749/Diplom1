@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% load phone_format %}
 {% block title %}Информация о клиенте{% endblock %}
 {% block content %}
     <h1>Информация о клиенте</h1>
     <p><strong>ФИО:</strong> {{ client.fio }}</p>
-    <p><strong>Телефон:</strong> {{ client.phone }}</p>
+    <p><strong>Телефон:</strong> {{ client.phone|format_phone }}</p>
     <a href="{{ cancel_url }}" class="btn">Вернуться к списку</a>
     <a href="{% url 'client_update' client.id %}" class="btn">Изменить</a>
     <a href="{% url 'client_delete' client.id %}" class="btn btn-danger">Удалить</a>

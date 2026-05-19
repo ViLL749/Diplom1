@@ -59,13 +59,33 @@ class OrderForm(forms.ModelForm):
 class ClientForm(forms.ModelForm):
     class Meta:
         model = Client
-        fields = ['fio', 'phone']
+        fields = ['fio', 'phone_country', 'phone']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['phone_country'].widget.attrs.update({
+            'id': 'id_phone_country',
+            'style': 'width:auto;flex-shrink:0;',
+        })
+
+    def clean(self):
+        cleaned = super().clean()
+        phone = cleaned.get('phone', '').strip()
+        country = cleaned.get('phone_country', 'RU') or 'RU'
+        if phone:
+            from .validators import validate_phone
+            ok, result = validate_phone(phone, country)
+            if not ok:
+                self.add_error('phone', result)
+            else:
+                cleaned['phone'] = result
+        return cleaned
 
     def clean_phone(self):
-        phone = self.cleaned_data.get('phone')
+        phone = self.cleaned_data.get('phone', '').strip()
         if phone:
             qs = Client.objects.filter(phone=phone)
-            if self.instance.pk:  # При редактировании исключаем текущего клиента
+            if self.instance.pk:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
                 raise forms.ValidationError('Клиент с таким номером телефона уже существует.')
@@ -134,7 +154,7 @@ class CarModelSelectionForm(forms.Form):
 class ClientCarForm(forms.ModelForm):
     class Meta:
         model = ClientCar
-        fields = ['client', 'vin', 'year', 'license_plate', 'color', 'make', 'model']
+        fields = ['client', 'vin', 'year', 'plate_country', 'license_plate', 'color', 'make', 'model']
 
     def __init__(self, *args, **kwargs):
         make_id = kwargs.pop('make_id', None)
@@ -160,12 +180,14 @@ class ClientCarForm(forms.ModelForm):
         return vin
 
     def clean_license_plate(self):
-        license_plate = self.cleaned_data.get('license_plate')
+        license_plate = self.cleaned_data.get('license_plate', '').strip()
+        country = self.data.get('plate_country', 'RU') or 'RU'
         if license_plate:
-            import re
-            if not re.match(r'^[А-Я]\d{3}[А-Я]{2}\d{2,3}$', license_plate.upper()):
-                raise forms.ValidationError(
-                    'Неверный формат российского государственного номера. Используйте формат: А123БВ77 или А123БВ777.')
+            from .validators import validate_plate
+            ok, result = validate_plate(license_plate, country)
+            if not ok:
+                raise forms.ValidationError(result)
+            license_plate = result  # нормализованный вариант (upper)
             qs = ClientCar.objects.filter(license_plate=license_plate)
             if self.instance.pk:
                 qs = qs.exclude(pk=self.instance.pk)

@@ -13,11 +13,17 @@
 <!-- ── Info card ── -->
 <div class="ord-info-card">
     {% if order.status == 'Завершён' or order.status == 'Отменён' %}
-        <div class="ord-info-row"><span>Клиент:</span> {{ order.client_fio_static|default:order.client_car.client.fio }}</div>
+        <div class="ord-info-row"><span>Клиент:</span>
+            {% if order.client_fio_static %}{{ order.client_fio_static }}{% elif order.client_car %}{{ order.client_car.client.fio }}{% else %}—{% endif %}
+        </div>
         <div class="ord-info-row"><span>Автомобиль:</span> {{ order.car_details_static|default:"—" }}</div>
     {% else %}
-        <div class="ord-info-row"><span>Клиент:</span> {{ order.client_car.client.fio }}</div>
-        <div class="ord-info-row"><span>Автомобиль:</span> {{ order.client_car.make.name }} {{ order.client_car.model.name }}{% if order.client_car.license_plate %} ({{ order.client_car.license_plate }}){% endif %}</div>
+        <div class="ord-info-row"><span>Клиент:</span>
+            {% if order.client_car %}{{ order.client_car.client.fio }}{% else %}—{% endif %}
+        </div>
+        <div class="ord-info-row"><span>Автомобиль:</span>
+            {% if order.client_car %}{{ order.client_car.make.name }} {{ order.client_car.model.name }}{% if order.client_car.license_plate %} ({{ order.client_car.license_plate }}){% endif %}{% else %}—{% endif %}
+        </div>
     {% endif %}
     <div class="ord-info-row"><span>Дата заказа:</span> {{ order.order_date }}</div>
     {% if order.completion_date %}<div class="ord-info-row"><span>Дата завершения:</span> {{ order.completion_date }}</div>{% endif %}

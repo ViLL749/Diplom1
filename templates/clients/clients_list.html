@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load phone_format %}
 {% block title %}Список клиентов{% endblock %}
 {% block content %}
     <h1>Список клиентов</h1>
@@ -56,7 +57,7 @@
                 <tr data-id="{{ client.id }}" data-url-detail="{% url 'client_detail' client.id %}" data-url-update="{% url 'client_update' client.id %}" data-url-delete="{% url 'client_delete' client.id %}">
                     <td>{{ client.id }}</td>
                     <td>{{ client.fio }}</td>
-                    <td>{{ client.phone }}</td>
+                    <td>{{ client.phone|format_phone }}</td>
                 </tr>
             {% endfor %}
         </tbody>

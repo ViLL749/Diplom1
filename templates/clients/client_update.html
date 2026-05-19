@@ -7,7 +7,18 @@
 
 <div>
     <h1>Редактировать клиента</h1>
-    <div id="form-errors" class="form-errors" style="display: none;"></div>
+    <div id="form-errors" class="form-errors" {% if not form.errors %}style="display: none;"{% endif %}>
+        {% if form.errors %}
+        <p>Пожалуйста, исправьте ошибки:</p>
+        <ul>
+            {% for field, errors in form.errors.items %}
+                {% for error in errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
     <form method="post" id="client-form">
         {% csrf_token %}
         <div>
@@ -16,7 +27,11 @@
         </div>
         <div>
             <label for="id_phone">Телефон:</label>
-            {{ form.phone }}
+            <div style="display:flex;gap:6px;align-items:center;">
+                {{ form.phone_country }}
+                {{ form.phone }}
+            </div>
+            <small id="phone-hint" style="font-size:12px;color:#64748b;display:block;margin-top:3px;"></small>
         </div>
         <button type="submit" class="btn">Сохранить</button>
         <a href="{{ cancel_url }}" class="btn btn-danger">Отмена</a>
@@ -24,35 +39,74 @@
 </div>
 
 <script>
-document.addEventListener("DOMContentLoaded", function () {
-    const form = document.getElementById("client-form");
-    const fioInput = document.getElementById("id_fio");
-    const phoneInput = document.getElementById("id_phone");
-    const formErrors = document.getElementById("form-errors");
-    const fioPattern = /^[А-Яа-яЁёA-Za-z\s.]+$/;
-    const phonePattern = /^\+7\s\(\d{3}\)\s\d{3}-\d{2}-\d{2}$/;
-    const clientId = '{{ form.instance.id }}';
+const PHONE_MASKS = {
+    RU:  '+7 (000) 000-00-00',
+    KZ:  '+7 (000) 000-00-00',
+    BY:  '+375 (00) 000-00-00',
+    UA:  '+380 (00) 000-00-00',
+    UZ:  '+998 (00) 000-00-00',
+    MD:  '+373 (00) 000-000',
+    AM:  '+374 (00) 000-000',
+    AZ:  '+994 (00) 000-00-00',
+    KG:  '+996 (000) 000-000',
+    TJ:  '+992 (00) 000-0000',
+    TM:  '+993 (00) 000-00-00',
+};
 
-    if (typeof IMask !== "undefined") {
-        const maskOptions = {
-            mask: "+7 (000) 000-00-00",
-            lazy: false,
-        };
-        new IMask(phoneInput, maskOptions);
+// Количество цифр в коде страны (+7 = 1, +375 = 3 и т.д.)
+const PHONE_CC_DIGITS = { RU:1, KZ:1, BY:3, UA:3, UZ:3, MD:3, AM:3, AZ:3, KG:3, TJ:3, TM:3 };
+
+document.addEventListener("DOMContentLoaded", function () {
+    const form          = document.getElementById("client-form");
+    const fioInput      = document.getElementById("id_fio");
+    const phoneInput    = document.getElementById("id_phone");
+    const countrySelect = document.getElementById("id_phone_country");
+    const phoneHint     = document.getElementById("phone-hint");
+    const formErrors    = document.getElementById("form-errors");
+    const clientId      = '{{ form.instance.id }}';
+    const fioPattern    = /^[А-Яа-яЁёA-Za-z\s.]+$/;
+
+    let phoneMaskInst = null;
+
+    function applyMask(country) {
+        const maskStr = PHONE_MASKS[country] || '+0 (000) 000-00-00';
+        if (phoneMaskInst) { phoneMaskInst.destroy(); phoneMaskInst = null; }
+        phoneInput.value = '';
+        if (typeof IMask !== "undefined") {
+            phoneMaskInst = new IMask(phoneInput, { mask: maskStr, lazy: false });
+        }
+        phoneHint.textContent = maskStr.replace(/0/g, 'X');
+    }
+
+    countrySelect.addEventListener("change", function () {
+        applyMask(this.value);
+    });
+
+    // При загрузке применяем маску и восстанавливаем номер.
+    // Если форма вернулась после ошибки — phoneInput.value содержит значение из POST.
+    // Иначе — загружаем из сохранённого экземпляра.
+    const savedCountry = countrySelect.value || 'RU';
+    const preFilledVal = phoneInput.value;
+    const instancePhone = "{{ form.instance.phone|default:''|escapejs }}";
+    const sourcePhone  = preFilledVal || instancePhone;
+    applyMask(savedCountry);
+    if (sourcePhone && phoneMaskInst) {
+        const digits = sourcePhone.replace(/\D/g, '');
+        const ccLen  = PHONE_CC_DIGITS[savedCountry] || 1;
+        phoneMaskInst.unmaskedValue = digits.slice(ccLen);
     }
 
     function validateFio() {
-        const fioValue = fioInput.value.trim();
-        if (!fioValue) return "Поле ФИО обязательно для заполнения.";
-        if (!fioPattern.test(fioValue)) return "ФИО должно содержать только буквы, пробелы и точки.";
-        if (fioValue.length < 3) return "ФИО должно содержать минимум 3 символа.";
+        const v = fioInput.value.trim();
+        if (!v) return "Поле ФИО обязательно для заполнения.";
+        if (!fioPattern.test(v)) return "ФИО должно содержать только буквы, пробелы и точки.";
+        if (v.length < 3) return "ФИО должно содержать минимум 3 символа.";
         return null;
     }
 
     function validatePhone() {
-        const phoneValue = phoneInput.value;
-        if (!phoneValue) return "Поле телефона обязательно для заполнения.";
-        if (!phonePattern.test(phoneValue)) return "Введите телефон в формате +7 (123) 456-78-90.";
+        const v = phoneInput.value.trim();
+        if (!v || v.includes('_')) return "Введите номер телефона полностью.";
         return null;
     }
 
@@ -62,28 +116,29 @@ document.addEventListener("DOMContentLoaded", function () {
             data: { phone: phone, id: clientId },
             method: 'POST',
             headers: { 'X-CSRFToken': '{{ csrf_token }}' }
-        }).then(response => response.exists ? "Клиент с таким номером телефона уже существует." : null);
+        }).then(r => r.exists ? "Клиент с таким номером телефона уже существует." : null);
     }
 
     async function validateForm(event) {
         event.preventDefault();
-        const fioError = validateFio();
-        const phoneError = validatePhone();
-        const uniquenessError = (!fioError && !phoneError) ? await checkPhoneUniqueness(phoneInput.value) : null;
+        try {
+            const fioError   = validateFio();
+            const phoneError = validatePhone();
+            const uniqError  = (!fioError && !phoneError)
+                ? await checkPhoneUniqueness(phoneInput.value) : null;
 
-        const errors = [];
-        if (fioError) errors.push(fioError);
-        if (phoneError) errors.push(phoneError);
-        if (uniquenessError) errors.push(uniquenessError);
-
-        if (errors.length > 0) {
-            formErrors.innerHTML = "<p>Пожалуйста, исправьте ошибки:</p><ul>" +
-                errors.map(error => `<li>${error}</li>`).join('') + "</ul>";
+            const errors = [fioError, phoneError, uniqError].filter(Boolean);
+            if (errors.length > 0) {
+                formErrors.innerHTML = "<p>Пожалуйста, исправьте ошибки:</p><ul>" +
+                    errors.map(e => `<li>${e}</li>`).join('') + "</ul>";
+                formErrors.style.display = "block";
+            } else {
+                formErrors.style.display = "none";
+                form.submit();
+            }
+        } catch (err) {
+            formErrors.innerHTML = "<p>Ошибка: " + err.message + "</p>";
             formErrors.style.display = "block";
-            return false;
-        } else {
-            formErrors.style.display = "none";
-            form.submit();
         }
     }
 

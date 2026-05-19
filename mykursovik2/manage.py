@@ -2,6 +2,10 @@
 """Django's command-line utility for administrative tasks."""
 import os
 import sys
+
+# Добавляем vendored-библиотеки в путь поиска
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'vendor'))
+
 from django.core.management import execute_from_command_line
 from django.contrib.auth import get_user_model
 
