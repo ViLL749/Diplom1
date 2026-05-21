@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Лог действий{% endblock %}
+{% block content %}
+
+<h1>Лог действий</h1>
+
+<form method="get" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:20px;">
+    <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:3px;">Поиск по объекту</label>
+        <input type="text" name="search" value="{{ search }}" placeholder="Поиск..." class="form-control" style="min-width:220px;">
+    </div>
+    <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:3px;">Действие</label>
+        <select name="action" class="form-control">
+            <option value="">Все</option>
+            {% for val, label in action_choices %}
+                <option value="{{ val }}" {% if action == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:3px;">Модель</label>
+        <select name="model" class="form-control">
+            <option value="">Все</option>
+            {% for code, verbose in models_used %}
+                <option value="{{ code }}" {% if model == code %}selected{% endif %}>{{ verbose }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:3px;">Пользователь</label>
+        <select name="user" class="form-control">
+            <option value="">Все</option>
+            {% for u in users %}
+                <option value="{{ u.id }}" {% if user_id == u.id|stringformat:"s" %}selected{% endif %}>{{ u.username }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:3px;">С</label>
+        <input type="date" name="date_from" value="{{ date_from }}" class="form-control">
+    </div>
+    <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:3px;">По</label>
+        <input type="date" name="date_to" value="{{ date_to }}" class="form-control">
+    </div>
+    <div style="display:flex;gap:8px;">
+        <button type="submit" class="btn">Применить</button>
+        <a href="{% url 'action_log' %}" class="btn btn-danger">Сбросить</a>
+    </div>
+</form>
+
+<p style="color:#64748b;font-size:13px;">Найдено записей: <strong>{{ page_obj.paginator.count }}</strong></p>
+
+{% if page_obj.object_list %}
+<table>
+    <thead>
+        <tr>
+            <th>Время</th>
+            <th>Пользователь</th>
+            <th>Действие</th>
+            <th>Модель</th>
+            <th>ID</th>
+            <th>Объект</th>
+            <th>IP</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in page_obj %}
+        <tr>
+            <td style="white-space:nowrap;">{{ entry.timestamp|date:"d.m.Y H:i:s" }}</td>
+            <td>{{ entry.user.username|default:"—" }}</td>
+            <td>
+                {% if entry.action == 'create' %}
+                    <span style="color:#16a34a;font-weight:600;">Создание</span>
+                {% elif entry.action == 'update' %}
+                    <span style="color:#2563eb;font-weight:600;">Изменение</span>
+                {% else %}
+                    <span style="color:#dc2626;font-weight:600;">Удаление</span>
+                {% endif %}
+            </td>
+            <td>{{ entry.model_verbose }}</td>
+            <td>{{ entry.object_id|default:"—" }}</td>
+            <td>{{ entry.object_repr }}</td>
+            <td style="font-size:12px;color:#94a3b8;">{{ entry.ip_address|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<div style="display:flex;gap:8px;align-items:center;margin-top:16px;">
+    {% if page_obj.has_previous %}
+        <a href="?search={{ search }}&action={{ action }}&model={{ model }}&user={{ user_id }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page_obj.previous_page_number }}" class="btn">← Назад</a>
+    {% endif %}
+    <span style="color:#64748b;font-size:13px;">Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+        <a href="?search={{ search }}&action={{ action }}&model={{ model }}&user={{ user_id }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page_obj.next_page_number }}" class="btn">Вперёд →</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<p style="color:#64748b;">Записей не найдено.</p>
+{% endif %}
+
+{% endblock %}

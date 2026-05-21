@@ -1,18 +1,95 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Заказ поставщику №{{ po.id }}{% endblock %}
 {% block content %}
+<script src="{% static 'js/jquery-3.6.0.min.js' %}"></script>
 <h1>Заказ поставщику №{{ po.id }}</h1>
 <p><strong>Поставщик:</strong> {% if po.supplier %}{{ po.supplier.name }}{% else %}—{% endif %}</p>
 <p><strong>Статус:</strong> {{ po.get_status_display }}</p>
 <p><strong>Дата заказа:</strong> {{ po.created_at|date:"d.m.Y H:i" }}</p>
 {% if po.comment %}<p><strong>Примечание:</strong> {{ po.comment }}</p>{% endif %}
 
-<a href="{% url 'purchase_list' %}" class="btn">К списку</a>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+    <a href="{% url 'purchase_list' %}" class="btn">К списку</a>
+    {% if not po.is_received %}
+        <button type="button" class="btn" id="toggle-po-edit">✏ Изменить статус</button>
+    {% endif %}
+    {% if po.status in "ordered,in_transit,partial" or po.status == 'ordered' or po.status == 'in_transit' or po.status == 'partial' %}
+        <a href="{% url 'supply_create' %}?po={{ po.id }}" class="btn">Оформить приход</a>
+    {% endif %}
+</div>
+
 {% if not po.is_received %}
-    <a href="{% url 'purchase_update' po.id %}" class="btn">Изменить статус</a>
-{% endif %}
-{% if po.status in "ordered,in_transit,partial" or po.status == 'ordered' or po.status == 'in_transit' or po.status == 'partial' %}
-    <a href="{% url 'supply_create' %}?po={{ po.id }}" class="btn">Оформить приход</a>
+<div id="po-edit-form" style="display:none;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:16px 20px;margin-bottom:16px;">
+    <h3 style="margin:0 0 12px;font-size:1em;color:#334155;">Изменение статуса заказа</h3>
+    <form id="po-status-form" method="post" action="{% url 'purchase_update' po.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="client_version" value="{{ po_version }}">
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+            <div>
+                <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">Статус</label>
+                <select name="status" class="form-control" style="min-width:200px;">
+                    {% for val, label in po_status_choices %}
+                    <option value="{{ val }}" {% if po.status == val %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <button type="submit" class="btn btn-primary" id="po-save-btn">Сохранить</button>
+                <button type="button" class="btn" id="cancel-po-edit" style="margin-left:6px;">Отмена</button>
+            </div>
+        </div>
+    </form>
+</div>
+<script>
+document.getElementById('toggle-po-edit').addEventListener('click', function() {
+    var f = document.getElementById('po-edit-form');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+});
+document.getElementById('cancel-po-edit').addEventListener('click', function() {
+    document.getElementById('po-edit-form').style.display = 'none';
+});
+
+$('#po-status-form').on('submit', function(e) {
+    e.preventDefault();
+    var btn = document.getElementById('po-save-btn');
+    btn.disabled = true;
+    btn.textContent = 'Сохранение...';
+    $.ajax({
+        url: $(this).attr('action'),
+        method: 'POST',
+        data: $(this).serialize(),
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        success: function(data) {
+            if (data.conflict) {
+                alert(data.message);
+                location.reload();
+                return;
+            }
+            if (data.error) {
+                alert(data.error);
+                btn.disabled = false;
+                btn.textContent = 'Сохранить';
+                return;
+            }
+            location.reload();
+        },
+        error: function(xhr) {
+            try {
+                var d = JSON.parse(xhr.responseText);
+                alert(d.error || 'Ошибка при сохранении.');
+            } catch(ex) {
+                alert('Ошибка при сохранении.');
+            }
+            btn.disabled = false;
+            btn.textContent = 'Сохранить';
+        }
+    });
+});
+</script>
 {% endif %}
 
 <h2 class="top-title-margin">Позиции заказа</h2>

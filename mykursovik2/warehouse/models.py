@@ -138,6 +138,7 @@ class PurchaseOrder(models.Model):
         default='ordered', verbose_name="Статус"
     )
     created_at = models.DateTimeField(verbose_name="Дата заказа", default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
     comment = models.TextField(verbose_name="Примечание", blank=True)
 
     def __str__(self):

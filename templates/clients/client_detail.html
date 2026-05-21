@@ -67,7 +67,7 @@
                     <td>{{ client_car.model.name }}</td>
                     <td>{{ client_car.license_plate }}</td>
                     <td>{{ client_car.color }}</td>
-                    <td>{{ client_car.vin }}</td>
+                    <td>{{ client_car.vin|default:"отсутствует" }}</td>
                     <td>{{ client_car.year }}</td>
                 </tr>
             {% endfor %}

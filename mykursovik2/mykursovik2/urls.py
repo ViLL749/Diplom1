@@ -15,6 +15,7 @@ urlpatterns = [
     path('orders/<int:pk>/', views.order_detail, name='order_detail'),
     path('orders/<int:pk>/update/', views.order_update, name='order_update'),
     path('orders/<int:pk>/delete/', views.order_delete, name='order_delete'),
+    path('orders/<int:pk>/commit/', views.order_commit, name='order_commit'),
     path('orders/<int:pk>/mechanic-pdf/', views.order_mechanic_pdf, name='order_mechanic_pdf'),
     path('orders/<int:pk>/customer-pdf/', views.order_customer_pdf, name='order_customer_pdf'),
     path('api/get_client_cars/', views.get_client_cars, name='get_client_cars'),
@@ -72,6 +73,7 @@ urlpatterns = [
     path('export/', views.export_db, name='export_db'),
     path('import/', views.import_db, name='import_db'),
     path('accounting-export/', views.accounting_export, name='accounting_export'),
+    path('action-log/', views.action_log, name='action_log'),
 
     # Аутентификация (login/logout)
     path('accounts/', include('accounts.urls')),

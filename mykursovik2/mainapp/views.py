@@ -997,6 +997,253 @@ def _recalculate_order_cost(order):
     order.save(update_fields=['cost'])
 
 
+def _unreserve_single_wop(wop):
+    """Release stock reservation for one WorkOrderPart (reserved status only)."""
+    from warehouse.models import StockEntry
+    if wop.status != 'reserved':
+        return
+    remaining = wop.quantity
+    for entry in StockEntry.objects.filter(part=wop.part):
+        if remaining <= 0:
+            break
+        release = min(entry.reserved_qty, remaining)
+        entry.reserved_qty -= release
+        entry.save()
+        remaining -= release
+
+
+@login_required
+def order_commit(request, pk):
+    """Batch-save all staged changes from the order detail page in one atomic operation."""
+    import json as _json_mod
+    from django.db import transaction
+    from warehouse.models import (
+        WorkOrderService, WorkOrderPart, WorkOrderServiceEmployee,
+        StockEntry, WorkshopSettings, Employee,
+    )
+    from warehouse.views import _min_stock_price
+    from mainapp.models import Service
+    from mainapp.signals import _locals as _sig_locals, _create_log
+
+    if request.method != 'POST':
+        return _json_response({'error': 'Method not allowed'}, 405)
+
+    order = get_object_or_404(Order, pk=pk)
+    if order.status in ('Завершён', 'Отменён'):
+        return _json_response({'error': 'Редактирование закрытого заказа запрещено'}, 400)
+
+    try:
+        data = _json_mod.loads(request.body)
+    except (ValueError, _json_mod.JSONDecodeError):
+        return _json_response({'error': 'Неверный формат запроса'}, 400)
+
+    # Optimistic locking
+    client_version = data.get('client_version', '')
+    if client_version and client_version != order.updated_at.isoformat():
+        return _json_response({
+            'conflict': True,
+            'message': 'Заказ был изменён другим сотрудником. Страница будет обновлена.',
+        }, 409)
+
+    errors = []
+    warnings = []
+    log_field_changes = []
+    log_events = []
+
+    _sig_locals.suppress_signals = True
+    try:
+        with transaction.atomic():
+            # 1. Remove services (unreserve their parts, then delete cascade)
+            for wos_id in data.get('remove_services', []):
+                wos = WorkOrderService.objects.filter(pk=wos_id, work_order=order).first()
+                if wos:
+                    svc_name = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
+                    for wop in wos.parts.filter(status='reserved'):
+                        _unreserve_single_wop(wop)
+                    wos.delete()
+                    log_events.append({'event': 'service_removed', 'service': svc_name})
+
+            # 2. Remove standalone parts
+            for wop_id in data.get('remove_parts', []):
+                wop = WorkOrderPart.objects.filter(pk=wop_id, work_order=order).first()
+                if wop:
+                    log_events.append({
+                        'event': 'part_removed',
+                        'article': wop.part.article if wop.part else '—',
+                        'part_name': wop.part.name if wop.part else '—',
+                        'quantity': str(wop.quantity),
+                    })
+                    _unreserve_single_wop(wop)
+                    wop.delete()
+
+            # 3. Unassign employees
+            for item in data.get('unassign_employees', []):
+                for a in WorkOrderServiceEmployee.objects.filter(
+                    work_order_service_id=item.get('wosId'),
+                    employee_id=item.get('empId'),
+                ).select_related('employee', 'work_order_service__service'):
+                    log_events.append({
+                        'event': 'employee_removed',
+                        'employee': a.employee.name if a.employee else '—',
+                        'service': (a.work_order_service.service_name_snapshot or
+                                    (a.work_order_service.service.name if a.work_order_service.service else '—')),
+                    })
+                WorkOrderServiceEmployee.objects.filter(
+                    work_order_service_id=item.get('wosId'),
+                    employee_id=item.get('empId'),
+                ).delete()
+
+            # 4. Assign employees (guard: worker may have been deleted)
+            for item in data.get('assign_employees', []):
+                emp = Employee.objects.filter(pk=item.get('empId')).first()
+                if not emp:
+                    warnings.append(f'Сотрудник ID={item.get("empId")} не найден — возможно, был удалён.')
+                    continue
+                wos = WorkOrderService.objects.filter(pk=item.get('wosId'), work_order=order).first()
+                if not wos:
+                    warnings.append(f'Услуга ID={item.get("wosId")} не найдена.')
+                    continue
+                _, created = WorkOrderServiceEmployee.objects.get_or_create(work_order_service=wos, employee=emp)
+                if created:
+                    log_events.append({
+                        'event': 'employee_assigned',
+                        'employee': emp.name,
+                        'service': wos.service_name_snapshot or (wos.service.name if wos.service else '—'),
+                    })
+
+            # 5. Add services
+            settings = WorkshopSettings.objects.first()
+            rate = settings.hourly_rate if settings else _Decimal('0')
+            for svc_data in data.get('add_services', []):
+                svc = Service.objects.filter(pk=svc_data.get('id')).first()
+                if not svc:
+                    errors.append(f'Услуга ID={svc_data.get("id")} не найдена.')
+                    continue
+                hours = _Decimal(str(svc_data.get('hours', svc.base_hours)))
+                factor = _Decimal(str(svc_data.get('factor', '1.0')))
+                final_price = (hours * rate * factor).quantize(_Decimal('0.01'))
+                WorkOrderService.objects.create(
+                    work_order=order,
+                    service=svc,
+                    service_name_snapshot=svc.name,
+                    hourly_rate_snapshot=rate,
+                    hours_applied=hours,
+                    complexity_factor=factor,
+                )
+                log_events.append({
+                    'event': 'service_added',
+                    'service': svc.name,
+                    'hours': str(hours),
+                    'complexity': str(factor),
+                    'price': str(final_price),
+                })
+
+            # 6. Add parts (guard: part may be deleted or stock exhausted)
+            for pd in data.get('add_parts', []):
+                from warehouse.models import Part
+                part = Part.objects.filter(pk=pd.get('partId')).first()
+                if not part:
+                    errors.append(f'Деталь ID={pd.get("partId")} не найдена — возможно, была удалена.')
+                    continue
+                qty = int(pd.get('qty', 1))
+                markup = _Decimal(str(pd.get('markup', '30')))
+                total_avail = sum(e.available_qty for e in StockEntry.objects.filter(part=part))
+                if total_avail == 0:
+                    errors.append(f'{part.article} «{part.name}»: нет в наличии на складе.')
+                    continue
+                if total_avail < qty:
+                    warnings.append(
+                        f'{part.article}: запрошено {qty} шт., доступно {total_avail} шт. '
+                        f'Зарезервировано {total_avail} шт.'
+                    )
+                    qty = total_avail
+                cost = _min_stock_price(part, qty)
+                sale_price = cost * (1 + markup / _Decimal('100')) if cost else None
+                wos_id = pd.get('wosId')
+                wos = WorkOrderService.objects.filter(pk=wos_id, work_order=order).first() if wos_id else None
+                WorkOrderPart.objects.create(
+                    work_order=order, part=part, quantity=qty,
+                    markup=markup, sale_price=sale_price,
+                    work_order_service=wos, status='reserved',
+                )
+                remaining = qty
+                for entry in StockEntry.objects.filter(part=part).order_by('location__rack', 'location__shelf'):
+                    if remaining <= 0:
+                        break
+                    can = min(entry.available_qty, remaining)
+                    if can > 0:
+                        entry.reserved_qty += can
+                        entry.save()
+                        remaining -= can
+                log_events.append({
+                    'event': 'part_added',
+                    'article': part.article,
+                    'part_name': part.name,
+                    'quantity': str(qty),
+                    'sale_price': str(sale_price) if sale_price else '—',
+                })
+
+            # 7. Update order status / comment
+            order_upd = data.get('order_update')
+            if order_upd:
+                new_status = order_upd.get('status', order.status)
+                new_comment = order_upd.get('comment', order.comment or '')
+                if order.status != new_status:
+                    log_field_changes.append({'field': 'Статус', 'from': order.status, 'to': new_status})
+                if (order.comment or '') != new_comment:
+                    log_field_changes.append({
+                        'field': 'Комментарий',
+                        'from': order.comment or '—',
+                        'to': new_comment or '—',
+                    })
+                if new_status == 'Отменён':
+                    _unreserve_order_parts(order)
+                    _freeze_service_snapshots(order)
+                elif new_status == 'Завершён':
+                    _freeze_service_snapshots(order)
+                    _issue_order_parts(order)
+                    if order.client_car:
+                        order.client_fio_static = order.client_fio_static or order.client_car.client.fio
+                        order.car_details_static = order.car_details_static or (
+                            f"{order.client_car.make.name} {order.client_car.model.name} "
+                            f"({order.client_car.license_plate or ''}"
+                            f"{', VIN: ' + order.client_car.vin if order.client_car.vin else ''})"
+                        )
+                        wos_sum = "; ".join(
+                            f"{w.service_name_snapshot or (w.service.name if w.service else '—')} ({w.final_price} руб.)"
+                            for w in WorkOrderService.objects.filter(work_order=order).select_related('service')
+                        )
+                        wop_sum = "; ".join(
+                            f"{w.part.article} × {w.quantity}"
+                            for w in WorkOrderPart.objects.filter(work_order=order).select_related('part')
+                        )
+                        order.services_static = wos_sum or "Нет услуг"
+                        order.custom_services_static = wop_sum or "Нет деталей"
+                order.status = new_status
+                order.comment = new_comment
+                order.save()
+
+            _recalculate_order_cost(order)
+            # Always bump updated_at so concurrent editors detect the conflict.
+            # _recalculate_order_cost uses update_fields=['cost'] which skips auto_now.
+            from django.utils import timezone as _tz
+            Order.objects.filter(pk=order.pk).update(updated_at=_tz.now())
+    finally:
+        _sig_locals.suppress_signals = False
+
+    # One consolidated log entry for this commit (only what actually changed)
+    if log_field_changes or log_events:
+        _create_log('update', 'Order', order.pk, order,
+                    {'field_changes': log_field_changes, 'events': log_events})
+
+    return _json_response({'success': not bool(errors), 'errors': errors, 'warnings': warnings})
+
+
+def _json_response(data, status=200):
+    from django.http import JsonResponse
+    return JsonResponse(data, status=status)
+
+
 # ── Order CRUD ────────────────────────────────────────────────
 
 @login_required
@@ -1060,6 +1307,8 @@ def order_detail(request, pk):
         'grouped_services': grouped_services,
         'service_hours_json': _json.dumps(service_hours),
         'editable': order.status not in ('Завершён', 'Отменён'),
+        'order_version': order.updated_at.isoformat(),
+        'order_status_choices': Order.STATUS_CHOICES,
     })
 
 
@@ -1072,6 +1321,16 @@ def order_update(request, pk):
         return redirect('order_detail', pk=pk)
 
     if request.method == 'POST':
+        # Optimistic locking: detect concurrent edits
+        client_version = request.POST.get('client_version', '')
+        if client_version and client_version != order.updated_at.isoformat():
+            messages.warning(
+                request,
+                'Этот заказ был изменён другим сотрудником пока вы работали. '
+                'Страница обновлена — проверьте актуальное состояние перед сохранением.'
+            )
+            return redirect('order_detail', pk=pk)
+
         form = OrderForm(request.POST, instance=order)
         if form.is_valid():
             new_status = form.cleaned_data['status']
@@ -1087,7 +1346,8 @@ def order_update(request, pk):
                     order_obj.client_fio_static = order_obj.client_fio_static or order.client_car.client.fio
                     order_obj.car_details_static = order_obj.car_details_static or (
                         f"{order.client_car.make.name} {order.client_car.model.name} "
-                        f"({order.client_car.license_plate or ''})"
+                        f"({order.client_car.license_plate or ''}"
+                        f"{', VIN: ' + order.client_car.vin if order.client_car.vin else ''})"
                     )
                     from warehouse.models import WorkOrderService as _WOS, WorkOrderPart as _WOP
                     wos_sum = "; ".join(
@@ -2002,3 +2262,78 @@ def order_customer_pdf(request, pk):
     resp = HttpResponse(buf, content_type='application/pdf')
     resp['Content-Disposition'] = f'inline; filename="order_{order.pk}_{prefix}.pdf"'
     return resp
+
+
+MODEL_VERBOSE = {
+    'Client': 'Клиент',
+    'ClientCar': 'Автомобиль',
+    'Order': 'Заказ',
+    'CarMake': 'Марка авто',
+    'CarModel': 'Модель авто',
+    'ServiceType': 'Тип услуги',
+    'Service': 'Услуга',
+    'Brand': 'Бренд',
+    'Supplier': 'Поставщик',
+    'Part': 'Запчасть',
+    'StorageLocation': 'Локация',
+    'PurchaseOrder': 'Закупка',
+    'SupplyDocument': 'Поставка',
+    'Employee': 'Сотрудник',
+}
+
+
+@login_required
+@staff_required
+def action_log(request):
+    from .models import ActionLog
+    from django.contrib.auth import get_user_model
+    from django.core.paginator import Paginator
+
+    qs = ActionLog.objects.select_related('user')
+
+    search = request.GET.get('search', '').strip()
+    action = request.GET.get('action', '')
+    model = request.GET.get('model', '')
+    user_id = request.GET.get('user', '')
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
+
+    if search:
+        qs = qs.filter(object_repr__icontains=search)
+    if action:
+        qs = qs.filter(action=action)
+    if model:
+        qs = qs.filter(model_name=model)
+    if user_id:
+        qs = qs.filter(user_id=user_id)
+    if date_from:
+        qs = qs.filter(timestamp__date__gte=date_from)
+    if date_to:
+        qs = qs.filter(timestamp__date__lte=date_to)
+
+    paginator = Paginator(qs, 30)
+    page = paginator.get_page(request.GET.get('page'))
+
+    # Аннотируем каждую запись читаемым названием модели
+    for entry in page.object_list:
+        entry.model_verbose = MODEL_VERBOSE.get(entry.model_name, entry.model_name)
+
+    User = get_user_model()
+    users = User.objects.filter(actionlog__isnull=False).distinct().order_by('username')
+    models_used = [
+        (m, MODEL_VERBOSE.get(m, m))
+        for m in ActionLog.objects.values_list('model_name', flat=True).distinct().order_by('model_name')
+    ]
+
+    return render(request, 'admin/action_log.html', {
+        'page_obj': page,
+        'search': search,
+        'action': action,
+        'model': model,
+        'user_id': user_id,
+        'date_from': date_from,
+        'date_to': date_to,
+        'users': users,
+        'models_used': models_used,
+        'action_choices': ActionLog.ACTION_CHOICES,
+    })

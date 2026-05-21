@@ -22,6 +22,7 @@
 
 <form method="post" id="supply-form">
     {% csrf_token %}
+    {% if initial_po %}<input type="hidden" name="po_version" value="{{ po_version }}">{% endif %}
     <h2>Документ</h2>
 
     {% if initial_po %}
@@ -142,6 +143,16 @@
 </form>
 
 <script>
+(function() {
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('conflict') === '1') {
+        alert('Другой сотрудник уже оформил приход по этому заказу. Часть товара могла измениться — страница обновлена.');
+        params.delete('conflict');
+        var newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+        window.history.replaceState({}, '', newUrl);
+    }
+})();
+
 (function() {
     var totalForms = document.getElementById('id_items-TOTAL_FORMS');
     var tbody = document.getElementById('supply-tbody');

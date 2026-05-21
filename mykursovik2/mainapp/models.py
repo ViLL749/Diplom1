@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -167,6 +168,8 @@ class Order(models.Model):
     completion_date = models.DateField(verbose_name="Дата завершения", blank=True, null=True)
     comment = models.TextField(verbose_name="Комментарий", blank=True, null=True)
 
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
+
     client_fio_static = models.CharField(max_length=255, verbose_name="ФИО клиента (статично)", blank=True, null=True)
     car_details_static = models.CharField(max_length=255, verbose_name="Данные автомобиля (статично)", blank=True, null=True)
     services_static = models.TextField(verbose_name="Услуги (статично)", blank=True, null=True)
@@ -176,7 +179,8 @@ class Order(models.Model):
         if self.client_car and not self.client_fio_static:
             self.client_fio_static = self.client_car.client.fio
         if self.client_car and not self.car_details_static:
-            self.car_details_static = f"{self.client_car.make.name} {self.client_car.model.name} ({self.client_car.license_plate or ''})"
+            vin_part = f', VIN: {self.client_car.vin}' if self.client_car.vin else ''
+            self.car_details_static = f"{self.client_car.make.name} {self.client_car.model.name} ({self.client_car.license_plate or ''}{vin_part})"
 
         if self.status == 'Завершён' and not self.completion_date:
             self.completion_date = timezone.now().date()
@@ -195,3 +199,25 @@ class Order(models.Model):
         ordering = ['-id']
 
 
+class ActionLog(models.Model):
+    ACTION_CHOICES = [
+        ('create', 'Создание'),
+        ('update', 'Изменение'),
+        ('delete', 'Удаление'),
+    ]
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, verbose_name='Пользователь'
+    )
+    action = models.CharField(max_length=10, choices=ACTION_CHOICES, verbose_name='Действие')
+    model_name = models.CharField(max_length=100, verbose_name='Модель')
+    object_id = models.PositiveIntegerField(null=True, blank=True, verbose_name='ID')
+    object_repr = models.CharField(max_length=500, verbose_name='Объект')
+    ip_address = models.GenericIPAddressField(null=True, blank=True, verbose_name='IP')
+    timestamp = models.DateTimeField(auto_now_add=True, verbose_name='Время')
+    details = models.JSONField(null=True, blank=True, verbose_name='Подробности')
+
+    class Meta:
+        verbose_name = 'Запись лога'
+        verbose_name_plural = 'Лог действий'
+        ordering = ['-timestamp']

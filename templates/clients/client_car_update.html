@@ -19,7 +19,7 @@
     </div>
 
     <div>
-        <label for="id_vin">VIN-номер:</label>
+        <label for="id_vin">VIN-номер: <small style="color:#64748b;font-weight:normal;">(необязательно)</small></label>
         {{ form.vin }}
     </div>
     <div>
@@ -132,7 +132,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function validateVin() {
         const v = vinInput.value.trim().toUpperCase();
-        if (!v) return "VIN-номер обязателен.";
+        if (!v) return null;
         if (!vinPattern.test(v)) return "VIN должен состоять из 17 символов (0-9, A-Z, кроме I, O, Q).";
         return null;
     }
@@ -185,7 +185,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const colorError = validateColor();
         const errors     = [vinError, yearError, plateError, colorError].filter(Boolean);
 
-        if (!vinError) {
+        if (!vinError && vinInput.value.trim()) {
             const e = await checkVinUniqueness(vinInput.value.trim().toUpperCase());
             if (e) errors.push(e);
         }

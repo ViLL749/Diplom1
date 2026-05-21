@@ -161,6 +161,7 @@ class ClientCarForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['client'].widget = forms.HiddenInput()
         self.fields['client'].queryset = Client.objects.all()
+        self.fields['vin'].required = False
         self.fields['make'].queryset = CarMake.objects.all()
         if self.instance.pk:
             self.fields['model'].queryset = CarModel.objects.filter(make=self.instance.make)

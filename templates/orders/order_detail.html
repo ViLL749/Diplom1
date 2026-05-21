@@ -34,7 +34,7 @@
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0;">
     <a href="{% url 'orders_list' %}" class="btn">← Список</a>
     {% if editable %}
-        <a href="{% url 'order_update' order.id %}" class="btn">Изменить статус</a>
+        <button type="button" class="btn" id="toggle-edit-form">✏ Изменить</button>
         <a href="{% url 'order_delete' order.id %}" class="btn btn-danger">Удалить</a>
         <button type="button" class="btn btn-primary" id="open-svc-modal">+ Добавить услуги</button>
     {% endif %}
@@ -71,13 +71,47 @@ document.addEventListener('click', function() {
 });
 </script>
 
+{% if editable %}
+<!-- ── Pending changes bar ── -->
+<div id="pending-bar" style="display:none;background:#fef9c3;border:1px solid #fbbf24;border-radius:8px;padding:10px 16px;margin-bottom:12px;display:none;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <span id="pending-count" style="font-weight:600;color:#92400e;font-size:0.95em;"></span>
+    <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn-primary" id="save-all-btn">💾 Сохранить всё</button>
+        <button type="button" class="btn" id="discard-all-btn">✕ Сбросить</button>
+    </div>
+</div>
+
+<!-- ── Inline edit form ── -->
+<div id="inline-edit-form" style="display:none;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
+    <h3 style="margin:0 0 14px;font-size:1em;color:#334155;">Статус и комментарий</h3>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+        <div>
+            <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">Статус</label>
+            <select id="stage-status" class="form-control" style="min-width:200px;">
+                {% for val, label in order_status_choices %}
+                <option value="{{ val }}" {% if order.status == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="flex:1;min-width:220px;">
+            <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">Комментарий</label>
+            <textarea id="stage-comment" class="form-control" rows="2" style="width:100%;box-sizing:border-box;">{{ order.comment|default:'' }}</textarea>
+        </div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;">
+        <button type="button" class="btn btn-primary" id="stage-order-btn">Применить</button>
+        <button type="button" class="btn" id="cancel-edit-form">Отмена</button>
+    </div>
+</div>
+{% endif %}
+
 <!-- ═══════════════════════════════════════════
      SERVICES — card layout
 ════════════════════════════════════════════ -->
 <h2 style="margin-bottom:12px;">Услуги</h2>
-
+<div id="svc-cards-container">
 {% for wos in wos_list %}
-<div class="svc-card">
+<div class="svc-card" data-wos-id="{{ wos.id }}">
     <div class="svc-card-head">
         <div>
             <div class="svc-card-name">{{ wos.service_name_snapshot|default:wos.service.name }}</div>
@@ -89,7 +123,7 @@ document.addEventListener('click', function() {
             <div class="svc-card-price">{{ wos.final_price|floatformat:2 }} руб.</div>
             {% if editable %}
             <a href="{% url 'workorderservice_update' wos.id %}" class="btn btn-sm">Изм.</a>
-            <a href="{% url 'workorderservice_delete' wos.id %}" class="btn btn-sm btn-danger">Удал.</a>
+            <button type="button" class="btn btn-sm btn-danger svc-del-btn" data-wos-id="{{ wos.id }}">Удал.</button>
             <button type="button" class="btn btn-sm btn-success open-part-for-svc" data-wos-id="{{ wos.id }}" data-wos-name="{{ wos.service_name_snapshot|default:wos.service.name }}">+ Деталь</button>
             {% endif %}
         </div>
@@ -98,7 +132,7 @@ document.addEventListener('click', function() {
     <!-- Parts linked to this service -->
     <div class="svc-card-body">
         {% for wop in wos.parts.all %}
-        <div class="svc-part-row">
+        <div class="svc-part-row" data-wop-id="{{ wop.id }}">
             <span class="svc-part-article">{{ wop.part.article }}</span>
             <span class="svc-part-name">{{ wop.part.name }}</span>
             <span class="svc-part-qty">× {{ wop.quantity }} шт.</span>
@@ -106,7 +140,7 @@ document.addEventListener('click', function() {
             <span class="svc-status-pill svc-status-{{ wop.status }}">{{ wop.get_status_display }}</span>
             {% if editable %}
             <a href="{% url 'workorderpart_update' wop.id %}" class="btn btn-xs">Изм.</a>
-            <a href="{% url 'workorderpart_delete' wop.id %}" class="btn btn-xs btn-danger">Удал.</a>
+            <button type="button" class="btn btn-xs btn-danger wop-del-btn" data-wop-id="{{ wop.id }}">Удал.</button>
             {% endif %}
         </div>
         {% empty %}
@@ -139,15 +173,17 @@ document.addEventListener('click', function() {
     </div>
 </div>
 {% empty %}
-<p style="color:#888;">Услуги не добавлены.</p>
+<p style="color:#888;" id="svc-empty-hint">Услуги не добавлены.</p>
 {% endfor %}
+</div><!-- /svc-cards-container -->
 
 <!-- ═══════════════════════════════════════════
      UNLINKED PARTS
 ════════════════════════════════════════════ -->
+<div id="unlinked-parts-section">
 {% with has_unlinked=False %}
 {% for wop in wop_list %}{% if not wop.work_order_service %}{% if not has_unlinked %}
-<h2 style="margin:24px 0 12px;">Детали без привязки к услуге</h2>
+<h2 style="margin:24px 0 12px;" id="unlinked-parts-header">Детали без привязки к услуге</h2>
 {% endif %}
 <div class="svc-card" style="margin-bottom:6px;">
     <div class="svc-card-body" style="padding:10px 16px;">
@@ -159,13 +195,14 @@ document.addEventListener('click', function() {
             <span class="svc-status-pill svc-status-{{ wop.status }}">{{ wop.get_status_display }}</span>
             {% if editable %}
             <a href="{% url 'workorderpart_update' wop.id %}" class="btn btn-xs">Изм.</a>
-            <a href="{% url 'workorderpart_delete' wop.id %}" class="btn btn-xs btn-danger">Удал.</a>
+            <button type="button" class="btn btn-xs btn-danger wop-del-btn" data-wop-id="{{ wop.id }}">Удал.</button>
             {% endif %}
         </div>
     </div>
 </div>
 {% endif %}{% endfor %}
 {% endwith %}
+</div><!-- /unlinked-parts-section -->
 
 {% if editable %}
 <div style="margin:12px 0 24px;">
@@ -350,15 +387,130 @@ document.addEventListener('click', function() {
 <script>
 var SERVICE_HOURS = {{ service_hours_json|safe }};
 var HOURLY_RATE = parseFloat('{{ hourly_rate }}') || 0;
-var selectedSvcs = []; // {id, name, hours, factor}
-var partPage = 1;
-var partTotalPages = 1;
-var preselectedWosId = null;
+var selectedSvcs = [];
+var partPage = 1, partTotalPages = 1, preselectedWosId = null;
+var currentWosId = null;
+var _tempId = 0;
+
+// ═══ DRAFT STATE ════════════════════════════════════════════════
+{% if editable %}
+var draft = {
+    orderUpdate:      null,
+    addServices:      [],
+    removeServices:   new Set(),
+    addParts:         [],
+    removeParts:      new Set(),
+    assignEmployees:  [],
+    unassignEmployees:[]
+};
+
+function draftSize() {
+    return draft.addServices.length + draft.removeServices.size +
+           draft.addParts.length   + draft.removeParts.size   +
+           draft.assignEmployees.length + draft.unassignEmployees.length +
+           (draft.orderUpdate ? 1 : 0);
+}
+
+function updatePendingBar() {
+    var n = draftSize();
+    var bar = document.getElementById('pending-bar');
+    if (n > 0) {
+        bar.style.display = 'flex';
+        document.getElementById('pending-count').textContent =
+            'Несохранённых изменений: ' + n + ' — нажмите «Сохранить всё»';
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+// ── Inline edit form (stage status/comment, don't POST) ──────────
+document.getElementById('toggle-edit-form').addEventListener('click', function() {
+    var f = document.getElementById('inline-edit-form');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+});
+document.getElementById('cancel-edit-form').addEventListener('click', function() {
+    document.getElementById('inline-edit-form').style.display = 'none';
+});
+document.getElementById('stage-order-btn').addEventListener('click', function() {
+    var status  = document.getElementById('stage-status').value;
+    var comment = document.getElementById('stage-comment').value;
+    draft.orderUpdate = {status: status, comment: comment};
+    // update badge visually
+    var badge = document.querySelector('.ord-badge');
+    if (badge) { badge.className = 'ord-badge ord-' + status; badge.textContent = status; }
+    document.getElementById('inline-edit-form').style.display = 'none';
+    updatePendingBar();
+});
+
+// ── Save All ─────────────────────────────────────────────────────
+document.getElementById('save-all-btn').addEventListener('click', function() {
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Сохранение...';
+    var payload = {
+        client_version:   '{{ order_version }}',
+        add_services:     draft.addServices.map(function(s){return {id:s.id,hours:s.hours,factor:s.factor};}),
+        remove_services:  Array.from(draft.removeServices),
+        add_parts:        draft.addParts.map(function(p){return {partId:p.partId,qty:p.qty,markup:p.markup,wosId:p.wosId||null};}),
+        remove_parts:     Array.from(draft.removeParts),
+        assign_employees: draft.assignEmployees.map(function(e){return {wosId:e.wosId,empId:e.empId};}),
+        unassign_employees: draft.unassignEmployees,
+        order_update:     draft.orderUpdate
+    };
+    $.ajax({
+        url: '{% url "order_commit" order.id %}',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(payload),
+        headers: {'X-CSRFToken': '{{ csrf_token }}'},
+        success: function(data) {
+            if (data.conflict) { alert(data.message); location.reload(); return; }
+            var msgs = [];
+            if (data.warnings && data.warnings.length) msgs = msgs.concat(data.warnings);
+            if (data.errors   && data.errors.length)   msgs = msgs.concat(data.errors);
+            if (msgs.length) alert(msgs.join('\n'));
+            location.reload();
+        },
+        error: function(xhr) {
+            try {
+                var d = JSON.parse(xhr.responseText);
+                if (d.conflict) { alert(d.message); location.reload(); return; }
+                alert('Ошибка: ' + (d.error || xhr.responseText));
+            } catch(e) { alert('Ошибка при сохранении.'); }
+            btn.disabled = false;
+            btn.textContent = '💾 Сохранить всё';
+        }
+    });
+});
+
+// ── Discard All ──────────────────────────────────────────────────
+document.getElementById('discard-all-btn').addEventListener('click', function() {
+    if (confirm('Сбросить все несохранённые изменения?')) location.reload();
+});
+
+// ── Stage service removal ─────────────────────────────────────────
+$(document).on('click', '.svc-del-btn', function() {
+    var wosId = parseInt($(this).data('wos-id'));
+    if (draft.removeServices.has(wosId)) return;
+    draft.removeServices.add(wosId);
+    $(this).closest('.svc-card').hide();
+    updatePendingBar();
+});
+
+// ── Stage part removal ────────────────────────────────────────────
+$(document).on('click', '.wop-del-btn', function() {
+    var wopId = parseInt($(this).data('wop-id'));
+    if (draft.removeParts.has(wopId)) return;
+    draft.removeParts.add(wopId);
+    $(this).closest('[data-wop-id]').hide();
+    updatePendingBar();
+});
+
+{% endif %}{# editable #}
 
 // ── Modal helpers ──────────────────────────────────
 function openModal(id) { $('#' + id).show(); }
 function closeModal(id) { $('#' + id).hide(); }
-
 $('.modal-close').click(function() { closeModal($(this).data('modal')); });
 $(window).click(function(e) {
     if ($(e.target).hasClass('modal')) closeModal($(e.target).attr('id'));
@@ -367,277 +519,267 @@ $(window).click(function(e) {
 {% if editable %}
 
 // ── SERVICE MODAL ──────────────────────────────────
+$('#open-svc-modal').click(function() { openModal('svc-modal'); });
 
-$('#open-svc-modal').click(function() {
-    openModal('svc-modal');
-});
-
-// Search filter (client-side)
 $('#svc-search').on('input', function() {
     var q = $(this).val().toLowerCase();
     $('#svc-left-body .svc-avail-row').each(function() {
-        var name = $(this).data('name').toLowerCase();
-        $(this).toggle(!q || name.indexOf(q) >= 0);
+        $(this).toggle(!q || $(this).data('name').toLowerCase().indexOf(q) >= 0);
     });
-    // hide type headers with no visible rows
     $('#svc-left-body .svc-type-hdr').each(function() {
-        var hasVisible = false;
-        var $next = $(this).nextUntil('.svc-type-hdr');
-        $next.each(function() { if ($(this).is(':visible')) hasVisible = true; });
-        $(this).toggle(hasVisible);
+        var hasVis = false;
+        $(this).nextUntil('.svc-type-hdr').each(function() { if ($(this).is(':visible')) hasVis = true; });
+        $(this).toggle(hasVis);
     });
 });
 
-// Click on available service → add to right panel
 $('#svc-left-body').on('click', '.svc-avail-row', function() {
-    var id = parseInt($(this).data('id'));
-    var name = $(this).data('name');
-    var hours = parseFloat($(this).data('hours')) || 1;
-
-    if (selectedSvcs.find(function(s) { return s.id === id; })) {
-        // already selected — deselect
-        removeSvc(id);
-        return;
-    }
+    var id = parseInt($(this).data('id')), name = $(this).data('name'), hours = parseFloat($(this).data('hours')) || 1;
+    if (selectedSvcs.find(function(s) { return s.id === id; })) { removeSvc(id); return; }
     addSvc(id, name, hours);
 });
 
 function addSvc(id, name, hours) {
-    selectedSvcs.push({id: id, name: name, hours: hours, factor: 1.0});
+    selectedSvcs.push({id:id, name:name, hours:hours, factor:1.0});
     $('#svc-right-empty').hide();
     var price = calcPrice(hours, 1.0);
-    $('#svc-right-body').append(
-        '<tr data-id="' + id + '">' +
-        '<td style="padding:5px 6px;font-size:0.9em;">' + name + '</td>' +
-        '<td style="padding:5px 4px;"><input type="number" name="hours_applied" value="' + hours + '" step="0.5" min="0.5" class="svc-hours-inp" data-id="' + id + '" style="width:76px;"></td>' +
-        '<td style="padding:5px 4px;"><input type="number" name="complexity_factor" value="1.0" step="0.1" min="0.1" class="svc-factor-inp" data-id="' + id + '" style="width:72px;"></td>' +
+    $('#svc-right-body').append('<tr data-id="' + id + '"><td style="padding:5px 6px;font-size:0.9em;">' + $('<span>').text(name).html() + '</td>' +
+        '<td style="padding:5px 4px;"><input type="number" value="' + hours + '" step="0.5" min="0.5" class="svc-hours-inp" data-id="' + id + '" style="width:76px;"></td>' +
+        '<td style="padding:5px 4px;"><input type="number" value="1.0" step="0.1" min="0.1" class="svc-factor-inp" data-id="' + id + '" style="width:72px;"></td>' +
         '<td class="svc-row-price" style="padding:5px 6px;text-align:right;font-weight:600;white-space:nowrap;">' + price + ' р.</td>' +
-        '<td style="padding:5px 4px;"><input type="hidden" name="service_id" value="' + id + '"><button type="button" class="btn btn-xs btn-danger svc-row-remove" data-id="' + id + '">✕</button></td>' +
-        '</tr>'
-    );
+        '<td style="padding:5px 4px;"><button type="button" class="btn btn-xs btn-danger svc-row-remove" data-id="' + id + '">✕</button></td></tr>');
     $('[data-id="' + id + '"].svc-avail-row').addClass('svc-row-selected');
-    updateSvcTotal();
-    updateSvcSubmit();
+    updateSvcTotal(); updateSvcSubmit();
 }
-
 function removeSvc(id) {
     selectedSvcs = selectedSvcs.filter(function(s) { return s.id !== id; });
     $('#svc-right-body tr[data-id="' + id + '"]').remove();
     $('[data-id="' + id + '"].svc-avail-row').removeClass('svc-row-selected');
     if (!selectedSvcs.length) $('#svc-right-empty').show();
-    updateSvcTotal();
-    updateSvcSubmit();
+    updateSvcTotal(); updateSvcSubmit();
 }
-
-$(document).on('click', '.svc-row-remove', function() {
-    removeSvc(parseInt($(this).data('id')));
-});
-
+$(document).on('click', '.svc-row-remove', function() { removeSvc(parseInt($(this).data('id'))); });
 $(document).on('input', '.svc-hours-inp', function() {
-    var id = parseInt($(this).data('id'));
-    var svc = selectedSvcs.find(function(s) { return s.id === id; });
-    if (svc) { svc.hours = parseFloat($(this).val()) || 0; updateSvcRowPrice(id); }
+    var id = parseInt($(this).data('id')), svc = selectedSvcs.find(function(s){return s.id===id;});
+    if (svc) { svc.hours = parseFloat($(this).val())||0; updateSvcRowPrice(id); }
 });
-
 $(document).on('input', '.svc-factor-inp', function() {
-    var id = parseInt($(this).data('id'));
-    var svc = selectedSvcs.find(function(s) { return s.id === id; });
-    if (svc) { svc.factor = parseFloat($(this).val()) || 0; updateSvcRowPrice(id); }
+    var id = parseInt($(this).data('id')), svc = selectedSvcs.find(function(s){return s.id===id;});
+    if (svc) { svc.factor = parseFloat($(this).val())||0; updateSvcRowPrice(id); }
 });
-
 function updateSvcRowPrice(id) {
-    var svc = selectedSvcs.find(function(s) { return s.id === id; });
-    if (!svc) return;
-    var price = calcPrice(svc.hours, svc.factor);
-    $('#svc-right-body tr[data-id="' + id + '"] .svc-row-price').text(price + ' р.');
+    var svc = selectedSvcs.find(function(s){return s.id===id;}); if (!svc) return;
+    $('#svc-right-body tr[data-id="' + id + '"] .svc-row-price').text(calcPrice(svc.hours, svc.factor) + ' р.');
     updateSvcTotal();
 }
-
-function calcPrice(hours, factor) {
-    return (hours * HOURLY_RATE * factor).toFixed(2);
-}
-
+function calcPrice(h, f) { return (h * HOURLY_RATE * f).toFixed(2); }
 function updateSvcTotal() {
-    var total = selectedSvcs.reduce(function(sum, s) { return sum + s.hours * HOURLY_RATE * s.factor; }, 0);
-    $('#svc-modal-total').text(total.toFixed(2) + ' руб.');
+    $('#svc-modal-total').text(selectedSvcs.reduce(function(s,v){return s+v.hours*HOURLY_RATE*v.factor;},0).toFixed(2) + ' руб.');
 }
-
 function updateSvcSubmit() {
     var n = selectedSvcs.length;
     $('#svc-submit-btn').prop('disabled', n === 0);
     $('#svc-count-hint').text(n ? 'Выбрано: ' + n : '');
 }
 
-// Reset modal on close
-$('#svc-bulk-form').on('submit', function() {
-    if (!selectedSvcs.length) { return false; }
+// ── Intercept service modal submit → stage ────────────────────────
+$('#svc-bulk-form').on('submit', function(e) {
+    e.preventDefault();
+    if (!selectedSvcs.length) return;
+    selectedSvcs.forEach(function(s) {
+        var t = ++_tempId;
+        var svc = {id:s.id, name:s.name, hours:s.hours, factor:s.factor, tempId:t};
+        draft.addServices.push(svc);
+        renderStagedSvc(svc);
+    });
+    selectedSvcs = [];
+    $('#svc-right-body').html('<tr id="svc-right-empty"><td colspan="5" style="text-align:center;color:#aaa;padding:16px;font-size:0.9em;">Нажмите на услугу слева чтобы добавить</td></tr>');
+    closeModal('svc-modal');
+    updatePendingBar();
 });
 
+function renderStagedSvc(s) {
+    var price = calcPrice(s.hours, s.factor);
+    var card = $('<div class="svc-card" data-staged-svc="' + s.tempId + '">' +
+        '<div class="svc-card-head"><div>' +
+        '<div class="svc-card-name">' + $('<span>').text(s.name).html() + '</div>' +
+        '<div class="svc-card-meta">' + s.hours + ' ч. × ' + s.factor + ' × ' + HOURLY_RATE + ' р/ч</div>' +
+        '</div><div style="display:flex;align-items:center;gap:10px;">' +
+        '<div class="svc-card-price">' + price + ' руб.</div>' +
+        '<button type="button" class="btn btn-sm btn-danger staged-svc-del" data-temp-id="' + s.tempId + '">Удал.</button>' +
+        '</div></div>' +
+        '<div class="svc-card-body"><div style="color:#aaa;font-size:0.85em;padding:6px 0;">Детали и исполнителей можно добавить после сохранения</div></div>' +
+        '</div>');
+    $('#svc-cards-container').append(card);
+}
+$(document).on('click', '.staged-svc-del', function() {
+    var t = parseInt($(this).data('temp-id'));
+    draft.addServices = draft.addServices.filter(function(s){return s.tempId!==t;});
+    $('[data-staged-svc="' + t + '"]').remove();
+    updatePendingBar();
+});
 
 // ── PART MODAL ──────────────────────────────────
-
 function openPartModal(wosId, wosName) {
     preselectedWosId = wosId || null;
     resetPartModal();
-    if (wosId) {
-        $('#part-svc-hint').text('Услуга: ' + wosName).show();
-        $('#part-service-select').val(wosId);
-    } else {
-        $('#part-svc-hint').hide();
-        $('#part-service-select').val('');
-    }
-    openModal('part-modal');
-    loadParts(1);
+    if (wosId) { $('#part-svc-hint').text('Услуга: ' + wosName).show(); $('#part-service-select').val(wosId); }
+    else { $('#part-svc-hint').hide(); $('#part-service-select').val(''); }
+    openModal('part-modal'); loadParts(1);
 }
-
 $('#open-part-modal').click(function() { openPartModal(null, null); });
-
-$('.open-part-for-svc').click(function() {
-    openPartModal($(this).data('wos-id'), $(this).data('wos-name'));
-});
+$(document).on('click', '.open-part-for-svc', function() { openPartModal($(this).data('wos-id'), $(this).data('wos-name')); });
 
 function resetPartModal() {
     partPage = 1; partTotalPages = 1;
-    $('#part-phase-search').show();
-    $('#part-phase-confirm').hide();
+    $('#part-phase-search').show(); $('#part-phase-confirm').hide();
     $('#part-search-input').val('');
     $('#part-table-body').html('<tr><td colspan="4" style="text-align:center;color:#aaa;padding:16px;">Загрузка...</td></tr>');
     $('#part-page-info').text('');
     $('#part-prev-btn, #part-next-btn').prop('disabled', true);
 }
-
 function loadParts(page) {
     var q = $('#part-search-input').val();
     $.getJSON('{% url "api_parts" %}', {search: q, page: page}, function(data) {
-        var tbody = $('#part-table-body');
-        tbody.empty();
+        var tbody = $('#part-table-body'); tbody.empty();
         if (!data.parts.length) {
             tbody.html('<tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">Ничего не найдено</td></tr>');
         } else {
             $.each(data.parts, function(_, p) {
                 var avail = p.available;
-                var cls = avail > 0 ? '' : ' style="color:#bbb;"';
-                tbody.append(
-                    '<tr class="part-avail-row" data-id="' + p.id + '" data-article="' + p.article +
-                    '" data-name="' + p.name + '" data-available="' + avail + '"' + cls + '>' +
-                    '<td style="padding:6px 8px;">' + p.article + '</td>' +
-                    '<td style="padding:6px 8px;">' + p.name + '</td>' +
-                    '<td style="padding:6px 8px;color:#888;">' + (p.brand || '—') + '</td>' +
-                    '<td style="padding:6px 8px;text-align:center;font-weight:600;' + (avail > 0 ? 'color:#27ae60;' : 'color:#bbb;') + '">' + avail + '</td>' +
-                    '</tr>'
-                );
+                tbody.append('<tr class="part-avail-row" data-id="' + p.id + '" data-article="' + $('<span>').text(p.article).html() +
+                    '" data-name="' + $('<span>').text(p.name).html() + '" data-available="' + avail + '"' +
+                    (avail === 0 ? ' style="color:#bbb;"' : '') + '>' +
+                    '<td style="padding:6px 8px;">' + $('<span>').text(p.article).html() + '</td>' +
+                    '<td style="padding:6px 8px;">' + $('<span>').text(p.name).html() + '</td>' +
+                    '<td style="padding:6px 8px;color:#888;">' + (p.brand ? $('<span>').text(p.brand).html() : '—') + '</td>' +
+                    '<td style="padding:6px 8px;text-align:center;font-weight:600;' + (avail > 0 ? 'color:#27ae60;' : 'color:#bbb;') + '">' + avail + '</td></tr>');
             });
         }
-        partPage = data.current_page;
-        partTotalPages = data.total_pages;
+        partPage = data.current_page; partTotalPages = data.total_pages;
         $('#part-page-info').text('Стр. ' + partPage + ' из ' + partTotalPages);
         $('#part-prev-btn').prop('disabled', partPage <= 1);
         $('#part-next-btn').prop('disabled', partPage >= partTotalPages);
     });
 }
-
-$('#part-search-btn').click(function() { partPage = 1; loadParts(1); });
-$('#part-search-input').on('keydown', function(e) {
-    if (e.key === 'Enter') { e.preventDefault(); partPage = 1; loadParts(1); }
-});
-$('#part-prev-btn').click(function() { if (partPage > 1) loadParts(partPage - 1); });
-$('#part-next-btn').click(function() { if (partPage < partTotalPages) loadParts(partPage + 1); });
-
+$('#part-search-btn').click(function() { partPage=1; loadParts(1); });
+$('#part-search-input').on('keydown', function(e) { if (e.key==='Enter'){e.preventDefault();partPage=1;loadParts(1);} });
+$('#part-prev-btn').click(function() { if (partPage>1) loadParts(partPage-1); });
+$('#part-next-btn').click(function() { if (partPage<partTotalPages) loadParts(partPage+1); });
 $('#part-table-body').on('click', '.part-avail-row', function() {
-    var id = $(this).data('id');
-    var article = $(this).data('article');
-    var name = $(this).data('name');
-    var avail = parseInt($(this).data('available'));
+    var id=$(this).data('id'), article=$(this).data('article'), name=$(this).data('name'), avail=parseInt($(this).data('available'));
     $('#part-hidden-id').val(id);
     $('#part-selected-display').text(article + ' — ' + name);
     $('#part-qty').val(1).attr('max', avail);
     $('#part-available-hint').text('Доступно: ' + avail + ' шт.');
-    $('#part-phase-search').hide();
-    $('#part-phase-confirm').show();
-    // restore preselected service
+    $('#part-phase-search').hide(); $('#part-phase-confirm').show();
     if (preselectedWosId) $('#part-service-select').val(preselectedWosId);
 });
+$('#part-back-btn').click(function() { $('#part-phase-confirm').hide(); $('#part-phase-search').show(); });
 
-$('#part-back-btn').click(function() {
-    $('#part-phase-confirm').hide();
-    $('#part-phase-search').show();
+// ── Intercept part confirm form → stage ───────────────────────────
+$('#part-phase-confirm form').on('submit', function(e) {
+    e.preventDefault();
+    var partId  = parseInt($('#part-hidden-id').val());
+    var qty     = parseInt($('#part-qty').val()) || 1;
+    var markup  = parseInt($('#part-markup').val()) || 30;
+    var wosId   = $('#part-service-select').val() ? parseInt($('#part-service-select').val()) : null;
+    var wosName = wosId ? $('#part-service-select option:selected').text() : null;
+    var display = $('#part-selected-display').text();
+    var article = display.split(' — ')[0];
+    var name    = display.split(' — ').slice(1).join(' — ');
+    var avail   = parseInt($('#part-qty').attr('max')) || 0;
+    if (avail === 0) { alert('Деталь отсутствует на складе.'); return; }
+    var t = ++_tempId;
+    var part = {partId:partId, article:article, name:name, qty:qty, markup:markup, wosId:wosId, wosName:wosName, tempId:t};
+    draft.addParts.push(part);
+    renderStagedPart(part);
+    closeModal('part-modal');
+    updatePendingBar();
 });
 
-// ── EMPLOYEE ASSIGNMENT ────────────────────────────
-var currentWosId = null;
-
-function renderEmpList(wosId, assignments) {
-    var $list = $('#svc-emp-list-' + wosId);
-    $list.empty();
-    if (!assignments.length) {
-        $list.append('<div style="color:#aaa;font-size:0.85em;" class="emp-empty-hint">Не назначены</div>');
-        return;
+function renderStagedPart(p) {
+    var section = document.getElementById('unlinked-parts-section');
+    var hdr = document.getElementById('unlinked-parts-header');
+    if (!hdr) {
+        $(section).prepend('<h2 style="margin:24px 0 12px;" id="unlinked-parts-header">Детали без привязки к услуге</h2>');
     }
-    $.each(assignments, function(i, a) {
-        var hours = parseFloat(a.hours).toFixed(2);
-        var earn  = parseFloat(a.earnings).toFixed(2);
-        var row = $('<div class="svc-emp-row" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:0.88em;">' +
-            '<span style="min-width:160px;">' + $('<span>').text(a.name).html() + '</span>' +
-            '<span style="color:#6b7280;">' + hours + ' ч. / ' + earn + ' руб.</span>' +
-            '<button type="button" class="btn btn-xs btn-danger emp-unassign-btn" data-wos="' + wosId + '" data-emp="' + a.employee_id + '">✕</button>' +
-            '</div>');
-        $list.append(row);
-    });
+    var row = $('<div class="svc-card" data-staged-part="' + p.tempId + '" style="margin-bottom:6px;">' +
+        '<div class="svc-card-body" style="padding:10px 16px;">' +
+        '<div class="svc-part-row" style="border:none;">' +
+        '<span class="svc-part-article">' + $('<span>').text(p.article).html() + '</span>' +
+        '<span class="svc-part-name">' + $('<span>').text(p.name).html() + '</span>' +
+        '<span class="svc-part-qty">× ' + p.qty + ' шт.</span>' +
+        (p.wosName ? '<span style="font-size:0.8em;color:#64748b;">↳ ' + $('<span>').text(p.wosName).html() + '</span>' : '') +
+        '<button type="button" class="btn btn-xs btn-danger staged-part-del" data-temp-id="' + p.tempId + '">Удал.</button>' +
+        '</div></div></div>');
+    $(section).append(row);
 }
+$(document).on('click', '.staged-part-del', function() {
+    var t = parseInt($(this).data('temp-id'));
+    draft.addParts = draft.addParts.filter(function(p){return p.tempId!==t;});
+    $('[data-staged-part="' + t + '"]').remove();
+    updatePendingBar();
+});
 
+// ── EMPLOYEE MODAL ─────────────────────────────────
 $(document).on('click', '.emp-add-btn', function() {
     currentWosId = $(this).data('wos');
-    $('#emp-modal-list').empty();
-    $('#emp-search-input').val('');
-    loadEmpSearch('');
-    openModal('emp-modal');
+    $('#emp-modal-list').empty(); $('#emp-search-input').val('');
+    loadEmpSearch(''); openModal('emp-modal');
 });
-
 function loadEmpSearch(q) {
-    $.getJSON('{% url "api_employees" %}', {search: q}, function(data) {
-        var $ul = $('#emp-modal-list');
-        $ul.empty();
-        if (!data.employees.length) {
-            $ul.append('<div style="padding:10px;color:#aaa;">Нет результатов</div>');
-            return;
-        }
+    $.getJSON('{% url "api_employees" %}', {search:q}, function(data) {
+        var $ul = $('#emp-modal-list'); $ul.empty();
+        if (!data.employees.length) { $ul.append('<div style="padding:10px;color:#aaa;">Нет результатов</div>'); return; }
         $.each(data.employees, function(i, e) {
             var pos = e.position ? ' <span style="color:#6b7280;font-size:0.85em;">— ' + $('<span>').text(e.position).html() + '</span>' : '';
-            var row = $('<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;" class="emp-pick-row">' +
-                $('<span>').text(e.name).html() + pos + '</div>').data('emp-id', e.id);
-            $ul.append(row);
+            $ul.append($('<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;" class="emp-pick-row">' +
+                $('<span>').text(e.name).html() + pos + '</div>').data('emp-id', e.id).data('emp-name', e.name));
         });
     });
 }
-
-var empSearchTimer;
+var _empSearchTimer;
 $('#emp-search-input').on('input', function() {
-    var q = $(this).val();
-    clearTimeout(empSearchTimer);
-    empSearchTimer = setTimeout(function() { loadEmpSearch(q); }, 300);
+    var q=$(this).val(); clearTimeout(_empSearchTimer);
+    _empSearchTimer=setTimeout(function(){loadEmpSearch(q);},300);
 });
 
+// ── Intercept employee assign → stage ─────────────────────────────
 $(document).on('click', '.emp-pick-row', function() {
-    var empId = $(this).data('emp-id');
-    $.post('{% url "api_assign_employee" 0 %}'.replace('/0/', '/' + currentWosId + '/'),
-        {employee_id: empId, csrfmiddlewaretoken: '{{ csrf_token }}'},
-        function(data) {
-            renderEmpList(currentWosId, data.assignments);
-            closeModal('emp-modal');
-        }
-    );
+    var empId   = $(this).data('emp-id');
+    var empName = $(this).data('emp-name') || $(this).text().trim();
+    var wosId   = currentWosId;
+    // Prevent duplicate
+    var already = draft.assignEmployees.find(function(a){return a.wosId==wosId&&a.empId==empId;});
+    if (!already) {
+        draft.assignEmployees.push({wosId:wosId, empId:empId, empName:empName});
+        var $list = $('#svc-emp-list-' + wosId);
+        $list.find('.emp-empty-hint').hide();
+        $list.append($('<div class="svc-emp-row" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:0.88em;">' +
+            '<span style="min-width:160px;">' + $('<span>').text(empName).html() + '</span>' +
+            '<button type="button" class="btn btn-xs btn-danger staged-emp-del" data-wos="' + wosId + '" data-emp="' + empId + '">✕</button>' +
+            '</div>'));
+        updatePendingBar();
+    }
+    closeModal('emp-modal');
+});
+$(document).on('click', '.staged-emp-del', function() {
+    var wosId=parseInt($(this).data('wos')), empId=parseInt($(this).data('emp'));
+    draft.assignEmployees = draft.assignEmployees.filter(function(a){return !(a.wosId===wosId&&a.empId===empId);});
+    $(this).closest('.svc-emp-row').remove();
+    updatePendingBar();
 });
 
+// ── Intercept employee unassign → stage ───────────────────────────
 $(document).on('click', '.emp-unassign-btn', function() {
-    var wosId = $(this).data('wos');
-    var empId = $(this).data('emp');
-    var url = '{% url "api_unassign_employee" 0 0 %}'.replace('/0/unassign/0/', '/' + wosId + '/unassign/' + empId + '/');
-    $.post(url, {csrfmiddlewaretoken: '{{ csrf_token }}'}, function(data) {
-        renderEmpList(wosId, data.assignments);
-    });
+    var wosId=parseInt($(this).data('wos')), empId=parseInt($(this).data('emp'));
+    draft.unassignEmployees.push({wosId:wosId, empId:empId});
+    $(this).closest('.svc-emp-row').hide();
+    updatePendingBar();
 });
 
-{% endif %}
+{% endif %}{# editable #}
 </script>
 
 <style>

@@ -676,6 +676,12 @@ def supply_create(request):
             ).select_related('part') if i.remaining_qty > 0]
 
     if request.method == 'POST':
+        # Conflict detection: another employee processed a receipt for this PO in the meantime
+        if initial_po:
+            po_version_sent = request.POST.get('po_version', '')
+            if po_version_sent and po_version_sent != initial_po.updated_at.isoformat():
+                return redirect(f"{request.path}?po={initial_po.pk}&conflict=1")
+
         doc_form = SupplyDocumentForm(request.POST)
         formset = SupplyItemFormSet(request.POST)
         if doc_form.is_valid() and formset.is_valid():
@@ -801,6 +807,7 @@ def supply_create(request):
         'formset': formset,
         'initial_po': initial_po,
         'po_items': po_items,
+        'po_version': initial_po.updated_at.isoformat() if initial_po else '',
         # On POST re-render we must NOT re-run the AJAX prefill — it would wipe
         # the quantities the user already typed in.
         'prefill_fresh': request.method == 'GET',
@@ -876,26 +883,53 @@ def purchase_detail(request, pk):
     items = po.items.select_related('part').all()
     supply_docs = po.supply_documents.all()
     return render(request, 'warehouse/purchase/detail.html', {
-        'po': po, 'items': items, 'supply_docs': supply_docs
+        'po': po, 'items': items, 'supply_docs': supply_docs,
+        'po_version': po.updated_at.isoformat(),
+        'po_status_choices': [
+            (k, v) for k, v in PurchaseOrder.STATUS_CHOICES if k != 'received'
+        ],
     })
 
 
 @login_required
 def purchase_update(request, pk):
+    from django.http import JsonResponse as _JR
     po = get_object_or_404(PurchaseOrder, pk=pk)
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
     if po.status == 'received':
+        if is_ajax:
+            return _JR({'error': 'Нельзя изменить статус полностью полученного заказа.'}, status=400)
         messages.error(request, 'Нельзя изменить статус полностью полученного заказа.')
         return redirect('purchase_detail', pk=pk)
+
     if request.method == 'POST':
+        client_version = request.POST.get('client_version', '')
+        if client_version and client_version != po.updated_at.isoformat():
+            if is_ajax:
+                return _JR({
+                    'conflict': True,
+                    'message': 'Заказ поставщику был изменён другим сотрудником. Страница будет обновлена.',
+                })
+            messages.warning(request, 'Заказ поставщику был изменён другим сотрудником. Страница обновлена.')
+            return redirect('purchase_detail', pk=pk)
+
         form = PurchaseOrderStatusForm(request.POST, instance=po)
         if form.is_valid():
             new_status = form.cleaned_data['status']
             if new_status == 'received':
+                if is_ajax:
+                    return _JR({'error': 'Статус «Получено» проставляется автоматически при оформлении прихода товара.'}, status=400)
                 messages.error(request, 'Статус «Получено» проставляется автоматически при оформлении прихода товара.')
                 return redirect('purchase_detail', pk=pk)
             form.save()
+            if is_ajax:
+                return _JR({'success': True})
             messages.success(request, 'Статус обновлён.')
             return redirect('purchase_detail', pk=pk)
+        else:
+            if is_ajax:
+                return _JR({'error': 'Ошибка формы.'}, status=400)
     else:
         form = PurchaseOrderStatusForm(instance=po)
     return render(request, 'warehouse/purchase/update.html', {'form': form, 'po': po})
