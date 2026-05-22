@@ -119,19 +119,16 @@ class PurchaseOrder(models.Model):
         ('in_transit', 'В пути'),
         ('partial', 'Частично получено'),
         ('received', 'Получено'),
+        ('cancelled', 'Отменено'),
+        ('partial_cancelled', 'Частично получено / Отменено'),
     ]
+
+    FINAL_STATUSES = {'received', 'cancelled', 'partial_cancelled'}
 
     supplier = models.ForeignKey(
         Supplier, on_delete=models.SET_NULL,
         null=True, blank=True,
         verbose_name="Поставщик"
-    )
-    work_order = models.ForeignKey(
-        'mainapp.Order',
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        verbose_name="Заказ-наряд",
-        related_name='purchase_orders'
     )
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES,
@@ -148,6 +145,10 @@ class PurchaseOrder(models.Model):
     @property
     def is_received(self):
         return self.status == 'received'
+
+    @property
+    def is_final(self):
+        return self.status in self.FINAL_STATUSES
 
     class Meta:
         verbose_name = "Заказ поставщику"
@@ -384,6 +385,39 @@ class WorkOrderServiceEmployee(models.Model):
         unique_together = ('work_order_service', 'employee')
         verbose_name = "Назначение сотрудника"
         verbose_name_plural = "Назначения сотрудников"
+
+
+class WriteOff(models.Model):
+    created_at = models.DateTimeField(default=timezone.now, verbose_name="Дата списания")
+    reason = models.CharField(max_length=255, verbose_name="Причина")
+    comment = models.TextField(blank=True, verbose_name="Примечание")
+
+    def __str__(self):
+        return f"Списание №{self.id} от {self.created_at.strftime('%d.%m.%Y')}"
+
+    class Meta:
+        verbose_name = "Списание"
+        verbose_name_plural = "Списания"
+        ordering = ['-created_at']
+
+
+class WriteOffItem(models.Model):
+    write_off = models.ForeignKey(
+        WriteOff, on_delete=models.CASCADE,
+        verbose_name="Документ списания", related_name='items'
+    )
+    part = models.ForeignKey(Part, on_delete=models.CASCADE, verbose_name="Деталь")
+    location = models.ForeignKey(
+        StorageLocation, on_delete=models.CASCADE, verbose_name="Место хранения"
+    )
+    quantity = models.PositiveIntegerField(verbose_name="Количество")
+
+    def __str__(self):
+        return f"{self.part.article} ×{self.quantity} @ {self.location}"
+
+    class Meta:
+        verbose_name = "Позиция списания"
+        verbose_name_plural = "Позиции списания"
 
 
 class WorkshopSettings(models.Model):

@@ -11,15 +11,17 @@
 
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
     <a href="{% url 'purchase_list' %}" class="btn">К списку</a>
-    {% if not po.is_received %}
-        <button type="button" class="btn" id="toggle-po-edit">✏ Изменить статус</button>
+    {% if not po.is_final %}
+        <button type="button" class="btn" id="toggle-po-edit">
+            {% if po.status == 'partial' %}Отменить оставшееся{% else %}✏ Изменить статус{% endif %}
+        </button>
     {% endif %}
-    {% if po.status in "ordered,in_transit,partial" or po.status == 'ordered' or po.status == 'in_transit' or po.status == 'partial' %}
+    {% if po.status == 'ordered' or po.status == 'in_transit' or po.status == 'partial' %}
         <a href="{% url 'supply_create' %}?po={{ po.id }}" class="btn">Оформить приход</a>
     {% endif %}
 </div>
 
-{% if not po.is_received %}
+{% if not po.is_final %}
 <div id="po-edit-form" style="display:none;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:16px 20px;margin-bottom:16px;">
     <h3 style="margin:0 0 12px;font-size:1em;color:#334155;">Изменение статуса заказа</h3>
     <form id="po-status-form" method="post" action="{% url 'purchase_update' po.id %}">
@@ -90,6 +92,15 @@ $('#po-status-form').on('submit', function(e) {
     });
 });
 </script>
+{% endif %}
+{% if po.status == 'cancelled' %}
+<div style="background:#fef2f2;border-left:4px solid #dc2626;padding:10px 14px;margin-bottom:16px;color:#991b1b;">
+    Заказ отменён.
+</div>
+{% elif po.status == 'partial_cancelled' %}
+<div style="background:#fff7ed;border-left:4px solid #ea580c;padding:10px 14px;margin-bottom:16px;color:#9a3412;">
+    Заказ закрыт: часть товара получена, остаток отменён поставщиком.
+</div>
 {% endif %}
 
 <h2 class="top-title-margin">Позиции заказа</h2>

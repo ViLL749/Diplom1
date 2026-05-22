@@ -14,14 +14,14 @@ from .forms import (
     PurchaseOrderForm, PurchaseOrderItemFormSet, PurchaseOrderStatusForm,
     WorkOrderPartForm, WorkOrderPartStatusForm,
     WorkOrderServiceForm, WorkOrderServiceUpdateForm, WorkshopSettingsForm,
-    EmployeeForm,
+    EmployeeForm, WriteOffForm, WriteOffItemFormSet,
 )
 from .models import (
     Brand, Supplier, Part, StorageLocation, StockEntry,
     SupplyDocument, SupplyItem,
     PurchaseOrder, PurchaseOrderItem,
     WorkOrderPart, WorkOrderService, WorkshopSettings,
-    Employee, WorkOrderServiceEmployee,
+    Employee, WorkOrderServiceEmployee, WriteOff, WriteOffItem,
 )
 
 
@@ -684,7 +684,9 @@ def supply_create(request):
 
         doc_form = SupplyDocumentForm(request.POST)
         formset = SupplyItemFormSet(request.POST)
-        if doc_form.is_valid() and formset.is_valid():
+        doc_valid = doc_form.is_valid()
+        formset_valid = formset.is_valid()
+        if doc_valid and formset_valid:
             # Iterate forms manually to read the non-model package_qty field.
             # Quantities stay in "packages" (what the user entered) until AFTER
             # the overrun check — the PO was also created in the same unit.
@@ -773,23 +775,6 @@ def supply_create(request):
                             po.status = 'partial'
                         po.save()
 
-                        # Auto-reserve parts for linked work order when fully received
-                        if po.status == 'received' and po.work_order:
-                            for po_item in all_po_items:
-                                for entry in StockEntry.objects.filter(part=po_item.part):
-                                    if entry.available_qty >= po_item.quantity:
-                                        entry.reserved_qty += po_item.quantity
-                                        entry.save()
-                                        if not WorkOrderPart.objects.filter(
-                                            work_order=po.work_order, part=po_item.part
-                                        ).exists():
-                                            WorkOrderPart.objects.create(
-                                                work_order=po.work_order,
-                                                part=po_item.part,
-                                                quantity=po_item.quantity,
-                                                status='reserved',
-                                            )
-                                        break
 
                     messages.success(request, f'Приход №{doc.id} создан.')
                     return redirect('supply_detail', pk=doc.pk)
@@ -824,6 +809,7 @@ def supply_detail(request, pk):
         pkg = item.pkg_qty or 1
         item.computed_price_per_unit = item.purchase_price / Decimal(pkg)
         item.computed_total_cost = item.computed_price_per_unit * item.quantity
+        item.computed_pkg_count = item.quantity // pkg if pkg > 1 else item.quantity
         grand_total += item.computed_total_cost
     return render(request, 'warehouse/supply/detail.html', {
         'doc': doc, 'items': items, 'grand_total': grand_total,
@@ -836,7 +822,7 @@ def supply_detail(request, pk):
 
 @login_required
 def purchase_list(request):
-    orders = PurchaseOrder.objects.select_related('supplier', 'work_order').all()
+    orders = PurchaseOrder.objects.select_related('supplier').all()
     search = request.GET.get('search', '')
     if search:
         orders = orders.filter(
@@ -885,9 +871,12 @@ def purchase_detail(request, pk):
     return render(request, 'warehouse/purchase/detail.html', {
         'po': po, 'items': items, 'supply_docs': supply_docs,
         'po_version': po.updated_at.isoformat(),
-        'po_status_choices': [
-            (k, v) for k, v in PurchaseOrder.STATUS_CHOICES if k != 'received'
-        ],
+        'po_status_choices': (
+            [('partial_cancelled', 'Частично получено / Отменено')]
+            if po.status == 'partial'
+            else [(k, v) for k, v in PurchaseOrder.STATUS_CHOICES
+                  if k not in ('received', 'partial', 'partial_cancelled')]
+        ),
     })
 
 
@@ -897,10 +886,10 @@ def purchase_update(request, pk):
     po = get_object_or_404(PurchaseOrder, pk=pk)
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
-    if po.status == 'received':
+    if po.is_final:
         if is_ajax:
-            return _JR({'error': 'Нельзя изменить статус полностью полученного заказа.'}, status=400)
-        messages.error(request, 'Нельзя изменить статус полностью полученного заказа.')
+            return _JR({'error': 'Нельзя изменить статус завершённого или отменённого заказа.'}, status=400)
+        messages.error(request, 'Нельзя изменить статус завершённого или отменённого заказа.')
         return redirect('purchase_detail', pk=pk)
 
     if request.method == 'POST':
@@ -914,13 +903,13 @@ def purchase_update(request, pk):
             messages.warning(request, 'Заказ поставщику был изменён другим сотрудником. Страница обновлена.')
             return redirect('purchase_detail', pk=pk)
 
-        form = PurchaseOrderStatusForm(request.POST, instance=po)
+        form = PurchaseOrderStatusForm(request.POST, instance=po, current_status=po.status)
         if form.is_valid():
             new_status = form.cleaned_data['status']
-            if new_status == 'received':
+            if new_status in ('received', 'partial'):
                 if is_ajax:
-                    return _JR({'error': 'Статус «Получено» проставляется автоматически при оформлении прихода товара.'}, status=400)
-                messages.error(request, 'Статус «Получено» проставляется автоматически при оформлении прихода товара.')
+                    return _JR({'error': 'Этот статус проставляется автоматически.'}, status=400)
+                messages.error(request, 'Этот статус проставляется автоматически.')
                 return redirect('purchase_detail', pk=pk)
             form.save()
             if is_ajax:
@@ -1482,3 +1471,148 @@ def _check_po_overrun(valid_items):
         except PurchaseOrderItem.DoesNotExist:
             pass
     return errors
+
+
+# ──────────────────────────────────────────────────────────────
+# Write-Off (Списание)
+# ──────────────────────────────────────────────────────────────
+
+@login_required
+def write_off_list(request):
+    from django.utils import timezone as tz
+    qs = WriteOff.objects.prefetch_related('items__part')
+    per_page = int(request.GET.get('per_page', 10))
+    paginator = Paginator(qs, per_page)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+    return render(request, 'warehouse/writeoff/list.html', {
+        'page_obj': page_obj,
+        'per_page': per_page,
+    })
+
+
+@login_required
+def write_off_create(request):
+    from django.utils import timezone as tz
+    if request.method == 'POST':
+        form = WriteOffForm(request.POST)
+        formset = WriteOffItemFormSet(request.POST, prefix='items')
+        form_valid = form.is_valid()
+        formset_valid = formset.is_valid()
+        if not form_valid or not formset_valid:
+            # Detect if errors are stock-related (concurrent change) vs user mistake
+            stock_conflict_msgs = []
+            for f in formset:
+                if not f.errors:
+                    continue
+                for err_list in f.errors.values():
+                    for err in err_list:
+                        if 'остат' in err or 'не на выбранном' in err:
+                            stock_conflict_msgs.append(err)
+            return render(request, 'warehouse/writeoff/create.html', {
+                'form': form, 'formset': formset, 'has_errors': True,
+                'stock_conflict_msgs': stock_conflict_msgs,
+            })
+        if form_valid and formset_valid:
+            valid_items = [
+                f for f in formset
+                if f.cleaned_data and not f.cleaned_data.get('DELETE')
+                and f.cleaned_data.get('part')
+                and f.cleaned_data.get('location')
+                and f.cleaned_data.get('quantity')
+            ]
+            if not valid_items:
+                messages.error(request, 'Добавьте хотя бы одну позицию для списания.')
+            else:
+                conflict = None
+                try:
+                    with transaction.atomic():
+                        wo = form.save()
+                        for item_form in valid_items:
+                            part = item_form.cleaned_data['part']
+                            location = item_form.cleaned_data['location']
+                            quantity = item_form.cleaned_data['quantity']
+                            # Re-check inside the lock — another user may have
+                            # depleted stock between our validation and now.
+                            entry = StockEntry.objects.select_for_update().get(
+                                part=part, location=location
+                            )
+                            if quantity > entry.available_qty:
+                                conflict = (
+                                    f'«{part.article} {part.name}» на {location}: '
+                                    f'хотите списать {quantity} шт., '
+                                    f'но сейчас доступно только {entry.available_qty} шт. '
+                                    f'(другой сотрудник уже произвёл списание).'
+                                )
+                                raise ValueError('conflict')
+                            WriteOffItem.objects.create(
+                                write_off=wo,
+                                part=part,
+                                location=location,
+                                quantity=quantity,
+                            )
+                            entry.total_qty -= quantity
+                            if entry.reserved_qty > entry.total_qty:
+                                entry.reserved_qty = entry.total_qty
+                            entry.save()
+                except ValueError:
+                    return render(request, 'warehouse/writeoff/create.html', {
+                        'form': form, 'formset': formset,
+                        'conflict_error': conflict,
+                    })
+                return redirect('write_off_detail', pk=wo.pk)
+    else:
+        form = WriteOffForm(initial={
+            'created_at': tz.localtime(tz.now()).strftime('%Y-%m-%dT%H:%M')
+        })
+        formset = WriteOffItemFormSet(prefix='items')
+    return render(request, 'warehouse/writeoff/create.html', {
+        'form': form,
+        'formset': formset,
+    })
+
+
+@login_required
+def write_off_detail(request, pk):
+    wo = get_object_or_404(
+        WriteOff.objects.prefetch_related('items__part', 'items__location'),
+        pk=pk
+    )
+    return render(request, 'warehouse/writeoff/detail.html', {'wo': wo})
+
+
+@login_required
+def api_part_stock(request):
+    """AJAX: return available_qty for a given part+location combination."""
+    part_id = request.GET.get('part')
+    location_id = request.GET.get('location')
+    if not part_id or not location_id:
+        return JsonResponse({'available_qty': 0})
+    try:
+        entry = StockEntry.objects.get(part_id=part_id, location_id=location_id)
+        return JsonResponse({'available_qty': entry.available_qty, 'total_qty': entry.total_qty})
+    except StockEntry.DoesNotExist:
+        return JsonResponse({'available_qty': 0, 'total_qty': 0})
+
+
+@login_required
+def api_part_locations(request):
+    """AJAX: return locations where the given part has available stock."""
+    part_id = request.GET.get('part')
+    if not part_id:
+        return JsonResponse({'locations': []})
+    entries = (
+        StockEntry.objects
+        .filter(part_id=part_id)
+        .select_related('location')
+        .order_by('location__rack', 'location__shelf', 'location__cell')
+    )
+    locations = []
+    for e in entries:
+        avail = e.available_qty
+        if avail > 0:
+            locations.append({
+                'id': e.location_id,
+                'label': str(e.location),
+                'available_qty': avail,
+            })
+    return JsonResponse({'locations': locations})

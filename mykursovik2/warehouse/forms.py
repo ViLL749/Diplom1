@@ -4,7 +4,7 @@ from .models import (
     SupplyDocument, SupplyItem,
     PurchaseOrder, PurchaseOrderItem,
     WorkOrderPart, WorkOrderService, WorkshopSettings,
-    Employee,
+    Employee, WriteOff, WriteOffItem,
 )
 
 
@@ -165,6 +165,12 @@ class PurchaseOrderForm(forms.ModelForm):
             except Supplier.DoesNotExist:
                 pass
 
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get('supplier'):
+            self.add_error('supplier', 'Укажите поставщика.')
+        return cleaned
+
 
 class PurchaseOrderItemForm(forms.ModelForm):
     # Display fields populated by modal
@@ -200,14 +206,19 @@ class PurchaseOrderStatusForm(forms.ModelForm):
         fields = ['status']
         labels = {'status': 'Статус'}
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, current_status=None, **kwargs):
         super().__init__(*args, **kwargs)
-        # 'partial' is set automatically; 'received' is blocked in the view
-        self.fields['status'].choices = [
-            ('draft', 'Черновик'),
-            ('ordered', 'Заказано'),
-            ('in_transit', 'В пути'),
-        ]
+        if current_status == 'partial':
+            self.fields['status'].choices = [
+                ('partial_cancelled', 'Частично получено / Отменено'),
+            ]
+        else:
+            self.fields['status'].choices = [
+                ('draft', 'Черновик'),
+                ('ordered', 'Заказано'),
+                ('in_transit', 'В пути'),
+                ('cancelled', 'Отменено'),
+            ]
 
 
 # ── Supply Documents ─────────────────────────────────────────
@@ -258,7 +269,6 @@ class SupplyDocumentForm(forms.ModelForm):
                 self.fields['supplier_display'].initial = s.name
             except Supplier.DoesNotExist:
                 pass
-
 
 class SupplyItemForm(forms.ModelForm):
     part_display = forms.CharField(
@@ -394,6 +404,88 @@ class WorkshopSettingsForm(forms.ModelForm):
         model = WorkshopSettings
         fields = ['hourly_rate']
         labels = {'hourly_rate': 'Стоимость нормо-часа (руб.)'}
+
+
+# ── Write-Off ────────────────────────────────────────────────
+
+class WriteOffForm(forms.ModelForm):
+    class Meta:
+        model = WriteOff
+        fields = ['reason', 'comment', 'created_at']
+        widgets = {
+            'comment': forms.Textarea(attrs={'rows': 2}),
+            'created_at': forms.DateTimeInput(
+                attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M'
+            ),
+        }
+        labels = {
+            'reason': 'Причина списания',
+            'comment': 'Примечание',
+            'created_at': 'Дата списания',
+        }
+
+
+class WriteOffItemForm(forms.ModelForm):
+    part_display = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'readonly': 'readonly', 'placeholder': 'Нажмите «Выбрать»'}),
+        label='Деталь'
+    )
+
+    class Meta:
+        model = WriteOffItem
+        fields = ['part', 'location', 'quantity']
+        widgets = {
+            'part': forms.HiddenInput(),
+            'quantity': forms.NumberInput(attrs={'min': 1}),
+        }
+        labels = {
+            'part': 'Деталь',
+            'location': 'Место хранения',
+            'quantity': 'Количество',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['location'].queryset = StorageLocation.objects.all().order_by('rack', 'shelf', 'cell')
+        self.fields['location'].required = False
+        self.fields['part'].required = False
+        self.fields['quantity'].required = False
+
+    def clean(self):
+        cleaned = super().clean()
+        part = cleaned.get('part')
+        location = cleaned.get('location')
+        quantity = cleaned.get('quantity')
+        row_touched = any([part, location, quantity])
+        if row_touched:
+            if not part:
+                self.add_error('part', 'Укажите деталь.')
+            if not location:
+                self.add_error('location', 'Укажите место хранения.')
+            if quantity is None or quantity < 1:
+                self.add_error('quantity', 'Укажите количество (мин. 1).')
+            if part and location and quantity and quantity >= 1:
+                try:
+                    entry = StockEntry.objects.get(part=part, location=location)
+                    if quantity > entry.available_qty:
+                        self.add_error(
+                            'quantity',
+                            f'Нельзя списать больше доступного остатка ({entry.available_qty} шт.).'
+                        )
+                except StockEntry.DoesNotExist:
+                    self.add_error('part', 'Этой детали нет на выбранном месте хранения.')
+        return cleaned
+
+
+WriteOffItemFormSet = forms.inlineformset_factory(
+    WriteOff, WriteOffItem,
+    form=WriteOffItemForm,
+    extra=1,
+    can_delete=True,
+    min_num=1,
+    validate_min=True,
+)
 
 
 class EmployeeForm(forms.ModelForm):

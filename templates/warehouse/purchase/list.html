@@ -16,7 +16,6 @@
             <th>Поставщик</th>
             <th>Артикулы</th>
             <th>Статус</th>
-            <th>Заказ-наряд</th>
             <th>Дата</th>
         </tr>
     </thead>
@@ -36,14 +35,15 @@
                 {% if po.status == 'received' %}<span style="color:green;font-weight:bold;">
                 {% elif po.status == 'partial' %}<span style="color:darkorange;font-weight:bold;">
                 {% elif po.status == 'in_transit' %}<span style="color:orange;">
+                {% elif po.status == 'cancelled' %}<span style="color:#dc2626;font-weight:bold;">
+                {% elif po.status == 'partial_cancelled' %}<span style="color:#ea580c;font-weight:bold;">
                 {% else %}<span>{% endif %}
                 {{ po.get_status_display }}</span>
             </td>
-            <td>{% if po.work_order %}№{{ po.work_order.id }}{% else %}—{% endif %}</td>
             <td>{{ po.created_at|date:"d.m.Y" }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="6">Заказов нет.</td></tr>
+        <tr><td colspan="5">Заказов нет.</td></tr>
         {% endfor %}
     </tbody>
 </table>

@@ -27,7 +27,9 @@ class ActionLogAdmin(admin.ModelAdmin):
         'StorageLocation': 'Локация',
         'PurchaseOrder': 'Закупка',
         'SupplyDocument': 'Поставка',
+        'StockEntry': 'Остаток склада',
         'Employee': 'Сотрудник',
+        'WriteOff': 'Списание',
     }
 
     def has_add_permission(self, request):
@@ -61,6 +63,10 @@ class ActionLogAdmin(admin.ModelAdmin):
         'item_updated': 'Позиция обновлена',
         'supply_created': 'Создана поставка',
         'received': 'Получено на склад',
+        'order_deleted': 'Удалён заказ',
+        'min_qty_changed': 'Изменён мин. остаток',
+        'write_off_created': 'Создано списание',
+        'written_off': 'Списано со склада',
     }
 
     FIELD_LABELS = {
@@ -70,9 +76,18 @@ class ActionLogAdmin(admin.ModelAdmin):
         'complexity': 'Коэф. сложности', 'price': 'Цена',
         'employee': 'Исполнитель', 'article': 'Артикул',
         'part_name': 'Запчасть', 'quantity': 'Количество',
+        'packages': 'Упаковок', 'pkg_qty': 'Штук в упаковке', 'units_total': 'Итого штук',
         'sale_price': 'Цена продажи', 'purchase_price': 'Цена закупки',
-        'location': 'Место хранения', 'ordered_qty': 'Заказано',
-        'remaining_before': 'Остаток до приёмки', 'purchase_order': 'Заказ поставки',
+        'location': 'Место хранения',
+        # supply item — PO link
+        'ordered_qty': 'Заказано', 'remaining_before': 'Остаток до (устар.)',
+        'po_ordered': 'Заказано у поставщика',
+        'po_remaining_before': 'Остаток до приёмки',
+        'po_remaining_after': 'Остаток после приёмки',
+        'purchase_order': 'Заказ поставки',
+        # order deletion snapshot
+        'cost': 'Стоимость', 'services': 'Услуги', 'parts': 'Запчасти',
+        'comment': 'Примечание',
     }
 
     @admin.display(description='Подробности')

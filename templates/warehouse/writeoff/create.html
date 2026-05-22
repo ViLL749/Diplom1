@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}Создать списание{% endblock %}
+{% block content %}
+{% include "warehouse/_part_search_modal.html" %}
+
+<h1>Создать списание со склада</h1>
+
+{% if conflict_error %}
+<div style="background:#fef2f2;border-left:4px solid #dc2626;padding:12px 16px;margin-bottom:16px;color:#991b1b;border-radius:4px;">
+    <strong>Конфликт при списании:</strong> {{ conflict_error }}
+    Обновите количество и сохраните повторно.
+</div>
+{% elif stock_conflict_msgs %}
+<div style="background:#fef2f2;border-left:4px solid #dc2626;padding:12px 16px;margin-bottom:16px;color:#991b1b;border-radius:4px;">
+    <strong>Остаток изменился — возможно, другой сотрудник списал товар пока вы заполняли форму.</strong>
+    Проверьте доступное количество (отмечено ниже) и сохраните повторно.
+</div>
+{% elif has_errors %}
+<div style="background:#fef2f2;border-left:4px solid #dc2626;padding:12px 16px;margin-bottom:16px;color:#991b1b;border-radius:4px;">
+    <strong>Исправьте ошибки в форме</strong> — они отмечены красным ниже.
+</div>
+{% endif %}
+
+<form method="post" id="writeoff-form">
+    {% csrf_token %}
+
+    <h2>Документ</h2>
+    {% for field in form %}
+    <div style="margin-bottom:10px;">
+        <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
+        {{ field }}
+        {% if field.errors %}<p class="error">{{ field.errors|join:", " }}</p>{% endif %}
+    </div>
+    {% endfor %}
+
+    <h2 class="top-title-margin">Позиции списания</h2>
+
+    {{ formset.management_form }}
+    <table id="writeoff-items-table">
+        <thead>
+            <tr>
+                <th>Деталь</th>
+                <th>Место хранения</th>
+                <th>Доступно</th>
+                <th>Количество</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="writeoff-tbody">
+            {% for item_form in formset %}
+            <tr class="writeoff-row">
+                {% with prefix=item_form.prefix %}
+                <td>
+                    <input type="text"
+                           id="{{ prefix }}-part_display"
+                           name="{{ prefix }}-part_display"
+                           value="{{ item_form.part_display.value|default:'' }}"
+                           readonly placeholder="Нажмите «Выбрать»" style="width:190px;">
+                    <button type="button" class="btn"
+                            onclick="openPartModal('id_{{ prefix }}-part', '{{ prefix }}-part_display', null)">
+                        Выбрать
+                    </button>
+                    {{ item_form.part }}
+                    {% if item_form.part.errors %}<p class="error">{{ item_form.part.errors|join:", " }}</p>{% endif %}
+                </td>
+                <td>
+                    {# Location select is replaced dynamically; render the original for POST re-render fallback #}
+                    {{ item_form.location }}
+                    {% if item_form.location.errors %}<p class="error">{{ item_form.location.errors|join:", " }}</p>{% endif %}
+                </td>
+                <td class="avail-cell" style="min-width:80px;font-weight:bold;color:#888;">—</td>
+                <td>
+                    {{ item_form.quantity }}
+                    {% if item_form.quantity.errors %}<p class="error">{{ item_form.quantity.errors|join:", " }}</p>{% endif %}
+                </td>
+                <td>
+                    <button type="button" class="btn btn-danger" title="Удалить строку" onclick="removeWoRow(this)">×</button>
+                    <div style="display:none;">{{ item_form.DELETE }}</div>
+                    {{ item_form.id }}
+                </td>
+                {% endwith %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <button type="button" id="add-writeoff-row" class="btn" style="margin-top:10px;">+ Добавить строку</button>
+
+    <div style="margin-top:20px;">
+        <button type="submit" class="btn">Сохранить списание</button>
+        <a href="{% url 'write_off_list' %}" class="btn btn-danger">Отмена</a>
+    </div>
+</form>
+
+<script>
+(function() {
+    var API_LOCATIONS = '{% url "api_part_locations" %}';
+    var totalForms = document.getElementById('id_items-TOTAL_FORMS');
+    var tbody = document.getElementById('writeoff-tbody');
+
+    function getPrefix(row) {
+        var el = row.querySelector('input[name$="-part"][type="hidden"]');
+        return el ? el.name.replace(/-part$/, '') : null;
+    }
+
+    // Rebuild the location <select> for a row based on the chosen part.
+    // Fetches from API, replaces options, updates available qty cell.
+    function loadLocations(row, partId, keepLocationId) {
+        var prefix = getPrefix(row);
+        if (!prefix) return;
+        var locSelect = row.querySelector('select[name="' + prefix + '-location"]');
+        var availCell = row.querySelector('.avail-cell');
+        var qtyInput  = row.querySelector('input[name="' + prefix + '-quantity"]');
+        if (!locSelect) return;
+
+        if (!partId) {
+            // No part selected — restore placeholder option only
+            locSelect.innerHTML = '<option value="">---------</option>';
+            if (availCell) { availCell.textContent = '—'; availCell.style.color = '#888'; }
+            return;
+        }
+
+        fetch(API_LOCATIONS + '?part=' + partId)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                locSelect.innerHTML = '<option value="">— выберите полку —</option>';
+                data.locations.forEach(function(loc) {
+                    var opt = document.createElement('option');
+                    opt.value = loc.id;
+                    opt.textContent = loc.label + ' (' + loc.available_qty + ' шт.)';
+                    opt.dataset.avail = loc.available_qty;
+                    if (keepLocationId && String(loc.id) === String(keepLocationId)) {
+                        opt.selected = true;
+                    }
+                    locSelect.appendChild(opt);
+                });
+                if (data.locations.length === 0) {
+                    locSelect.innerHTML = '<option value="">Нет в наличии</option>';
+                    if (availCell) { availCell.textContent = '0'; availCell.style.color = '#dc2626'; }
+                } else {
+                    updateAvailCell(row);
+                }
+            });
+    }
+
+    function updateAvailCell(row) {
+        var prefix = getPrefix(row);
+        if (!prefix) return;
+        var locSelect = row.querySelector('select[name="' + prefix + '-location"]');
+        var availCell = row.querySelector('.avail-cell');
+        var qtyInput  = row.querySelector('input[name="' + prefix + '-quantity"]');
+        if (!locSelect || !availCell) return;
+        var selectedOpt = locSelect.options[locSelect.selectedIndex];
+        var avail = selectedOpt && selectedOpt.dataset.avail !== undefined
+            ? parseInt(selectedOpt.dataset.avail)
+            : null;
+        if (avail === null || locSelect.value === '') {
+            availCell.textContent = '—';
+            availCell.style.color = '#888';
+        } else {
+            availCell.textContent = avail + ' шт.';
+            availCell.style.color = avail > 0 ? '#2e7d32' : '#dc2626';
+            // Clamp qty to available
+            if (qtyInput && parseInt(qtyInput.value) > avail) {
+                qtyInput.value = avail;
+            }
+        }
+    }
+
+    // Listen for location change
+    tbody.addEventListener('change', function(e) {
+        if (e.target.name && e.target.name.endsWith('-location')) {
+            var row = e.target.closest('tr');
+            if (row) updateAvailCell(row);
+        }
+    });
+
+    // Hook into closePartModal so we reload locations after part is chosen.
+    // The modal sets the hidden input value via jQuery (no native event fires).
+    document.addEventListener('DOMContentLoaded', function() {
+        var _origClose = window.closePartModal;
+        window.closePartModal = function() {
+            _origClose && _origClose();
+            var target = window._partModalTarget;
+            if (target) {
+                var partInput = document.getElementById(target);
+                if (partInput) {
+                    var row = partInput.closest('tr');
+                    if (row) loadLocations(row, partInput.value, null);
+                }
+            }
+        };
+    });
+
+    // --- row cloning ---
+
+    function buildBlankRow(index) {
+        var count = parseInt(totalForms.value);
+        var template = tbody.querySelector('.writeoff-row');
+        var newRow = template.cloneNode(true);
+        newRow.innerHTML = newRow.innerHTML.replace(/items-\d+-/g, 'items-' + index + '-');
+        newRow.style.display = '';
+        // Clear all inputs
+        newRow.querySelectorAll('input[type=text], input[type=number]').forEach(function(el) { el.value = ''; });
+        newRow.querySelectorAll('input[type=hidden]').forEach(function(el) {
+            if (!el.name.includes('csrfmiddlewaretoken')) el.value = '';
+        });
+        newRow.querySelectorAll('input[type=checkbox]').forEach(function(el) { el.checked = false; });
+        // Reset location select to placeholder only (no part chosen yet)
+        var locSel = newRow.querySelector('select[name="items-' + index + '-location"]');
+        if (locSel) locSel.innerHTML = '<option value="">— сначала выберите деталь —</option>';
+        var availCell = newRow.querySelector('.avail-cell');
+        if (availCell) { availCell.textContent = '—'; availCell.style.color = '#888'; }
+        return newRow;
+    }
+
+    function addEmptyRow() {
+        var count = parseInt(totalForms.value);
+        var newRow = buildBlankRow(count);
+        tbody.appendChild(newRow);
+        totalForms.value = count + 1;
+    }
+
+    function removeWoRow(btn) {
+        var row = btn.closest('tr');
+        var del = row.querySelector('input[type=checkbox]');
+        if (del) del.checked = true;
+        row.style.display = 'none';
+    }
+
+    document.getElementById('add-writeoff-row').addEventListener('click', addEmptyRow);
+    window.removeWoRow = removeWoRow;
+
+    // On page load: if a part is already selected (POST re-render after error),
+    // reload the location list and keep the previously selected location.
+    document.addEventListener('DOMContentLoaded', function() {
+        tbody.querySelectorAll('.writeoff-row').forEach(function(row) {
+            var prefix = getPrefix(row);
+            if (!prefix) return;
+            var partInput = row.querySelector('input[name="' + prefix + '-part"]');
+            var locSelect = row.querySelector('select[name="' + prefix + '-location"]');
+            if (partInput && partInput.value) {
+                var keepLoc = locSelect ? locSelect.value : null;
+                loadLocations(row, partInput.value, keepLoc);
+            } else {
+                // Blank row — replace location select placeholder
+                if (locSelect) locSelect.innerHTML = '<option value="">— сначала выберите деталь —</option>';
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}

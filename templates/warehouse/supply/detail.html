@@ -16,8 +16,8 @@
             <th>Артикул</th>
             <th>Название</th>
             <th>Место хранения</th>
+            <th>Кол-во упак.</th>
             <th>Шт. в уп.</th>
-            <th>Кол-во (шт.)</th>
             <th>Цена за уп., руб.</th>
             <th>Цена за шт., руб.</th>
             <th>Сумма, руб.</th>
@@ -29,8 +29,8 @@
             <td>{{ item.part.article }}</td>
             <td>{{ item.part.name }}</td>
             <td>{{ item.location.label }}</td>
+            <td>{{ item.computed_pkg_count }}</td>
             <td>{{ item.pkg_qty }}</td>
-            <td>{{ item.quantity }}</td>
             <td>{{ item.purchase_price|floatformat:2 }}</td>
             <td>{{ item.computed_price_per_unit|floatformat:2 }}</td>
             <td>{{ item.computed_total_cost|floatformat:2 }}</td>

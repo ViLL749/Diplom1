@@ -16,7 +16,6 @@
 {% endif %}
 
 <div style="background:#e3f2fd;padding:10px 14px;border-left:4px solid #1976d2;margin-bottom:16px;font-size:0.93em;">
-    Строки <strong>без места хранения</strong> пропускаются — можно заполнить только часть.
     <strong>«÷»</strong> — разделить одну позицию по нескольким ячейкам.
 </div>
 
@@ -26,7 +25,7 @@
     <h2>Документ</h2>
 
     {% if initial_po %}
-    {# Режим «по заказу поставщику» — поставщик и заказ уже зафиксированы #}
+    {# Режим «по заказу поставщику» #}
     <div style="background:#e8f5e9;padding:10px 14px;border-left:4px solid #4caf50;margin-bottom:12px;">
         <strong>На основе заказа №{{ initial_po.id }}</strong>
         {% if initial_po.supplier %} — {{ initial_po.supplier.name }}{% endif %}

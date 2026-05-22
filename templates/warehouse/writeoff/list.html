@@ -1,36 +1,29 @@
 {% extends "base.html" %}
-{% block title %}Документы прихода{% endblock %}
+{% block title %}Списания{% endblock %}
 {% block content %}
-<h1>Документы прихода</h1>
-<a href="{% url 'supply_create' %}" class="btn">Создать приход</a>
+<h1>Списания со склада</h1>
+<a href="{% url 'write_off_create' %}" class="btn">Создать списание</a>
 
-<form method="GET" class="search-container">
-    <input type="text" name="search" placeholder="Поиск по поставщику..." value="{{ request.GET.search|default:'' }}">
-    <button type="submit" class="btn">Искать</button>
-</form>
-
-<table id="supply-table">
+<table id="writeoff-table" style="margin-top:16px;">
     <thead>
         <tr>
             <th>№</th>
             <th>Дата</th>
-            <th>Поставщик</th>
+            <th>Причина</th>
             <th>Позиций</th>
-            <th>Примечание</th>
         </tr>
     </thead>
     <tbody>
-        {% for doc in page_obj %}
-        <tr data-id="{{ doc.id }}"
-            data-url-detail="{% url 'supply_detail' doc.id %}">
-            <td>{{ doc.id }}</td>
-            <td>{{ doc.created_at|date:"d.m.Y H:i" }}</td>
-            <td>{{ doc.supplier.name|default:"—" }}</td>
-            <td>{{ doc.items.count }}</td>
-            <td>{{ doc.comment|truncatechars:50 }}</td>
+        {% for wo in page_obj %}
+        <tr data-id="{{ wo.id }}"
+            data-url-detail="{% url 'write_off_detail' wo.id %}">
+            <td>{{ wo.id }}</td>
+            <td>{{ wo.created_at|date:"d.m.Y" }}</td>
+            <td>{{ wo.reason }}</td>
+            <td>{{ wo.items.count }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="5">Документов прихода нет.</td></tr>
+        <tr><td colspan="4">Списаний нет.</td></tr>
         {% endfor %}
     </tbody>
 </table>
@@ -53,21 +46,20 @@
     </label>
 </form>
 
-<div id="supply-actions" class="mt-20">
-    <button id="view-doc" class="btn" disabled>Просмотр</button>
+<div class="mt-20">
+    <button id="view-wo" class="btn" disabled>Просмотр</button>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const rows = document.querySelectorAll('#supply-table tbody tr');
-    let selected = null;
-    rows.forEach(row => {
+    var selected = null;
+    document.querySelectorAll('#writeoff-table tbody tr').forEach(function(row) {
         row.addEventListener('click', function() {
             if (selected) selected.classList.remove('selected');
             this.classList.add('selected');
             selected = this;
-            document.getElementById('view-doc').disabled = false;
-            document.getElementById('view-doc').onclick = () => window.location.href = this.dataset.urlDetail;
+            document.getElementById('view-wo').disabled = false;
+            document.getElementById('view-wo').onclick = function() { window.location.href = selected.dataset.urlDetail; };
         });
         row.addEventListener('dblclick', function() { window.location.href = this.dataset.urlDetail; });
     });

@@ -92,6 +92,9 @@
                     <a href="{% url 'purchase_list' %}" class="{% if request.resolver_match.url_name in 'purchase_list,purchase_create,purchase_detail,purchase_update' %}active{% endif %}">
                         <i class="fas fa-shopping-cart"></i> Заказы поставщикам
                     </a>
+                    <a href="{% url 'write_off_list' %}" class="{% if request.resolver_match.url_name in 'write_off_list,write_off_create,write_off_detail' %}active{% endif %}">
+                        <i class="fas fa-trash-alt"></i> Списания
+                    </a>
                     <a href="{% url 'suppliers_list' %}" class="{% if request.resolver_match.url_name in 'suppliers_list,supplier_create,supplier_update,supplier_delete' %}active{% endif %}">
                         <i class="fas fa-industry"></i> Поставщики
                     </a>

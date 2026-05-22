@@ -12,6 +12,8 @@ urlpatterns = [
     path('api/brands/', views.api_brands, name='api_brands'),
     path('api/work-orders/', views.api_work_orders, name='api_work_orders'),
     path('api/services/', views.api_services, name='api_services'),
+    path('api/part-stock/', views.api_part_stock, name='api_part_stock'),
+    path('api/part-locations/', views.api_part_locations, name='api_part_locations'),
 
     # Brands
     path('brands/', views.brands_list, name='brands_list'),
@@ -71,6 +73,11 @@ urlpatterns = [
 
     # Picking list
     path('orders/<int:order_pk>/picking/', views.picking_list, name='picking_list'),
+
+    # Write-Off (Списание)
+    path('write-off/', views.write_off_list, name='write_off_list'),
+    path('write-off/create/', views.write_off_create, name='write_off_create'),
+    path('write-off/<int:pk>/', views.write_off_detail, name='write_off_detail'),
 
     # Settings
     path('settings/', views.settings_view, name='warehouse_settings'),

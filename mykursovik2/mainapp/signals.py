@@ -1,6 +1,6 @@
 import threading
 from datetime import timedelta
-from django.db.models.signals import pre_save, post_save, post_delete
+from django.db.models.signals import pre_save, post_save, pre_delete, post_delete
 from django.dispatch import receiver
 from django.utils import timezone
 
@@ -19,6 +19,49 @@ MERGE_WINDOW_SECONDS = 300  # 5 minutes
 
 def _is_suppressed():
     return getattr(_locals, 'suppress_signals', False)
+
+
+# Pairs that cancel each other out when merging within the time window
+_OPPOSITE_EVENT = {
+    'service_added':   'service_removed',
+    'service_removed': 'service_added',
+    'part_added':      'part_removed',
+    'part_removed':    'part_added',
+    'employee_assigned': 'employee_removed',
+    'employee_removed':  'employee_assigned',
+}
+
+
+def _event_identity(ev):
+    """Return a hashable key that identifies 'which thing' an event refers to."""
+    t = ev.get('event', '')
+    if t in ('service_added', 'service_removed'):
+        return ('service', ev.get('service', ''))
+    if t in ('part_added', 'part_removed'):
+        return ('part', ev.get('article', ''))
+    if t in ('employee_assigned', 'employee_removed'):
+        return ('employee', ev.get('employee', ''), ev.get('service', ''))
+    return None
+
+
+def _merge_events(stored_events, new_events):
+    """Merge new_events into stored_events; opposite pairs cancel each other out."""
+    result = list(stored_events)
+    for new_ev in new_events:
+        opposite = _OPPOSITE_EVENT.get(new_ev.get('event', ''))
+        if opposite:
+            key = _event_identity(new_ev)
+            if key:
+                cancel_idx = next(
+                    (i for i, e in enumerate(result)
+                     if e.get('event') == opposite and _event_identity(e) == key),
+                    None,
+                )
+                if cancel_idx is not None:
+                    result.pop(cancel_idx)
+                    continue  # drop new_ev too — net effect is zero
+        result.append(new_ev)
+    return result
 
 
 def _get_ip(request):
@@ -40,7 +83,7 @@ def _merge_into_log(existing, action, object_repr, new_details):
                 else:
                     fc_by_field[field] = ch
             stored['field_changes'] = list(fc_by_field.values())
-            stored.setdefault('events', []).extend(new_details.get('events', []))
+            stored['events'] = _merge_events(stored.get('events', []), new_details.get('events', []))
         elif 'changes' in new_details:
             # Legacy: field-change list
             fc_by_field = {c['field']: c for c in stored.get('field_changes', [])}
@@ -56,7 +99,7 @@ def _merge_into_log(existing, action, object_repr, new_details):
                     fc_by_field[field] = ch
             stored['field_changes'] = list(fc_by_field.values())
         else:
-            stored.setdefault('events', []).append(new_details)
+            stored['events'] = _merge_events(stored.get('events', []), [new_details])
 
     if action == 'delete':
         existing.action = 'delete'
@@ -197,11 +240,59 @@ def on_order_save(sender, instance, created, **kwargs):
     _create_log('create' if created else 'update', 'Order', instance.pk, instance, details or None)
 
 
+@receiver(pre_delete)
+def on_order_pre_delete(sender, instance, **kwargs):
+    if sender.__name__ != 'Order':
+        return
+    try:
+        services = []
+        for wos in instance.work_order_services.select_related('service').prefetch_related('assignments__employee'):
+            svc_name = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
+            employees = [a.employee.name for a in wos.assignments.all() if a.employee]
+            entry = f"{svc_name} ({wos.hours_applied}ч"
+            if wos.final_price:
+                entry += f", {wos.final_price} руб."
+            entry += ")"
+            if employees:
+                entry += f" [{', '.join(employees)}]"
+            services.append(entry)
+        parts = []
+        for wop in instance.work_order_parts.select_related('part'):
+            part_name = wop.part.name if wop.part else '—'
+            article = wop.part.article if wop.part else '—'
+            parts.append(f"{article} {part_name} ×{wop.quantity} ({wop.get_status_display()})")
+        _locals.order_delete_snapshot = {
+            'client': instance.client_fio_static or '—',
+            'car': instance.car_details_static or '—',
+            'status': instance.status,
+            'cost': str(instance.cost) if instance.cost else '—',
+            'services': services,
+            'parts': parts,
+        }
+    except Exception:
+        _locals.order_delete_snapshot = None
+
+
 @receiver(post_delete)
 def on_order_delete(sender, instance, **kwargs):
     if sender.__name__ != 'Order':
         return
-    _create_log('delete', 'Order', instance.pk, instance)
+    snapshot = getattr(_locals, 'order_delete_snapshot', None)
+    _locals.order_delete_snapshot = None
+    details = None
+    if snapshot:
+        details = {
+            'event': 'order_deleted',
+            'client': snapshot['client'],
+            'car': snapshot['car'],
+            'status': snapshot['status'],
+            'cost': snapshot['cost'],
+        }
+        if snapshot['services']:
+            details['services'] = '; '.join(snapshot['services'])
+        if snapshot['parts']:
+            details['parts'] = '; '.join(snapshot['parts'])
+    _create_log('delete', 'Order', instance.pk, instance, details)
 
 
 # ─── WorkOrderService ─────────────────────────────────────────────────────────
@@ -341,8 +432,8 @@ def on_po_save(sender, instance, created, **kwargs):
             'supplier': instance.supplier.name if instance.supplier else '—',
             'status': instance.get_status_display(),
         }
-        if instance.work_order:
-            details['order'] = f"Заказ №{instance.work_order_id}"
+        if instance.comment:
+            details['comment'] = instance.comment
     else:
         old_status = getattr(_locals, 'po_old_status', None)
         _locals.po_old_status = None
@@ -406,12 +497,16 @@ def on_poi_save(sender, instance, created, **kwargs):
 def on_supply_save(sender, instance, created, **kwargs):
     if sender.__name__ != 'SupplyDocument' or not created:
         return
+    # Reset per-document running total used by on_supplyitem_save
+    _locals.supply_received = {}
     details = {
         'event': 'supply_created',
         'supplier': instance.supplier.name if instance.supplier else '—',
     }
     if instance.purchase_order:
         details['purchase_order'] = str(instance.purchase_order)
+    if instance.comment:
+        details['comment'] = instance.comment
     _create_log('create', 'SupplyDocument', instance.pk, instance, details)
 
 
@@ -428,18 +523,97 @@ def on_supply_delete(sender, instance, **kwargs):
 def on_supplyitem_save(sender, instance, created, **kwargs):
     if sender.__name__ != 'SupplyItem' or not created:
         return
+    pkg = instance.pkg_qty or 1
+    pkg_count = instance.quantity // pkg if pkg > 1 else instance.quantity
     details = {
         'event': 'received',
         'article': instance.part.article if instance.part else '—',
         'part_name': instance.part.name if instance.part else '—',
-        'quantity': str(instance.quantity),
+        'packages': str(pkg_count),
         'purchase_price': str(instance.purchase_price),
         'location': str(instance.location) if instance.location else '—',
     }
+    if pkg > 1:
+        details['pkg_qty'] = str(pkg)
+        details['units_total'] = str(instance.quantity)
     if instance.po_item:
-        details['ordered_qty'] = str(instance.po_item.quantity)
-        details['remaining_before'] = str(instance.po_item.remaining_qty + instance.quantity)
+        poi = instance.po_item
+        # received_qty is updated via F() after the whole item loop, so we track
+        # the running total ourselves to get accurate before/after values per row.
+        # PO quantities are in packages; instance.quantity is in units (already
+        # multiplied by pkg_qty when pkg_qty > 1), so convert back to PO units.
+        po_qty = pkg_count  # already computed above
+        acc = getattr(_locals, 'supply_received', {})
+        already_in_this_doc = acc.get(poi.pk, 0)
+        remaining_before = poi.remaining_qty - already_in_this_doc
+        remaining_after = max(0, remaining_before - po_qty)
+        acc[poi.pk] = already_in_this_doc + po_qty
+        _locals.supply_received = acc
+        details['po_ordered'] = str(poi.quantity)
+        details['po_remaining_before'] = str(remaining_before)
+        details['po_remaining_after'] = str(remaining_after)
     _create_log('update', 'SupplyDocument', instance.document_id, instance.document, details)
+
+
+# ─── StockEntry (только изменение мин. остатка) ───────────────────────────────
+
+@receiver(pre_save)
+def on_stock_pre_save(sender, instance, **kwargs):
+    if sender.__name__ != 'StockEntry' or not instance.pk:
+        return
+    try:
+        old = sender.objects.get(pk=instance.pk)
+        _locals.stock_old_min = old.min_qty
+    except sender.DoesNotExist:
+        pass
+
+
+@receiver(post_save)
+def on_stock_save(sender, instance, created, **kwargs):
+    if sender.__name__ != 'StockEntry' or created:
+        return
+    old_min = getattr(_locals, 'stock_old_min', None)
+    _locals.stock_old_min = None
+    if old_min is None or old_min == instance.min_qty:
+        return
+    details = {
+        'event': 'min_qty_changed',
+        'article': instance.part.article if instance.part else '—',
+        'part_name': instance.part.name if instance.part else '—',
+        'location': str(instance.location) if instance.location else '—',
+        'changes': [{'field': 'Мин. остаток', 'from': str(old_min), 'to': str(instance.min_qty)}],
+    }
+    _create_log('update', 'StockEntry', instance.pk, instance, details)
+
+
+# ─── WriteOff ─────────────────────────────────────────────────────────────────
+
+@receiver(post_save)
+def on_writeoff_save(sender, instance, created, **kwargs):
+    if sender.__name__ != 'WriteOff' or not created:
+        return
+    details = {
+        'event': 'write_off_created',
+        'reason': instance.reason,
+    }
+    if instance.comment:
+        details['comment'] = instance.comment
+    _create_log('create', 'WriteOff', instance.pk, instance, details)
+
+
+@receiver(post_save)
+def on_writeoffitem_save(sender, instance, created, **kwargs):
+    if sender.__name__ != 'WriteOffItem' or not created:
+        return
+    details = {
+        'event': 'written_off',
+        'article': instance.part.article if instance.part else '—',
+        'part_name': instance.part.name if instance.part else '—',
+        'quantity': str(instance.quantity),
+        'location': str(instance.location) if instance.location else '—',
+        'reason': instance.write_off.reason if instance.write_off else '—',
+    }
+    _create_log('update', 'WriteOff', instance.write_off_id, instance.write_off, details)
 
 
 # ─── Простые модели ───────────────────────────────────────────────────────────

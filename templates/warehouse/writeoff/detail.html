@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Списание №{{ wo.id }}{% endblock %}
+{% block content %}
+<h1>Списание №{{ wo.id }}</h1>
+<p><strong>Дата:</strong> {{ wo.created_at|date:"d.m.Y H:i" }}</p>
+<p><strong>Причина:</strong> {{ wo.reason }}</p>
+{% if wo.comment %}<p><strong>Примечание:</strong> {{ wo.comment }}</p>{% endif %}
+
+<a href="{% url 'write_off_list' %}" class="btn">К списку</a>
+
+<h2 class="top-title-margin">Позиции списания</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Артикул</th>
+            <th>Название</th>
+            <th>Место хранения</th>
+            <th>Количество</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in wo.items.all %}
+        <tr>
+            <td>{{ item.part.article }}</td>
+            <td>{{ item.part.name }}</td>
+            <td>{{ item.location }}</td>
+            <td>{{ item.quantity }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4">Позиций нет.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
