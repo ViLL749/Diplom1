@@ -344,6 +344,10 @@ class Employee(models.Model):
     name = models.CharField(max_length=255, verbose_name="ФИО")
     phone = models.CharField(max_length=30, blank=True, verbose_name="Телефон")
     position = models.CharField(max_length=100, blank=True, verbose_name="Должность")
+    salary_coefficient = models.DecimalField(
+        max_digits=4, decimal_places=2, default=1.0,
+        verbose_name="Коэффициент ЗП"
+    )
     is_active = models.BooleanField(default=True, verbose_name="Активен")
 
     def __str__(self):
@@ -366,6 +370,12 @@ class WorkOrderServiceEmployee(models.Model):
         verbose_name="Сотрудник",
         related_name='assignments'
     )
+    # Frozen at assignment time — changing the employee's coefficient later
+    # will not affect already-recorded work.
+    salary_coefficient_snapshot = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        verbose_name="К. ЗП (снапшот)"
+    )
 
     @property
     def hours_share(self):
@@ -374,9 +384,13 @@ class WorkOrderServiceEmployee(models.Model):
 
     @property
     def earnings(self):
-        n = self.work_order_service.assignments.count()
-        price = self.work_order_service.final_price or 0
-        return price / n if n else 0
+        from decimal import Decimal
+        n = self.work_order_service.assignments.count() or 1
+        rate = self.work_order_service.hourly_rate_snapshot or Decimal('0')
+        hours = self.work_order_service.hours_applied / Decimal(n)
+        coeff = self.salary_coefficient_snapshot if self.salary_coefficient_snapshot is not None \
+            else (self.employee.salary_coefficient or Decimal('1'))
+        return hours * rate * coeff
 
     def __str__(self):
         return f"{self.employee.name} → {self.work_order_service}"

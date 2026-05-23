@@ -3,11 +3,17 @@
 {% block content %}
 <h1>Сводка заработка сотрудников</h1>
 
+<div style="background:#f0f9ff;border-left:4px solid #0ea5e9;padding:10px 16px;margin-bottom:20px;border-radius:4px;font-size:0.93em;color:#0c4a6e;">
+    Учитываются только <strong>завершённые</strong> заказы.
+    Заработок = часы (доля) × нормо-час × К.ЗП (на момент назначения).
+</div>
+
 <table>
     <thead>
         <tr>
             <th>ФИО</th>
             <th>Должность</th>
+            <th title="Текущий коэффициент ЗП сотрудника">К. ЗП (текущий)</th>
             <th>Всего часов</th>
             <th>Всего заработано</th>
             <th></th>
@@ -18,12 +24,13 @@
         <tr>
             <td>{{ item.employee.name }}</td>
             <td>{{ item.employee.position|default:"—" }}</td>
-            <td>{{ item.total_hours|floatformat:2 }}</td>
-            <td>{{ item.total_earnings|floatformat:2 }} руб.</td>
+            <td style="text-align:center;">{{ item.employee.salary_coefficient }}</td>
+            <td>{{ item.total_hours|floatformat:2 }} ч</td>
+            <td><strong>{{ item.total_earnings|floatformat:2 }} руб.</strong></td>
             <td><a href="{% url 'employee_report' item.employee.pk %}" class="btn btn-sm">Подробнее</a></td>
         </tr>
         {% empty %}
-        <tr><td colspan="5" style="color:#888;">Нет активных сотрудников.</td></tr>
+        <tr><td colspan="6" style="color:#888;">Нет активных сотрудников.</td></tr>
         {% endfor %}
     </tbody>
 </table>

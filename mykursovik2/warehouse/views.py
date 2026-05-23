@@ -1324,32 +1324,56 @@ def employee_delete(request, pk):
 def employee_report(request, pk):
     """Earnings report for a single employee. Only completed orders count."""
     from decimal import Decimal
+    from datetime import date, datetime
     employee = get_object_or_404(Employee, pk=pk)
-    assignments = (
+
+    today = date.today()
+    first_of_month = today.replace(day=1)
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str   = request.GET.get('date_to', '')
+    try:
+        date_from = datetime.strptime(date_from_str, '%Y-%m-%d').date() if date_from_str else None
+        date_to   = datetime.strptime(date_to_str,   '%Y-%m-%d').date() if date_to_str   else None
+    except ValueError:
+        date_from = date_to = None
+
+    qs = (
         WorkOrderServiceEmployee.objects
         .filter(employee=employee)
-        .select_related(
-            'work_order_service__work_order',
-            'work_order_service__service',
-        )
-        .order_by('-work_order_service__work_order__id')
+        .select_related('work_order_service__work_order', 'work_order_service__service')
+        .order_by('-work_order_service__work_order__completion_date',
+                  '-work_order_service__work_order__id')
     )
+    if date_from:
+        qs = qs.filter(work_order_service__work_order__completion_date__gte=date_from)
+    if date_to:
+        qs = qs.filter(work_order_service__work_order__completion_date__lte=date_to)
+
     rows = []
     total_hours = Decimal('0')
     total_earnings = Decimal('0')
-    for a in assignments:
+    for a in qs:
         wos = a.work_order_service
         n = wos.assignments.count()
-        hours = wos.hours_applied / Decimal(n) if n else Decimal('0')
+        hours_share = wos.hours_applied / Decimal(n) if n else Decimal('0')
         is_done = wos.work_order.status == 'Завершён'
-        earnings = (wos.final_price or Decimal('0')) / Decimal(n) if (n and is_done) else Decimal('0')
+        rate = wos.hourly_rate_snapshot or Decimal('0')
+        coeff = a.salary_coefficient_snapshot if a.salary_coefficient_snapshot is not None \
+            else (employee.salary_coefficient or Decimal('1'))
+        base_share = (hours_share * rate).quantize(Decimal('0.01'))
+        earnings = (base_share * coeff).quantize(Decimal('0.01')) if is_done else Decimal('0')
         if is_done:
-            total_hours += hours
+            total_hours += hours_share
             total_earnings += earnings
         rows.append({
             'order_id': wos.work_order.id,
+            'completion_date': wos.work_order.completion_date,
             'service_name': wos.service_name_snapshot or (wos.service.name if wos.service else '—'),
-            'hours': hours,
+            'hours_share': hours_share,
+            'n_employees': n,
+            'rate': rate,
+            'coeff': coeff,
+            'base_share': base_share,
             'earnings': earnings,
             'order_status': wos.work_order.status,
             'is_done': is_done,
@@ -1359,6 +1383,9 @@ def employee_report(request, pk):
         'rows': rows,
         'total_hours': total_hours,
         'total_earnings': total_earnings,
+        'date_from': date_from_str,
+        'date_to': date_to_str,
+        'filtered': bool(date_from_str or date_to_str),
     })
 
 
@@ -1378,9 +1405,17 @@ def employees_report_all(request):
             wos = a.work_order_service
             n = wos.assignments.count()
             if n:
-                total_hours += wos.hours_applied / Decimal(n)
-                total_earnings += (wos.final_price or Decimal('0')) / Decimal(n)
-        data.append({'employee': emp, 'total_hours': total_hours, 'total_earnings': total_earnings})
+                hours_share = wos.hours_applied / Decimal(n)
+                rate = wos.hourly_rate_snapshot or Decimal('0')
+                coeff = a.salary_coefficient_snapshot if a.salary_coefficient_snapshot is not None \
+                    else (emp.salary_coefficient or Decimal('1'))
+                total_hours += hours_share
+                total_earnings += (hours_share * rate * coeff).quantize(Decimal('0.01'))
+        data.append({
+            'employee': emp,
+            'total_hours': total_hours,
+            'total_earnings': total_earnings,
+        })
     data.sort(key=lambda x: x['total_earnings'], reverse=True)
     return render(request, 'warehouse/employees/report_all.html', {'data': data})
 
@@ -1395,9 +1430,13 @@ def api_assign_employee(request, wos_pk):
     if not emp_pk:
         return JsonResponse({'error': 'employee_id required'}, status=400)
     employee = get_object_or_404(Employee, pk=emp_pk)
-    _, created = WorkOrderServiceEmployee.objects.get_or_create(
-        work_order_service=wos, employee=employee
+    asgn, created = WorkOrderServiceEmployee.objects.get_or_create(
+        work_order_service=wos, employee=employee,
+        defaults={'salary_coefficient_snapshot': employee.salary_coefficient},
     )
+    if not created and asgn.salary_coefficient_snapshot is None:
+        asgn.salary_coefficient_snapshot = employee.salary_coefficient
+        asgn.save(update_fields=['salary_coefficient_snapshot'])
     n = wos.assignments.count()
     from decimal import Decimal
     assignments = [

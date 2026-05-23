@@ -491,12 +491,16 @@ WriteOffItemFormSet = forms.inlineformset_factory(
 class EmployeeForm(forms.ModelForm):
     class Meta:
         model = Employee
-        fields = ['name', 'phone', 'position', 'is_active']
+        fields = ['name', 'phone', 'position', 'salary_coefficient', 'is_active']
         labels = {
             'name': 'ФИО',
             'phone': 'Телефон',
             'position': 'Должность',
+            'salary_coefficient': 'Коэффициент ЗП',
             'is_active': 'Активен',
+        }
+        widgets = {
+            'salary_coefficient': forms.NumberInput(attrs={'min': '0.01', 'max': '9.99', 'step': '0.01'}),
         }
 
     def clean_phone(self):

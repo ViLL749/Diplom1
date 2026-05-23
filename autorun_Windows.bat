@@ -1,64 +1,76 @@
 @echo off
 chcp 65001 >nul
-title АРМ Автосервис
+title APM Avtosservis
 
-REM ── Проверка Python ──────────────────────────────────────────────────────────
+REM -----------------------------------------------------------------------
+REM  Proverka Python
+REM -----------------------------------------------------------------------
 where py >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [Ошибка] Python не найден. Установите Python 3.10+ с https://python.org
+    echo [Oshibka] Python ne nayden. Ustanovite Python 3.10+ s https://python.org
     pause
     exit /b 1
 )
 
-REM ── Виртуальное окружение ────────────────────────────────────────────────────
+REM -----------------------------------------------------------------------
+REM  Virtualnoe okruzhenie
+REM -----------------------------------------------------------------------
 if not exist env (
-    echo Создаю виртуальное окружение... [Ожидайте]
+    echo Sozdayu virtualnoe okruzhenie... Podozhdite.
     py -m venv env
     if %errorlevel% neq 0 (
-        echo [Ошибка] Не удалось создать виртуальное окружение.
+        echo [Oshibka] Ne udalos sozdat virtualnoe okruzhenie.
         pause
         exit /b 1
     )
 )
 
-echo Активация виртуального окружения...
+echo Aktivatsiya virtualnogo okruzheniya...
 call env\Scripts\activate
 if %errorlevel% neq 0 (
-    echo [Ошибка] Не удалось активировать виртуальное окружение.
+    echo [Oshibka] Ne udalos aktivirovat virtualnoe okruzhenie.
     pause
     exit /b 1
 )
 
-REM ── Зависимости ──────────────────────────────────────────────────────────────
+REM -----------------------------------------------------------------------
+REM  Zavisimosti
+REM -----------------------------------------------------------------------
 if exist requirements.txt (
-    echo Установка зависимостей... [Ожидайте]
+    echo Ustanovka zavisimostey... Podozhdite.
     pip install -r requirements.txt -q
     if %errorlevel% neq 0 (
-        echo [Ошибка] Не удалось установить зависимости.
+        echo [Oshibka] Ne udalos ustanovit zavisimosti.
         pause
         exit /b 1
     )
 ) else (
-    echo [Внимание] Файл requirements.txt не найден.
+    echo [Vnimanie] Fayl requirements.txt ne nayden.
 )
 
-REM ── Миграции ─────────────────────────────────────────────────────────────────
-echo Применение миграций базы данных...
+REM -----------------------------------------------------------------------
+REM  Migratsii
+REM -----------------------------------------------------------------------
+echo Primeneniye migratsiy bazy dannykh...
 py mykursovik2\manage.py migrate --run-syncdb -v 0
 if %errorlevel% neq 0 (
-    echo [Ошибка] Не удалось применить миграции.
+    echo [Oshibka] Ne udalos primenit migratsii.
     pause
     exit /b 1
 )
 
-REM ── Открыть браузер через 2 секунды ──────────────────────────────────────────
-echo Запуск веб-приложения...
-start "" /b timeout /t 2 >nul && start "" "http://127.0.0.1:8000"
+REM -----------------------------------------------------------------------
+REM  Otkryt brauzer cherez 2 sekundy
+REM -----------------------------------------------------------------------
+echo Zapusk veb-prilozheniya...
+start "" cmd /c "timeout /t 2 >nul && start http://127.0.0.1:8000"
 
-REM ── Запуск сервера ────────────────────────────────────────────────────────────
+REM -----------------------------------------------------------------------
+REM  Zapusk servera
+REM -----------------------------------------------------------------------
 py mykursovik2\manage.py runserver
 if %errorlevel% neq 0 (
-    echo [Ошибка] Не удалось запустить сервер Django.
+    echo [Oshibka] Ne udalos zapustit server Django.
     pause
     exit /b 1
 )

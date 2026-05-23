@@ -2,15 +2,46 @@
 {% block title %}Заработок: {{ employee.name }}{% endblock %}
 {% block content %}
 <h1>Заработок: {{ employee.name }}</h1>
-{% if employee.position %}<p style="color:#555;margin-bottom:16px;">{{ employee.position }}</p>{% endif %}
+{% if employee.position %}<p style="color:#555;margin-top:-8px;margin-bottom:12px;">{{ employee.position }}</p>{% endif %}
+
+<form method="GET" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px;background:#f8fafc;border:1px solid #e2e8f0;padding:14px 16px;border-radius:8px;">
+    <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">Период с</label>
+        <input type="date" name="date_from" value="{{ date_from }}" class="form-control" style="width:160px;">
+    </div>
+    <div>
+        <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">по</label>
+        <input type="date" name="date_to" value="{{ date_to }}" class="form-control" style="width:160px;">
+    </div>
+    <div style="display:flex;gap:8px;">
+        <button type="submit" class="btn">Показать</button>
+        {% if filtered %}<a href="?" class="btn btn-secondary">Сбросить</a>{% endif %}
+    </div>
+    {% if filtered %}
+    <div style="align-self:center;font-size:0.9em;color:#0ea5e9;">
+        Фильтр активен
+        {% if date_from %} с {{ date_from }}{% endif %}
+        {% if date_to %} по {{ date_to }}{% endif %}
+    </div>
+    {% endif %}
+</form>
+
+<div style="background:#f0f9ff;border-left:4px solid #0ea5e9;padding:10px 16px;margin-bottom:20px;border-radius:4px;font-size:0.93em;color:#0c4a6e;">
+    <strong>Формула:</strong> часы (доля) × нормо-час × К.ЗП (на момент назначения)
+    &nbsp;·&nbsp; Учитываются только <strong>завершённые</strong> заказы.
+</div>
 
 <table>
     <thead>
         <tr>
             <th>Заказ №</th>
+            <th>Дата завершения</th>
             <th>Услуга</th>
-            <th>Статус заказа</th>
-            <th>Часы (доля)</th>
+            <th>Статус</th>
+            <th title="Часы услуги ÷ количество исполнителей">Часы (доля)</th>
+            <th title="Исполнителей на услуге">Исполн.</th>
+            <th>Нормо-час</th>
+            <th title="Коэффициент ЗП на момент назначения">К. ЗП</th>
             <th>Заработок</th>
         </tr>
     </thead>
@@ -18,20 +49,34 @@
         {% for row in rows %}
         <tr {% if not row.is_done %}style="color:#9ca3af;"{% endif %}>
             <td><a href="{% url 'order_detail' row.order_id %}">#{{ row.order_id }}</a></td>
+            <td>{{ row.completion_date|date:"d.m.Y"|default:"—" }}</td>
             <td>{{ row.service_name }}</td>
             <td>{{ row.order_status }}</td>
-            <td>{{ row.hours|floatformat:2 }}</td>
-            <td>{% if row.is_done %}{{ row.earnings|floatformat:2 }} руб.{% else %}—{% endif %}</td>
+            <td>{{ row.hours_share|floatformat:2 }}</td>
+            <td style="text-align:center;">{{ row.n_employees }}</td>
+            <td>{{ row.rate|floatformat:0 }} руб.</td>
+            <td style="text-align:center;">{{ row.coeff }}</td>
+            <td>
+                {% if row.is_done %}
+                    <strong>{{ row.earnings|floatformat:2 }} руб.</strong>
+                    <span style="font-size:0.8em;color:#94a3b8;display:block;">
+                        {{ row.hours_share|floatformat:2 }} × {{ row.rate|floatformat:0 }} × {{ row.coeff }}
+                    </span>
+                {% else %}—{% endif %}
+            </td>
         </tr>
         {% empty %}
-        <tr><td colspan="5" style="color:#888;">Нет данных.</td></tr>
+        <tr><td colspan="9" style="color:#888;">
+            {% if filtered %}Нет данных за выбранный период.{% else %}Нет данных.{% endif %}
+        </td></tr>
         {% endfor %}
     </tbody>
     {% if rows %}
     <tfoot>
-        <tr style="font-weight:600;">
-            <td colspan="3">Итого</td>
-            <td>{{ total_hours|floatformat:2 }}</td>
+        <tr style="font-weight:600;background:#f1f5f9;">
+            <td colspan="4">Итого (завершённые)</td>
+            <td>{{ total_hours|floatformat:2 }} ч</td>
+            <td colspan="3"></td>
             <td>{{ total_earnings|floatformat:2 }} руб.</td>
         </tr>
     </tfoot>

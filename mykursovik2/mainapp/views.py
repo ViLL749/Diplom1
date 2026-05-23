@@ -1103,7 +1103,13 @@ def order_commit(request, pk):
                 if not wos:
                     warnings.append(f'Услуга ID={item.get("wosId")} не найдена.')
                     continue
-                _, created = WorkOrderServiceEmployee.objects.get_or_create(work_order_service=wos, employee=emp)
+                asgn, created = WorkOrderServiceEmployee.objects.get_or_create(
+                    work_order_service=wos, employee=emp,
+                    defaults={'salary_coefficient_snapshot': emp.salary_coefficient},
+                )
+                if not created and asgn.salary_coefficient_snapshot is None:
+                    asgn.salary_coefficient_snapshot = emp.salary_coefficient
+                    asgn.save(update_fields=['salary_coefficient_snapshot'])
                 if created:
                     log_events.append({
                         'event': 'employee_assigned',
@@ -1378,6 +1384,13 @@ def order_update(request, pk):
 @login_required
 def order_delete(request, pk):
     order = get_object_or_404(Order, pk=pk)
+    if order.status in ('Завершён', 'Отменён'):
+        messages.error(
+            request,
+            f'Нельзя удалить заказ со статусом «{order.status}». '
+            'Завершённые и отменённые заказы хранятся для истории.'
+        )
+        return redirect('order_detail', pk=pk)
     if request.method == 'POST':
         _unreserve_order_parts(order)
         order.delete()
@@ -1550,33 +1563,48 @@ def accounting_export(request):
     widths2 = [14, 16, 10, 18, 26, 24, 22, 30, 12, 12, 15, 16]
     style_header(ws2, headers2, widths2)
 
-    wos_qs = WorkOrderService.objects.select_related(
-        'work_order', 'work_order__client_car__client',
-        'service__service_type',
+    # Завершённые — те же что в Сводке (completion_date), итог совпадёт точно
+    wos_done = list(WorkOrderService.objects.select_related(
+        'work_order', 'work_order__client_car__client', 'service__service_type',
     ).filter(
+        work_order__status='Завершён',
+        work_order__completion_date__gte=date_from,
+        work_order__completion_date__lte=date_to,
+    ).order_by('work_order__completion_date', 'work_order__pk'))
+    # Незавершённые — по дате создания, отдельно для справки
+    wos_pending = list(WorkOrderService.objects.select_related(
+        'work_order', 'work_order__client_car__client', 'service__service_type',
+    ).exclude(work_order__status='Завершён').filter(
         work_order__order_date__gte=date_from,
         work_order__order_date__lte=date_to,
-    ).order_by('work_order__order_date', 'work_order__pk')
+    ).order_by('work_order__order_date', 'work_order__pk'))
+    wos_qs = wos_done + wos_pending
 
+    PENDING_FILL = PatternFill('solid', fgColor='FFFEF3C7')  # янтарный — незавершённые
     total_hours = Decimal('0'); total_svc_cost = Decimal('0')
     for i, wos in enumerate(wos_qs):
-        o      = wos.work_order
-        cname  = o.client_fio_static or (o.client_car.client.fio if o.client_car else '—')
-        car    = o.car_details_static or '—'
-        stype  = (wos.service.service_type.name if wos.service and wos.service.service_type else '—')
-        sname  = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
-        rate   = wos.hourly_rate_snapshot or Decimal('0')
-        price  = wos.final_price or Decimal('0')
-        total_hours    += wos.hours_applied
-        total_svc_cost += price
+        o       = wos.work_order
+        is_done = (o.status == 'Завершён')
+        cname   = o.client_fio_static or (o.client_car.client.fio if o.client_car else '—')
+        car     = o.car_details_static or '—'
+        stype   = (wos.service.service_type.name if wos.service and wos.service.service_type else '—')
+        sname   = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
+        rate    = wos.hourly_rate_snapshot or Decimal('0')
+        price   = wos.final_price or Decimal('0')
+        if is_done:
+            total_hours    += wos.hours_applied
+            total_svc_cost += price
 
         ws2.append([
             o.order_date, o.completion_date or '', o.pk, o.status,
             cname, car, stype, sname,
             float(wos.hours_applied), float(wos.complexity_factor),
-            float(rate), float(price),
+            float(rate), float(price) if is_done else '',
         ])
         style_row(ws2, i + 1, len(headers2), is_money_cols={11, 12})
+        if not is_done:
+            for col in range(1, len(headers2) + 1):
+                ws2.cell(i + 2, col).fill = PENDING_FILL
         ws2.cell(i + 2, 1).number_format = 'DD.MM.YYYY'
         if o.completion_date:
             ws2.cell(i + 2, 2).number_format = 'DD.MM.YYYY'
@@ -1585,6 +1613,14 @@ def accounting_export(request):
     add_total_row(ws2, tr2, len(headers2), sum_cols={9, 11, 12})
     ws2.cell(tr2 + 1, 9).value  = float(total_hours)
     ws2.cell(tr2 + 1, 12).value = float(total_svc_cost)
+    note2_row = tr2 + 2
+    ws2.append(['ℹ Жёлтые строки — незавершённые заказы (в итог не включены). Итог по завершённым совпадает со Сводкой.'])
+    ws2.merge_cells(start_row=note2_row, start_column=1, end_row=note2_row, end_column=len(headers2))
+    _nc2 = ws2.cell(note2_row, 1)
+    _nc2.font = Font(italic=True, name='Calibri', size=9, color='FF92400E')
+    _nc2.fill = PatternFill('solid', fgColor=WARN_BG)
+    _nc2.alignment = Alignment(horizontal='left', vertical='center')
+    ws2.row_dimensions[note2_row].height = 22
 
     # ══════════════════════════════════════════════════════════════════════
     # Лист 3: Запасные части
@@ -1598,29 +1634,44 @@ def accounting_export(request):
     widths3 = [14, 16, 10, 18, 26, 14, 30, 16, 18, 12, 22, 12, 15]
     style_header(ws3, headers3, widths3)
 
-    wop_qs = WorkOrderPart.objects.select_related(
+    # Завершённые — те же что в Сводке (completion_date)
+    wop_done = list(WorkOrderPart.objects.select_related(
         'work_order', 'work_order__client_car__client', 'part',
     ).filter(
+        work_order__status='Завершён',
+        work_order__completion_date__gte=date_from,
+        work_order__completion_date__lte=date_to,
+    ).order_by('work_order__completion_date', 'work_order__pk'))
+    # Незавершённые — по дате создания, для справки
+    wop_pending = list(WorkOrderPart.objects.select_related(
+        'work_order', 'work_order__client_car__client', 'part',
+    ).exclude(work_order__status='Завершён').filter(
         work_order__order_date__gte=date_from,
         work_order__order_date__lte=date_to,
-    ).order_by('work_order__order_date', 'work_order__pk')
+    ).order_by('work_order__order_date', 'work_order__pk'))
+    wop_qs = wop_done + wop_pending
 
     total_parts_amt = Decimal('0')
     for i, wop in enumerate(wop_qs):
-        o      = wop.work_order
-        cname  = o.client_fio_static or (o.client_car.client.fio if o.client_car else '—')
-        price  = wop.sale_price or Decimal('0')
-        total  = price * wop.quantity
-        total_parts_amt += total
+        o       = wop.work_order
+        is_done = (o.status == 'Завершён')
+        cname   = o.client_fio_static or (o.client_car.client.fio if o.client_car else '—')
+        price   = wop.sale_price or Decimal('0')
+        total   = price * wop.quantity
+        if is_done:
+            total_parts_amt += total
 
         ws3.append([
             o.order_date, o.completion_date or '', o.pk, o.status,
             cname,
             wop.part.article, wop.part.name,
             wop.part.brand or '—', wop.part.category or '—',
-            wop.quantity, float(price), float(wop.markup), float(total),
+            wop.quantity, float(price), float(wop.markup), float(total) if is_done else '',
         ])
         style_row(ws3, i + 1, len(headers3), is_money_cols={11, 13})
+        if not is_done:
+            for col in range(1, len(headers3) + 1):
+                ws3.cell(i + 2, col).fill = PENDING_FILL
         ws3.cell(i + 2, 1).number_format = 'DD.MM.YYYY'
         if o.completion_date:
             ws3.cell(i + 2, 2).number_format = 'DD.MM.YYYY'
@@ -1629,6 +1680,14 @@ def accounting_export(request):
     add_total_row(ws3, tr3, len(headers3), sum_cols={10, 11, 13})
     ws3.cell(tr3 + 1, 10).value = sum(wop.quantity for wop in wop_qs)
     ws3.cell(tr3 + 1, 13).value = float(total_parts_amt)
+    note3_row = tr3 + 2
+    ws3.append(['ℹ Жёлтые строки — незавершённые заказы (в итог не включены). Итог по завершённым совпадает со Сводкой.'])
+    ws3.merge_cells(start_row=note3_row, start_column=1, end_row=note3_row, end_column=len(headers3))
+    _nc3 = ws3.cell(note3_row, 1)
+    _nc3.font = Font(italic=True, name='Calibri', size=9, color='FF92400E')
+    _nc3.fill = PatternFill('solid', fgColor=WARN_BG)
+    _nc3.alignment = Alignment(horizontal='left', vertical='center')
+    ws3.row_dimensions[note3_row].height = 22
 
     # ══════════════════════════════════════════════════════════════════════
     # Лист 4: Поступление товаров
@@ -1676,15 +1735,33 @@ def accounting_export(request):
 
     # ══════════════════════════════════════════════════════════════════════
     # Лист 5: Фонд оплаты труда
+    # Заработок = часы (доля) × нормо-час × К.ЗП
+    # К. сложности — это надбавка сервиса к цене клиента, не к зарплате
     # ══════════════════════════════════════════════════════════════════════
     ws5 = wb.create_sheet('Фонд оплаты труда')
+    ws5.append([f'Период: {period_label}   |   Формула зарплаты: Часы (доля) × Нормо-час × К.ЗП сотрудника'])
+    ws5.merge_cells('A1:K1')
+    note5 = ws5['A1']
+    note5.font = Font(italic=True, name='Calibri', size=9, color='FF334155')
+    note5.alignment = Alignment(horizontal='left', vertical='center')
+    ws5.row_dimensions[1].height = 18
+
     headers5 = [
         'Дата завершения', '№ заказа', 'Клиент', 'Автомобиль',
         'Сотрудник', 'Должность', 'Услуга',
-        'Нормо-часов', 'Коэффициент', 'Ставка (руб./ч)', 'Заработок (руб.)',
+        'Часов (доля)', 'Нормо-час (руб./ч)', 'К. ЗП', 'Заработок (руб.)',
     ]
-    widths5 = [16, 10, 26, 24, 28, 18, 30, 12, 12, 15, 16]
-    style_header(ws5, headers5, widths5)
+    widths5 = [16, 10, 26, 24, 28, 18, 30, 13, 18, 10, 16]
+    ws5.append(headers5)
+    for col, w in enumerate(widths5, 1):
+        cell = ws5.cell(2, col)
+        cell.fill   = hdr_fill()
+        cell.font   = hdr_font
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell.border = thin_border
+        ws5.column_dimensions[get_column_letter(col)].width = w
+    ws5.row_dimensions[2].height = 30
+    ws5.freeze_panes = 'A3'
 
     emp_qs = WorkOrderServiceEmployee.objects.select_related(
         'employee',
@@ -1701,30 +1778,190 @@ def accounting_export(request):
     )
 
     total_fot = Decimal('0')
+    total_fot_hours = Decimal('0')
     for i, asgn in enumerate(emp_qs):
         wos   = asgn.work_order_service
         o     = wos.work_order
         emp   = asgn.employee
+        n     = wos.assignments.count() or 1
         rate  = wos.hourly_rate_snapshot or Decimal('0')
-        earn  = (wos.hours_applied * rate * wos.complexity_factor).quantize(Decimal('0.01'))
+        coeff = asgn.salary_coefficient_snapshot if asgn.salary_coefficient_snapshot is not None \
+            else (emp.salary_coefficient or Decimal('1'))
+        hours_share = (wos.hours_applied / Decimal(n)).quantize(Decimal('0.01'))
+        earn  = (hours_share * rate * coeff).quantize(Decimal('0.01'))
         total_fot += earn
+        total_fot_hours += hours_share
         cname = o.client_fio_static or (o.client_car.client.fio if o.client_car else '—')
         car   = o.car_details_static or '—'
         sname = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
 
+        row_num = i + 3
         ws5.append([
             o.completion_date, o.pk, cname, car,
             emp.name, emp.position or '—', sname,
-            float(wos.hours_applied), float(wos.complexity_factor),
-            float(rate), float(earn),
+            float(hours_share), float(rate), float(coeff), float(earn),
         ])
-        style_row(ws5, i + 1, len(headers5), is_money_cols={10, 11})
-        ws5.cell(i + 2, 1).number_format = 'DD.MM.YYYY'
+        fill = alt_fill(i)
+        for col in range(1, len(headers5) + 1):
+            cell = ws5.cell(row_num, col)
+            cell.fill   = fill
+            cell.font   = data_font
+            cell.border = thin_border
+            cell.alignment = Alignment(vertical='center')
+            if col in {9, 11}:
+                cell.number_format = '#,##0.00'
+        ws5.cell(row_num, 1).number_format = 'DD.MM.YYYY'
 
-    tr5 = len(list(emp_qs)) + 1
-    add_total_row(ws5, tr5, len(headers5), sum_cols={8, 10, 11})
-    ws5.cell(tr5 + 1, 8).value  = float(sum(asgn.work_order_service.hours_applied for asgn in emp_qs))
-    ws5.cell(tr5 + 1, 11).value = float(total_fot)
+    tot5_row = len(list(emp_qs)) + 3
+    ws5.append(['ИТОГО', '', '', '', '', '', '', float(total_fot_hours), '', '', float(total_fot)])
+    for col in range(1, len(headers5) + 1):
+        cell = ws5.cell(tot5_row, col)
+        cell.fill   = tot_fill()
+        cell.font   = bold_font
+        cell.border = thin_border
+        cell.alignment = Alignment(vertical='center')
+        if col in {8, 11}:
+            cell.number_format = '#,##0.00'
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Лист 6: Сводка — выручка, затраты, прибыль сервиса
+    # ══════════════════════════════════════════════════════════════════════
+    ws6 = wb.create_sheet('Сводка')
+
+    GREEN_BG  = 'FFD1FAE5'
+    GREEN_HDR = 'FF065F46'
+    RED_BG    = 'FFFEE2E2'
+    RED_HDR   = 'FF991B1B'
+    GRAY_BG   = 'FFF1F5F9'
+
+    def _ws6_section_hdr(ws, label, bg, fg, n_cols=3):
+        ws.append([label])
+        r = ws.max_row
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=n_cols)
+        c = ws.cell(r, 1)
+        c.fill = PatternFill('solid', fgColor=bg)
+        c.font = Font(bold=True, name='Calibri', size=10, color=fg)
+        c.alignment = Alignment(horizontal='left', vertical='center')
+        c.border = thin_border
+        ws.row_dimensions[r].height = 20
+
+    def _ws6_row(ws, label, value, note='', bold=False, bg=None):
+        ws.append([label, value, note])
+        r = ws.max_row
+        for col in range(1, 4):
+            c = ws.cell(r, col)
+            c.font = bold_font if bold else data_font
+            c.border = thin_border
+            c.alignment = Alignment(vertical='center',
+                                    horizontal='right' if col == 2 else 'left')
+            if bg:
+                c.fill = PatternFill('solid', fgColor=bg)
+            if col == 2:
+                c.number_format = '#,##0.00'
+
+    def _ws6_blank(ws):
+        ws.append(['', '', ''])
+        ws.row_dimensions[ws.max_row].height = 6
+
+    # Заголовок листа
+    ws6.append([f'Сводка доходов и расходов сервиса  |  {period_label}'])
+    ws6.merge_cells('A1:C1')
+    title6 = ws6['A1']
+    title6.font = Font(bold=True, name='Calibri', size=12, color='FF1E293B')
+    title6.alignment = Alignment(horizontal='left', vertical='center')
+    ws6.row_dimensions[1].height = 24
+    ws6.append(['ℹ Сводка — только ЗАВЕРШЁННЫЕ заказы, фильтр по дате завершения. Листы «Услуги» и «Запчасти» показывают все заказы (жёлтые = незавершённые, не входят в итог).', '', ''])
+    ws6.merge_cells('A2:C2')
+    _note_ws6 = ws6.cell(2, 1)
+    _note_ws6.font = Font(italic=True, name='Calibri', size=9, color='FF92400E')
+    _note_ws6.fill = PatternFill('solid', fgColor=WARN_BG)
+    _note_ws6.alignment = Alignment(horizontal='left', vertical='center')
+    ws6.row_dimensions[2].height = 22
+
+    ws6.append(['Показатель', 'Сумма (руб.)', 'Примечание'])
+    for col in range(1, 4):
+        c = ws6.cell(3, col)
+        c.fill = hdr_fill()
+        c.font = hdr_font
+        c.alignment = Alignment(horizontal='center', vertical='center')
+        c.border = thin_border
+    ws6.row_dimensions[3].height = 22
+    ws6.column_dimensions['A'].width = 42
+    ws6.column_dimensions['B'].width = 18
+    ws6.column_dimensions['C'].width = 40
+    ws6.freeze_panes = 'A4'
+
+    _ws6_blank(ws6)
+
+    # ── Выручка ──
+    _ws6_section_hdr(ws6, '▸ ВЫРУЧКА', 'FF1E3A5F', 'FFFFFFFF')
+    # Услуги: выручка = hours × rate × complexity (цена для клиента)
+    svc_revenue = sum(
+        w.final_price or Decimal('0')
+        for o in orders
+        for w in o.work_order_services.all()
+    )
+    # Запчасти: выручка = sale_price × qty
+    parts_revenue = sum(
+        (w.sale_price or Decimal('0')) * w.quantity
+        for o in orders
+        for w in o.work_order_parts.all()
+    )
+    total_revenue = svc_revenue + parts_revenue
+    _ws6_row(ws6, 'Выручка от услуг', float(svc_revenue),
+             'Нормо-часы × ставка × коэф. сложности (цена для клиента)')
+    _ws6_row(ws6, 'Выручка от запасных частей', float(parts_revenue),
+             'Цена реализации × количество')
+    _ws6_row(ws6, 'ИТОГО ВЫРУЧКА', float(total_revenue), '', bold=True, bg='FFE0F2FE')
+
+    _ws6_blank(ws6)
+
+    # ── Расходы ──
+    _ws6_section_hdr(ws6, '▸ РАСХОДЫ', RED_HDR, 'FFFFFFFF')
+    # ФОТ по услугам завершённых заказов за период
+    _ws6_row(ws6, 'Фонд оплаты труда (ФОТ)', float(total_fot),
+             'Часы (доля) × нормо-час × К.ЗП — см. лист «Фонд оплаты труда»')
+    # Себестоимость запчастей: sale / (1 + markup/100) × qty
+    parts_cost = Decimal('0')
+    for o in orders:
+        for w in o.work_order_parts.all():
+            if w.sale_price and w.markup is not None:
+                cost_unit = w.sale_price / (1 + w.markup / 100)
+            elif w.sale_price:
+                cost_unit = w.sale_price
+            else:
+                cost_unit = Decimal('0')
+            parts_cost += cost_unit * w.quantity
+    parts_cost = parts_cost.quantize(Decimal('0.01'))
+    _ws6_row(ws6, 'Себестоимость запасных частей', float(parts_cost),
+             'Цена продажи ÷ (1 + наценка%) × количество')
+    total_costs = total_fot + parts_cost
+    _ws6_row(ws6, 'ИТОГО РАСХОДЫ', float(total_costs), '', bold=True, bg='FFFEE2E2')
+
+    _ws6_blank(ws6)
+
+    # ── Прибыль ──
+    _ws6_section_hdr(ws6, '▸ ПРИБЫЛЬ', GREEN_HDR, 'FFFFFFFF')
+    svc_profit = svc_revenue - total_fot
+    parts_profit = parts_revenue - parts_cost
+    total_profit = total_revenue - total_costs
+    _ws6_row(ws6, 'Прибыль от услуг', float(svc_profit),
+             'Выручка от услуг − ФОТ (включает надбавку за сложность)')
+    _ws6_row(ws6, 'Прибыль от запасных частей', float(parts_profit),
+             'Выручка от запчастей − себестоимость (наценка)')
+    profit_bg = 'FFD1FAE5' if total_profit >= 0 else 'FFFEE2E2'
+    _ws6_row(ws6, 'ИТОГО ПРИБЫЛЬ', float(total_profit), '', bold=True, bg=profit_bg)
+
+    _ws6_blank(ws6)
+
+    # ── Справочно ──
+    _ws6_section_hdr(ws6, '▸ СПРАВОЧНО', 'FF475569', 'FFFFFFFF')
+    _ws6_row(ws6, 'Поступление товаров (закупка)', float(total_supply),
+             'Все приходы за период — см. лист «Поступление товаров»')
+    _ws6_row(ws6, 'Завершённых заказов', len(orders), '')
+    margin_pct = (total_profit / total_revenue * 100).quantize(Decimal('0.1')) if total_revenue else Decimal('0')
+    _ws6_row(ws6, 'Рентабельность', f'{margin_pct}%',
+             'Прибыль ÷ Выручка × 100%')
 
     # ── Генерация файла ──────────────────────────────────────────────────
     buf = io.BytesIO()
