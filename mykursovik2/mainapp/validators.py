@@ -56,10 +56,10 @@ CIS_PLATE_PATTERNS = {
     },
     'BY': {
         'name': 'Беларусь',
-        # 1234 АВ-7
-        'regex': r'^\d{4}[АВЕКМНОРСТХ]{2}-\d$',
-        'hint': '1234АВ-7',
-        'letters': 'АВЕКМНОРСТХ',
+        # 1234 AB-7  (латиница — буквы одинаковые в обоих алфавитах)
+        'regex': r'^\d{4}\s?[ABEIKMHOPCTX]{2}-\d$',
+        'hint': '1234AB-7',
+        'letters': 'ABEIKMHOPCTX',
         'mask': '0000LL-0',
     },
     'KZ': {
@@ -72,10 +72,10 @@ CIS_PLATE_PATTERNS = {
     },
     'UA': {
         'name': 'Украина',
-        # АА 0000 АА  (новый формат с 2004)
-        'regex': r'^[АВЕКМНОРСТУХІЇЄ]{2}\d{4}[АВЕКМНОРСТУХІЇЄ]{2}$',
-        'hint': 'АА0000АА',
-        'letters': 'АВЕКМНОРСТУХІЇЄ',
+        # AA 1234 BC  (только «международные» буквы, латиница)
+        'regex': r'^[ABCEHIKMOPTX]{2}\d{4}[ABCEHIKMOPTX]{2}$',
+        'hint': 'AA1234BC',
+        'letters': 'ABCEHIKMOPTX',
         'mask': 'LL0000LL',
     },
     'UZ': {
@@ -88,9 +88,9 @@ CIS_PLATE_PATTERNS = {
     },
     'MD': {
         'name': 'Молдова',
-        # AA 000 AA  (латиница)
-        'regex': r'^[A-Z]{2}\d{3}[A-Z]{2}$',
-        'hint': 'AA000AA',
+        # AB 123 CD  или  KVV 123  (оба формата встречаются)
+        'regex': r'^[A-Z]{2,3}\d{3,4}([A-Z]{1,2})?$',
+        'hint': 'AB123CD или KVV123',
         'letters': 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
         'mask': 'LL000LL',
     },
@@ -104,35 +104,35 @@ CIS_PLATE_PATTERNS = {
     },
     'AZ': {
         'name': 'Азербайджан',
-        # 00 AA 000  (латиница)
-        'regex': r'^\d{2}[A-Z]{2}\d{3}$',
-        'hint': '00AA000',
+        # 10-AA-777  (латиница, дефисы обязательны)
+        'regex': r'^\d{2}-[A-Z]{2}-\d{3}$',
+        'hint': '10-AA-777',
         'letters': 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-        'mask': '00LL000',
+        'mask': '00-LL-000',
     },
     'KG': {
         'name': 'Кыргызстан',
-        # 0000 АА 00  (кириллица)
-        'regex': r'^\d{4}[А-Я]{2}\d{2}$',
-        'hint': '0000АА00',
-        'letters': 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ',
-        'mask': '0000LL00',
+        # 01-123ABC  (формат с 2015: 2 цифры региона + 3 цифры + 3 латинских буквы)
+        'regex': r'^\d{2}-\d{3}[A-Z]{3}$',
+        'hint': '01-123ABC',
+        'letters': 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+        'mask': '00-000LLL',
     },
     'TJ': {
         'name': 'Таджикистан',
-        # 0000 АА 00  (кириллица)
-        'regex': r'^\d{4}[А-Я]{2}\d{2}$',
-        'hint': '0000АА00',
-        'letters': 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ',
+        # 1234 AB 01  (латиница)
+        'regex': r'^\d{4}[A-Z]{2}\d{2}$',
+        'hint': '1234AB01',
+        'letters': 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
         'mask': '0000LL00',
     },
     'TM': {
         'name': 'Туркменистан',
-        # AA 00-00-00  (латиница)
-        'regex': r'^[A-Z]{2}\d{2}-\d{2}-\d{2}$',
-        'hint': 'AA00-00-00',
+        # AB 1234 CD  (2 буквы + 4 цифры + 2 буквы, латиница)
+        'regex': r'^[A-Z]{2}\d{4}[A-Z]{2}$',
+        'hint': 'AB1234CD',
         'letters': 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-        'mask': 'LL00-00-00',
+        'mask': 'LL0000LL',
     },
 }
 
