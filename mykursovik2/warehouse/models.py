@@ -344,6 +344,15 @@ class WorkOrderService(models.Model):
 
 class Employee(models.Model):
     name = models.CharField(max_length=255, verbose_name="ФИО")
+    phone_country = models.CharField(
+        max_length=2, verbose_name="Страна телефона", default='RU',
+        choices=[
+            ('RU', 'Россия'), ('BY', 'Беларусь'), ('KZ', 'Казахстан'),
+            ('UA', 'Украина'), ('UZ', 'Узбекистан'), ('MD', 'Молдова'),
+            ('AM', 'Армения'), ('AZ', 'Азербайджан'), ('KG', 'Кыргызстан'),
+            ('TJ', 'Таджикистан'), ('TM', 'Туркменистан'),
+        ]
+    )
     phone = models.CharField(max_length=30, blank=True, verbose_name="Телефон")
     position = models.CharField(max_length=100, blank=True, verbose_name="Должность")
     salary_coefficient = models.DecimalField(

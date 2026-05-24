@@ -491,9 +491,10 @@ WriteOffItemFormSet = forms.inlineformset_factory(
 class EmployeeForm(forms.ModelForm):
     class Meta:
         model = Employee
-        fields = ['name', 'phone', 'position', 'salary_coefficient', 'is_active']
+        fields = ['name', 'phone_country', 'phone', 'position', 'salary_coefficient', 'is_active']
         labels = {
             'name': 'ФИО',
+            'phone_country': 'Страна',
             'phone': 'Телефон',
             'position': 'Должность',
             'salary_coefficient': 'Коэффициент ЗП',
@@ -501,11 +502,21 @@ class EmployeeForm(forms.ModelForm):
         }
         widgets = {
             'salary_coefficient': forms.NumberInput(attrs={'min': '0.01', 'max': '9.99', 'step': '0.01'}),
+            'phone_country': forms.Select(attrs={
+                'id': 'id_phone_country',
+                'style': 'width:auto;flex-shrink:0;',
+            }),
         }
 
-    def clean_phone(self):
-        import re
-        phone = self.cleaned_data.get('phone', '').strip()
-        if phone and not re.match(r'^\+7\s\(\d{3}\)\s\d{3}-\d{2}-\d{2}$', phone):
-            raise forms.ValidationError('Введите номер в формате +7 (999) 999-99-99.')
-        return phone
+    def clean(self):
+        cleaned = super().clean()
+        phone = cleaned.get('phone', '').strip()
+        country = cleaned.get('phone_country', 'RU') or 'RU'
+        if phone:
+            from mainapp.validators import validate_phone
+            ok, result = validate_phone(phone, country)
+            if not ok:
+                self.add_error('phone', result)
+            else:
+                cleaned['phone'] = result
+        return cleaned

@@ -1,19 +1,127 @@
 {% extends "base.html" %}
 {% block title %}Изменить сотрудника{% endblock %}
 {% block content %}
+{% load static %}
+<script src="{% static 'js/imask.js' %}"></script>
+<script src="{% static 'js/jquery-3.6.0.min.js' %}"></script>
+
 <h1>Изменить сотрудника: {{ employee.name }}</h1>
-<form method="post">
+
+<div id="form-errors" class="form-errors" {% if not form.errors %}style="display:none;"{% endif %}>
+    {% if form.errors %}
+    <p>Пожалуйста, исправьте ошибки:</p>
+    <ul>
+        {% for field, errors in form.errors.items %}
+            {% for error in errors %}
+                <li>{{ error }}</li>
+            {% endfor %}
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+
+<form method="post" id="employee-form">
     {% csrf_token %}
-    {% for field in form %}
+
     <div style="margin-bottom:12px;">
-        <label for="{{ field.id_for_label }}" style="display:block;margin-bottom:4px;font-weight:500;">{{ field.label }}:</label>
-        {{ field }}
-        {% if field.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ field.errors|join:", " }}</p>{% endif %}
+        <label for="id_name" style="display:block;margin-bottom:4px;font-weight:500;">ФИО:</label>
+        {{ form.name }}
+        {% if form.name.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.name.errors|join:", " }}</p>{% endif %}
     </div>
-    {% endfor %}
-    <div style="margin-top:16px;display:flex;gap:8px;">
+
+    <div style="margin-bottom:12px;">
+        <label for="id_phone" style="display:block;margin-bottom:4px;font-weight:500;">Телефон:</label>
+        <div style="display:flex;gap:6px;align-items:center;">
+            {{ form.phone_country }}
+            {{ form.phone }}
+        </div>
+        <small id="phone-hint" style="font-size:12px;color:#64748b;display:block;margin-top:3px;"></small>
+        {% if form.phone.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.phone.errors|join:", " }}</p>{% endif %}
+    </div>
+
+    <div style="margin-bottom:12px;">
+        <label for="id_position" style="display:block;margin-bottom:4px;font-weight:500;">Должность:</label>
+        {{ form.position }}
+        {% if form.position.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.position.errors|join:", " }}</p>{% endif %}
+    </div>
+
+    <div style="margin-bottom:12px;">
+        <label for="id_salary_coefficient" style="display:block;margin-bottom:4px;font-weight:500;">Коэффициент ЗП:</label>
+        {{ form.salary_coefficient }}
+        {% if form.salary_coefficient.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.salary_coefficient.errors|join:", " }}</p>{% endif %}
+    </div>
+
+    <div style="margin-bottom:16px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            {{ form.is_active }}
+            <span>Активен</span>
+        </label>
+    </div>
+
+    <div style="display:flex;gap:8px;">
         <button type="submit" class="btn">Сохранить</button>
         <a href="{% url 'employees_list' %}" class="btn btn-danger">Отмена</a>
     </div>
 </form>
+
+<script>
+const PHONE_MASKS = {
+    RU: '+7 (000) 000-00-00', KZ: '+7 (000) 000-00-00',
+    BY: '+375 (00) 000-00-00', UA: '+380 (00) 000-00-00',
+    UZ: '+998 (00) 000-00-00', MD: '+373 (00) 000-000',
+    AM: '+374 (00) 000-000',  AZ: '+994 (00) 000-00-00',
+    KG: '+996 (000) 000-000', TJ: '+992 (00) 000-0000',
+    TM: '+993 (00) 000-00-00',
+};
+const PHONE_CC_DIGITS = { RU:1, KZ:1, BY:3, UA:3, UZ:3, MD:3, AM:3, AZ:3, KG:3, TJ:3, TM:3 };
+
+document.addEventListener("DOMContentLoaded", function () {
+    const form          = document.getElementById("employee-form");
+    const phoneInput    = document.getElementById("id_phone");
+    const countrySelect = document.getElementById("id_phone_country");
+    const phoneHint     = document.getElementById("phone-hint");
+    const formErrors    = document.getElementById("form-errors");
+
+    let phoneMaskInst = null;
+
+    function applyMask(country) {
+        const maskStr = PHONE_MASKS[country] || '+0 (000) 000-00-00';
+        if (phoneMaskInst) { phoneMaskInst.destroy(); phoneMaskInst = null; }
+        phoneInput.value = '';
+        if (typeof IMask !== "undefined") {
+            phoneMaskInst = new IMask(phoneInput, { mask: maskStr, lazy: false });
+        }
+        phoneHint.textContent = maskStr.replace(/0/g, 'X');
+    }
+
+    countrySelect.addEventListener("change", function () { applyMask(this.value); });
+
+    // При загрузке — применить маску и восстановить значение из БД
+    const initCountry  = countrySelect.value || 'RU';
+    const preFilledVal = phoneInput.value;
+    applyMask(initCountry);
+    if (preFilledVal && phoneMaskInst) {
+        const digits = preFilledVal.replace(/\D/g, '');
+        const ccLen  = PHONE_CC_DIGITS[initCountry] || 1;
+        phoneMaskInst.unmaskedValue = digits.slice(ccLen);
+    }
+
+    function validatePhone() {
+        const v = phoneInput.value.trim();
+        if (v && v.includes('_')) return "Введите номер телефона полностью.";
+        return null;
+    }
+
+    form.addEventListener("submit", function (e) {
+        const phoneError = validatePhone();
+        if (phoneError) {
+            e.preventDefault();
+            formErrors.innerHTML = "<p>Пожалуйста, исправьте ошибки:</p><ul><li>" + phoneError + "</li></ul>";
+            formErrors.style.display = "block";
+        } else {
+            formErrors.style.display = "none";
+        }
+    });
+});
+</script>
 {% endblock %}
