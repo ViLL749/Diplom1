@@ -32,56 +32,76 @@ from .models import (
 def _in_stock_batches(part, available_only=False):
     """Return supply batches with remaining stock, per-unit prices and remaining qty.
 
-    available_only=True  → exclude reserved units (use for pricing new orders)
-    available_only=False → include reserved units (use for display of physical stock)
+    Uses per-location FIFO: for each StockEntry we consult only the SupplyItems
+    at that location to find which batches are still physically present and how many
+    are available (unreserved).
+
+    available_only=True  → only unreserved units (use for pricing / reservation)
+    available_only=False → all physical units (use for display)
     """
-    from django.db.models import Sum
     from decimal import Decimal
 
-    total_received = SupplyItem.objects.filter(part=part).aggregate(s=Sum('quantity'))['s'] or 0
-    agg = StockEntry.objects.filter(part=part).aggregate(
-        tot=Sum('total_qty'), res=Sum('reserved_qty')
-    )
-    total_qty = agg['tot'] or 0
-    reserved_qty = agg['res'] or 0
-
-    if available_only:
-        pool = max(0, total_qty - reserved_qty)   # truly free stock
-    else:
-        pool = total_qty                           # all physical stock
-
-    not_in_pool = total_received - pool            # consumed (+ reserved if available_only)
-
-    skipped = 0
     result = []
-    for item in SupplyItem.objects.filter(part=part).select_related('document', 'location').order_by('document__created_at', 'id'):
-        if skipped + item.quantity <= not_in_pool:
-            skipped += item.quantity
+    entries = StockEntry.objects.filter(part=part).select_related('location')
+
+    for entry in entries:
+        units_to_show = entry.available_qty if available_only else entry.total_qty
+        if units_to_show <= 0:
             continue
-        pkg = item.pkg_qty or 1
-        # If pkg_qty wasn't recorded (= 1) but the catalog says the part comes in
-        # multi-unit packages, use the catalog value so the per-unit price is correct.
-        price_pkg = (part.package_qty or 1) if pkg == 1 and (part.package_qty or 1) > 1 else pkg
-        already_used = max(0, not_in_pool - skipped)
-        remaining = item.quantity - already_used
-        skipped = not_in_pool
-        result.append({
-            'price_per_pkg':  item.purchase_price,
-            'price_per_unit': item.purchase_price / Decimal(price_pkg),
-            'pkg_qty':  pkg,
-            'remaining': remaining,
-            'doc_id':   item.document_id,
-            'date':     item.document.created_at,
-            'location': item.location,
-        })
+
+        # SupplyItems at this location in FIFO order (oldest batch first)
+        supply_items = list(
+            SupplyItem.objects.filter(part=part, location=entry.location)
+            .select_related('document')
+            .order_by('document__created_at', 'id')
+        )
+
+        total_received = sum(si.quantity for si in supply_items)
+        # Units physically removed (sold / written off) from this location
+        consumed = max(0, total_received - entry.total_qty)
+
+        remaining_to_show = units_to_show
+        consumed_skipped = 0  # how many consumed units we've accounted for
+
+        for si in supply_items:
+            if remaining_to_show <= 0:
+                break
+
+            # Skip units consumed from this batch (FIFO within location)
+            if consumed_skipped + si.quantity <= consumed:
+                consumed_skipped += si.quantity
+                continue
+
+            already_consumed_from_si = max(0, consumed - consumed_skipped)
+            physical_in_si = si.quantity - already_consumed_from_si
+            consumed_skipped = consumed  # all consumed units now accounted for
+
+            show = min(physical_in_si, remaining_to_show)
+            if show <= 0:
+                continue
+
+            pkg = si.pkg_qty or 1
+            price_pkg = (part.package_qty or 1) if pkg == 1 and (part.package_qty or 1) > 1 else pkg
+            result.append({
+                'price_per_pkg':  si.purchase_price,
+                'price_per_unit': si.purchase_price / Decimal(price_pkg),
+                'pkg_qty':   pkg,
+                'remaining': show,
+                'doc_id':    si.document_id,
+                'date':      si.document.created_at,
+                'location':  entry.location,
+            })
+            remaining_to_show -= show
+
     return result
 
 
 def _min_stock_price(part, quantity=1):
-    """Return weighted average per-unit price for ordering `quantity` units.
+    """Return total purchase cost for `quantity` units using cheapest available batches.
 
     Uses cheapest available (unreserved) batches first.
     If quantity exceeds total available, prices only what's available.
+    Returns total cost (not per-unit average) to avoid rounding errors on sale_price.
     """
     from decimal import Decimal
     batches = _in_stock_batches(part, available_only=True)
@@ -104,7 +124,34 @@ def _min_stock_price(part, quantity=1):
 
     if not total_used:
         return None
-    return total_cost / Decimal(total_used)
+    return total_cost  # total purchase cost for all units used
+
+
+def _reserve_cheapest_first(part, quantity):
+    """Reserve `quantity` units picking cheapest available batches first.
+
+    Matches the batch ordering of _min_stock_price so price and reservation
+    always refer to the same physical stock.
+    Returns number of units that could not be reserved (shortage).
+    """
+    avail_batches = _in_stock_batches(part, available_only=True)
+    if not avail_batches:
+        return quantity
+    by_price = sorted(avail_batches, key=lambda b: b['price_per_unit'])
+    remaining = quantity
+    for batch in by_price:
+        if remaining <= 0:
+            break
+        entry = StockEntry.objects.filter(part=part, location=batch['location']).first()
+        if not entry:
+            continue
+        use = min(entry.available_qty, batch['remaining'], remaining)
+        if use <= 0:
+            continue
+        entry.reserved_qty += use
+        entry.save()
+        remaining -= use
+    return remaining
 
 
 def _recalculate_order_cost(order):
@@ -113,7 +160,7 @@ def _recalculate_order_cost(order):
         (w.final_price or _D('0')) for w in WorkOrderService.objects.filter(work_order=order)
     )
     wop_total = sum(
-        (w.sale_price or _D('0')) * w.quantity for w in WorkOrderPart.objects.filter(work_order=order)
+        (w.sale_price or _D('0')) for w in WorkOrderPart.objects.filter(work_order=order)
     )
     order.cost = wos_total + wop_total
     order.save(update_fields=['cost'])
@@ -165,17 +212,74 @@ def api_parts(request):
         tot=Sum('total_qty'), res=Sum('reserved_qty')
     ):
         stock_map[row['part_id']] = (row['tot'] or 0) - (row['res'] or 0)
+    price_map = {}
+    for si in SupplyItem.objects.filter(part__in=page_parts).values('part_id', 'purchase_price', 'pkg_qty'):
+        pkg = si['pkg_qty'] or 1
+        unit = float(si['purchase_price']) / pkg
+        pid = si['part_id']
+        if pid not in price_map or unit < price_map[pid]:
+            price_map[pid] = unit
     return JsonResponse({
         'parts': [
             {
                 'id': p.id, 'article': p.article, 'name': p.name,
                 'brand': p.brand, 'package_qty': p.package_qty,
                 'available': stock_map.get(p.id, 0),
+                'unit_price': price_map.get(p.id),
+                'default_markup': float(p.default_markup) if p.default_markup else 0,
             }
             for p in page_parts
         ],
         'total_pages': paginator.num_pages,
         'current_page': page_obj.number,
+    })
+
+
+@login_required
+def api_part_price(request):
+    """Return exact total purchase cost for a given part + quantity (uses actual stock batches).
+
+    Supports two modes:
+    - wopId: editing existing WOP — preserves cost of already-reserved units, queries
+             available stock only for the EXTRA quantity above the current reservation.
+    - partId: adding a new part — queries available stock for the full quantity.
+    """
+    qty = max(1, int(request.GET.get('qty', 1) or 1))
+    wop_id = request.GET.get('wopId')
+
+    if wop_id:
+        wop = WorkOrderPart.objects.filter(pk=wop_id).first()
+        if not wop:
+            return JsonResponse({'error': 'WOP not found'}, status=404)
+        part = wop.part
+        old_qty = wop.quantity
+        if wop.sale_price and old_qty:
+            old_factor = 1 + wop.markup / Decimal('100')
+            old_cost = wop.sale_price / old_factor  # purchase cost without markup
+            if qty > old_qty:
+                extra = _min_stock_price(part, qty - old_qty)
+                total_cost = old_cost + (extra or Decimal('0'))
+            elif qty < old_qty:
+                total_cost = old_cost * Decimal(qty) / Decimal(old_qty)
+            else:
+                total_cost = old_cost
+        else:
+            total_cost = _min_stock_price(part, qty)
+        return JsonResponse({
+            'total_cost': float(total_cost) if total_cost is not None else None,
+            'qty': qty,
+        })
+
+    part_id = request.GET.get('partId')
+    if not part_id:
+        return JsonResponse({'error': 'partId or wopId required'}, status=400)
+    part = Part.objects.filter(pk=part_id).first()
+    if not part:
+        return JsonResponse({'error': 'Not found'}, status=404)
+    total_cost = _min_stock_price(part, qty)
+    return JsonResponse({
+        'total_cost': float(total_cost) if total_cost is not None else None,
+        'qty': qty,
     })
 
 
@@ -626,8 +730,23 @@ def purchase_prices_detail(request, part_pk):
     total_qty = sum(e.total_qty for e in entries)
     reserved_qty = sum(e.reserved_qty for e in entries)
 
-    in_stock = _in_stock_batches(part)
+    in_stock = _in_stock_batches(part, available_only=False)
+    in_stock_avail = _in_stock_batches(part, available_only=True)
+
+    # Map (doc_id, location_id) → available remaining (may differ from total remaining)
+    avail_map = {(b['doc_id'], b['location'].id): b['remaining'] for b in in_stock_avail}
+    for b in in_stock:
+        b['avail_remaining'] = avail_map.get((b['doc_id'], b['location'].id), 0)
+
     min_price = min((b['price_per_unit'] for b in in_stock), default=None)
+    min_price_available = min(
+        (b['price_per_unit'] for b in in_stock_avail), default=None
+    ) if in_stock_avail else None
+    price_diff = (
+        (min_price_available - min_price).quantize(Decimal('0.01'))
+        if min_price and min_price_available and min_price_available != min_price
+        else None
+    )
 
     return render(request, 'warehouse/purchase_prices/detail.html', {
         'part': part,
@@ -636,6 +755,8 @@ def purchase_prices_detail(request, part_pk):
         'available_qty': total_qty - reserved_qty,
         'in_stock': in_stock,
         'min_price': min_price,
+        'min_price_available': min_price_available,
+        'price_diff': price_diff,
     })
 
 
@@ -938,28 +1059,20 @@ def workorderpart_create(request, order_pk):
             wop = form.save(commit=False)
             wop.work_order = order
             # Weighted average price across the requested quantity of available batches
-            cost_price = _min_stock_price(wop.part, wop.quantity)
-            if cost_price is not None:
+            cost_total = _min_stock_price(wop.part, wop.quantity)
+            if cost_total is not None:
                 markup = wop.markup / Decimal('100')
-                wop.sale_price = cost_price * (1 + markup)
+                wop.sale_price = (cost_total * (1 + markup)).quantize(Decimal('0.01'))
             # Optional link to a WorkOrderService
             wos_pk = request.POST.get('work_order_service') or ''
             if wos_pk.strip():
                 wos = WorkOrderService.objects.filter(pk=wos_pk, work_order=order).first()
                 wop.work_order_service = wos
             wop.save()
-            # Reserve from stock
-            remaining = wop.quantity
-            for entry in StockEntry.objects.filter(part=wop.part).order_by('location__rack', 'location__shelf'):
-                if remaining <= 0:
-                    break
-                can = min(entry.available_qty, remaining)
-                if can > 0:
-                    entry.reserved_qty += can
-                    entry.save()
-                    remaining -= can
-            if remaining > 0:
-                messages.warning(request, f'Частичный резерв: не хватает {remaining} шт.')
+            # Reserve from cheapest batches first (matches _min_stock_price ordering)
+            shortage = _reserve_cheapest_first(wop.part, wop.quantity)
+            if shortage > 0:
+                messages.warning(request, f'Частичный резерв: не хватает {shortage} шт.')
             else:
                 messages.success(request, 'Деталь добавлена и зарезервирована.')
             _recalculate_order_cost(order)
@@ -986,26 +1099,29 @@ def workorderpart_update(request, pk):
             new_markup = form.cleaned_data['markup']
             delta = new_qty - old_qty
 
-            # Recalculate sale_price when markup changed (derive cost from old price)
-            if new_markup != old_markup and old_sale_price:
+            # Recalculate sale_price when qty or markup changed.
+            # sale_price stores TOTAL (all qty). Preserve cost of already-reserved units;
+            # for extra qty, query actual available stock batches.
+            if (new_qty != old_qty or new_markup != old_markup) and old_sale_price and old_qty:
                 old_factor = 1 + old_markup / Decimal('100')
-                cost = old_sale_price / old_factor
-                form.instance.sale_price = cost * (1 + new_markup / Decimal('100'))
+                old_cost = old_sale_price / old_factor  # total purchase cost without markup
+                if new_qty > old_qty:
+                    extra_cost = _min_stock_price(wop.part, new_qty - old_qty)
+                    total_cost = old_cost + (extra_cost or Decimal('0'))
+                elif new_qty < old_qty:
+                    total_cost = old_cost * Decimal(new_qty) / Decimal(old_qty)
+                else:
+                    total_cost = old_cost
+                form.instance.sale_price = (
+                    total_cost * (1 + new_markup / Decimal('100'))
+                ).quantize(Decimal('0.01'))
 
             if delta != 0 and wop.status == 'reserved':
                 if delta > 0:
-                    # Need to reserve more stock
-                    remaining = delta
-                    for entry in StockEntry.objects.filter(part=wop.part):
-                        if remaining <= 0:
-                            break
-                        can = min(entry.available_qty, remaining)
-                        if can > 0:
-                            entry.reserved_qty += can
-                            entry.save()
-                            remaining -= can
-                    if remaining > 0:
-                        messages.warning(request, f'Не удалось зарезервировать {remaining} шт. — недостаточно на складе.')
+                    # Reserve extra units from cheapest available batches first
+                    shortage = _reserve_cheapest_first(wop.part, delta)
+                    if shortage > 0:
+                        messages.warning(request, f'Не удалось зарезервировать {shortage} шт. — недостаточно на складе.')
                 else:
                     # Release excess reservation
                     to_release = -delta
@@ -1023,7 +1139,14 @@ def workorderpart_update(request, pk):
             return redirect('order_detail', pk=order_pk)
     else:
         form = WorkOrderPartStatusForm(instance=wop)
-    return render(request, 'warehouse/workorderpart/update.html', {'form': form, 'wop': wop})
+    base_price = None
+    if wop.sale_price is not None and wop.markup is not None and wop.quantity:
+        factor = 1 + wop.markup / Decimal('100')
+        if factor:
+            base_price = (wop.sale_price / factor / wop.quantity).quantize(Decimal('0.01'))
+    return render(request, 'warehouse/workorderpart/update.html', {
+        'form': form, 'wop': wop, 'base_price': base_price,
+    })
 
 
 @login_required
@@ -1043,6 +1166,9 @@ def workorderpart_delete(request, pk):
         order = wop.work_order
         wop.delete()
         _recalculate_order_cost(order)
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            from django.http import JsonResponse
+            return JsonResponse({'success': True})
         messages.success(request, 'Деталь удалена.')
         return redirect('order_detail', pk=order_pk)
     return render(request, 'warehouse/workorderpart/delete.html', {'wop': wop})
@@ -1484,7 +1610,8 @@ def api_employees(request):
     if search:
         emps = emps.filter(name__icontains=search)
     return JsonResponse({
-        'employees': [{'id': e.id, 'name': e.name, 'position': e.position} for e in emps[:50]]
+        'employees': [{'id': e.id, 'name': e.name, 'position': e.position,
+                       'salary_coefficient': str(e.salary_coefficient)} for e in emps[:50]]
     })
 
 

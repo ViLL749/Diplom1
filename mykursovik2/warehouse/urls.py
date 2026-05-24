@@ -7,6 +7,7 @@ urlpatterns = [
     path('api/wos/<int:wos_pk>/assign/', views.api_assign_employee, name='api_assign_employee'),
     path('api/wos/<int:wos_pk>/unassign/<int:emp_pk>/', views.api_unassign_employee, name='api_unassign_employee'),
     path('api/parts/', views.api_parts, name='api_parts'),
+    path('api/part-price/', views.api_part_price, name='api_part_price'),
     path('api/suppliers/', views.api_suppliers, name='api_suppliers'),
     path('api/po-items/', views.api_po_items, name='api_po_items'),
     path('api/brands/', views.api_brands, name='api_brands'),

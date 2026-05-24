@@ -327,11 +327,11 @@ class Command(BaseCommand):
             si = SupplyItem.objects.filter(part=p).first()
             pkg = si.pkg_qty if si else 1
             cost = si.purchase_price / Decimal(pkg) if si else Decimal('0')
-            sale = (cost * (1 + Decimal(str(markup_pct)) / 100)).quantize(Decimal('0.01'))
+            sale_total = (cost * qty * (1 + Decimal(str(markup_pct)) / 100)).quantize(Decimal('0.01'))
             WorkOrderPart.objects.create(
                 work_order=order, work_order_service=wos_obj,
                 part=p, quantity=qty,
-                sale_price=sale, markup=Decimal(str(markup_pct)),
+                sale_price=sale_total, markup=Decimal(str(markup_pct)),
                 status='installed',
             )
             for e in StockEntry.objects.filter(part=p):
@@ -722,7 +722,7 @@ class Command(BaseCommand):
         D = Decimal
         for order_obj in Order.objects.all():
             svcs  = sum(w.final_price or D('0') for w in order_obj.work_order_services.all())
-            parts = sum((w.sale_price or D('0')) * w.quantity for w in order_obj.work_order_parts.all())
+            parts = sum((w.sale_price or D('0')) for w in order_obj.work_order_parts.all())
             Order.objects.filter(pk=order_obj.pk).update(cost=svcs + parts)
 
         totals = Order.objects.count()

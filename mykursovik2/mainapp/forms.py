@@ -59,7 +59,7 @@ class OrderForm(forms.ModelForm):
 class ClientForm(forms.ModelForm):
     class Meta:
         model = Client
-        fields = ['fio', 'phone_country', 'phone']
+        fields = ['fio', 'phone_country', 'phone', 'consent_personal_data', 'consent_marketing']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -67,6 +67,8 @@ class ClientForm(forms.ModelForm):
             'id': 'id_phone_country',
             'style': 'width:auto;flex-shrink:0;',
         })
+        if self.instance.pk:
+            self.fields['consent_personal_data'].disabled = True
 
     def clean(self):
         cleaned = super().clean()
@@ -90,6 +92,14 @@ class ClientForm(forms.ModelForm):
             if qs.exists():
                 raise forms.ValidationError('Клиент с таким номером телефона уже существует.')
         return phone
+
+    def clean_consent_personal_data(self):
+        value = self.cleaned_data.get('consent_personal_data')
+        if not self.instance.pk and not value:
+            raise forms.ValidationError(
+                'Для регистрации необходимо согласие на обработку персональных данных.'
+            )
+        return value
 
     def clean_fio(self):
         fio = self.cleaned_data.get('fio')

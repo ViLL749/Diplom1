@@ -52,6 +52,10 @@ class Part(models.Model):
     package_qty = models.PositiveIntegerField(
         default=1, verbose_name="Штук в упаковке"
     )
+    default_markup = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name="Наценка по умолчанию (%)"
+    )
 
     def __str__(self):
         return f"{self.article} — {self.name}"
@@ -264,7 +268,7 @@ class WorkOrderPart(models.Model):
     )
     sale_price = models.DecimalField(
         max_digits=10, decimal_places=2,
-        verbose_name="Цена продажи за единицу", null=True, blank=True
+        verbose_name="Итоговая цена продажи", null=True, blank=True
     )
     markup = models.DecimalField(
         max_digits=5, decimal_places=2,
@@ -273,9 +277,7 @@ class WorkOrderPart(models.Model):
 
     @property
     def total_price(self):
-        if self.sale_price:
-            return self.sale_price * self.quantity
-        return None
+        return self.sale_price or None
 
     def __str__(self):
         return f"{self.part.article} x{self.quantity} для заказа №{self.work_order.id}"

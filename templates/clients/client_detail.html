@@ -5,6 +5,20 @@
     <h1>Информация о клиенте</h1>
     <p><strong>ФИО:</strong> {{ client.fio }}</p>
     <p><strong>Телефон:</strong> {{ client.phone|format_phone }}</p>
+    <p><strong>Согласие на обработку персональных данных:</strong>
+        {% if client.consent_personal_data %}
+            <span style="color:#16a34a;font-weight:600;">✓ Дано</span>
+        {% else %}
+            <span style="color:#dc2626;">✗ Не дано</span>
+        {% endif %}
+    </p>
+    <p><strong>Согласие на рассылки:</strong>
+        {% if client.consent_marketing %}
+            <span style="color:#16a34a;font-weight:600;">✓ Дано</span>
+        {% else %}
+            <span style="color:#6b7280;">✗ Не дано</span>
+        {% endif %}
+    </p>
     <a href="{{ cancel_url }}" class="btn">Вернуться к списку</a>
     <a href="{% url 'client_update' client.id %}" class="btn">Изменить</a>
     <a href="{% url 'client_delete' client.id %}" class="btn btn-danger">Удалить</a>

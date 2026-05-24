@@ -6,52 +6,61 @@
 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:20px;">
     <p style="margin:2px 0;"><strong>Деталь:</strong> {{ wop.part.article }} — {{ wop.part.name }}</p>
     {% if wop.part.brand %}<p style="margin:2px 0;color:#64748b;">Производитель: {{ wop.part.brand }}</p>{% endif %}
-    {% if wop.status == 'reserved' %}
-    <p style="margin:6px 0 2px;font-size:0.9em;color:#64748b;">
-        Текущий резерв: <strong>{{ wop.quantity }} шт.</strong>
-        &nbsp;|&nbsp; При увеличении — дополнительный резерв на складе.
-        При уменьшении — излишек резерва освобождается.
-    </p>
-    {% endif %}
 </div>
 
 <form method="post">
     {% csrf_token %}
-    {% for field in form %}
     <div style="margin-bottom:12px;">
-        <label for="{{ field.id_for_label }}" style="display:block;margin-bottom:4px;font-weight:500;">{{ field.label }}:</label>
-        {{ field }}
-        {% if field.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ field.errors|join:", " }}</p>{% endif %}
-        {% if field.name == 'quantity' and wop.status == 'reserved' %}
-        <p style="font-size:0.82em;color:#64748b;margin-top:3px;">Текущий резерв: {{ wop.quantity }} шт.</p>
-        {% endif %}
+        <label style="display:block;margin-bottom:4px;font-weight:500;">Количество:</label>
+        {{ form.quantity }}
+        {% if form.quantity.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.quantity.errors|join:", " }}</p>{% endif %}
     </div>
-    {% endfor %}
+
+    {% if base_price is not None %}
+    <div style="margin-bottom:12px;">
+        <label style="display:block;margin-bottom:4px;font-weight:500;">Базовая цена (за шт.):</label>
+        <input type="text" value="{{ base_price }} руб." readonly style="width:160px;background:#f1f5f9;cursor:default;">
+    </div>
+    {% endif %}
+
+    <div style="margin-bottom:8px;">
+        <label for="{{ form.markup.id_for_label }}" style="display:block;margin-bottom:4px;font-weight:500;">Наценка (%):</label>
+        {{ form.markup }}
+        {% if form.markup.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.markup.errors|join:", " }}</p>{% endif %}
+    </div>
+
+    {% if base_price is not None %}
+    <div style="margin-bottom:20px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:0.95em;">
+        Цена с наценкой: <strong id="final-price-display">—</strong>
+    </div>
+    {% endif %}
+
     <div style="margin-top:16px;display:flex;gap:8px;">
         <button type="submit" class="btn">Сохранить</button>
         <a href="{% url 'order_detail' wop.work_order.id %}" class="btn btn-danger">Отмена</a>
     </div>
 </form>
 
+{% if base_price is not None %}
 <script>
 (function() {
-    var markupInput    = document.getElementById('id_markup');
-    var salePriceInput = document.getElementById('id_sale_price');
-    if (!markupInput || !salePriceInput) return;
+    var markupInput  = document.getElementById('{{ form.markup.id_for_label }}');
+    var display      = document.getElementById('final-price-display');
+    var baseCost     = {{ base_price }};
+    var qty          = parseInt(document.getElementById('{{ form.quantity.id_for_label }}').value) || 1;
 
-    var initMarkup    = parseFloat(markupInput.value) || 0;
-    var initSalePrice = parseFloat(salePriceInput.value) || 0;
-    // Derive the original cost price once on load
-    var costPrice = initMarkup >= 0 && initSalePrice > 0
-        ? initSalePrice / (1 + initMarkup / 100)
-        : null;
+    function update() {
+        var m = parseFloat(markupInput.value);
+        if (isNaN(m) || m < 0) { display.textContent = '—'; return; }
+        var q = parseInt(document.getElementById('{{ form.quantity.id_for_label }}').value) || 1;
+        var unit = baseCost * (1 + m / 100);
+        display.textContent = (unit * q).toFixed(2) + ' руб. (' + unit.toFixed(2) + ' руб. × ' + q + ' шт.)';
+    }
 
-    markupInput.addEventListener('input', function() {
-        if (costPrice === null) return;
-        var newMarkup = parseFloat(this.value);
-        if (isNaN(newMarkup) || newMarkup < 0) return;
-        salePriceInput.value = (costPrice * (1 + newMarkup / 100)).toFixed(2);
-    });
+    markupInput.addEventListener('input', update);
+    document.getElementById('{{ form.quantity.id_for_label }}').addEventListener('input', update);
+    update();
 })();
 </script>
+{% endif %}
 {% endblock %}

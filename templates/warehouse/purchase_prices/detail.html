@@ -19,8 +19,24 @@
     </div>
     {% if min_price %}
     <div style="background:#fce4ec;border-left:4px solid #e53935;padding:10px 16px;border-radius:4px;">
-        <div style="font-size:0.82em;color:#555;">Цена в заказ (мин. закупочная)</div>
+        <div style="font-size:0.82em;color:#555;">Мин. закупочная (всё наличие)</div>
         <div style="font-size:1.5em;font-weight:bold;color:#c62828;">{{ min_price|floatformat:2 }} руб./шт.</div>
+    </div>
+    {% endif %}
+    {% if min_price_available %}
+    <div style="background:#f3e5f5;border-left:4px solid #8e24aa;padding:10px 16px;border-radius:4px;">
+        <div style="font-size:0.82em;color:#555;">Мин. из доступных (без резерва)</div>
+        <div style="font-size:1.5em;font-weight:bold;color:#6a1b9a;">{{ min_price_available|floatformat:2 }} руб./шт.</div>
+        {% if price_diff %}
+        <div style="font-size:0.78em;color:#c62828;margin-top:2px;">
+            ↑ дороже мин. на {{ price_diff|floatformat:2 }} руб./шт.
+        </div>
+        {% endif %}
+    </div>
+    {% elif available_qty == 0 %}
+    <div style="background:#fafafa;border-left:4px solid #bdbdbd;padding:10px 16px;border-radius:4px;">
+        <div style="font-size:0.82em;color:#888;">Мин. из доступных (без резерва)</div>
+        <div style="font-size:1.1em;font-weight:bold;color:#aaa;">Весь остаток в резерве</div>
     </div>
     {% endif %}
 </div>
@@ -30,7 +46,10 @@
 
 <h2 class="top-title-margin">Партии в наличии на складе</h2>
 <p style="color:#666;font-size:0.9em;margin-top:-8px;margin-bottom:16px;">
-    Показаны только партии с остатком &gt; 0. Цена в заказ берётся как минимальная закупочная цена за штуку.
+    Показаны только партии с остатком &gt; 0.
+    <span style="display:inline-block;width:12px;height:12px;background:#c8e6c9;border:1px solid #81c784;border-radius:2px;vertical-align:middle;"></span> — свободно,&nbsp;
+    <span style="display:inline-block;width:12px;height:12px;background:#fff9c4;border:1px solid #f9a825;border-radius:2px;vertical-align:middle;"></span> — частично в резерве,&nbsp;
+    <span style="display:inline-block;width:12px;height:12px;background:#ffcdd2;border:1px solid #e57373;border-radius:2px;vertical-align:middle;"></span> — полностью в резерве.
 </p>
 
 {% if in_stock %}
@@ -40,15 +59,25 @@
             <th>Приход</th>
             <th>Дата</th>
             <th>Место хранения</th>
-            <th>Штук в упаковке</th>
-            <th>Цена закупки / упак.</th>
+            <th>Шт. в упак.</th>
+            <th>Цена / упак.</th>
             <th>Цена за штуку</th>
             <th>Остаток (шт.)</th>
+            <th>Доступно (шт.)</th>
         </tr>
     </thead>
     <tbody>
         {% for b in in_stock %}
-        <tr {% if b.price_per_unit == min_price %}style="background:#fff8e1;"{% endif %}>
+        {% if b.avail_remaining == 0 %}
+            {% comment %}Полностью в резерве{% endcomment %}
+            <tr style="background:#ffebee;">
+        {% elif b.avail_remaining == b.remaining %}
+            {% comment %}Полностью свободно{% endcomment %}
+            <tr style="background:#f1f8e9;">
+        {% else %}
+            {% comment %}Частично в резерве{% endcomment %}
+            <tr style="background:#fffde7;">
+        {% endif %}
             <td><a href="{% url 'supply_detail' b.doc_id %}">Приход №{{ b.doc_id }}</a></td>
             <td>{{ b.date|date:"d.m.Y" }}</td>
             <td>{{ b.location }}</td>
@@ -56,11 +85,20 @@
             <td style="text-align:right;">{{ b.price_per_pkg|floatformat:2 }} руб.</td>
             <td style="text-align:right;font-weight:600;color:#1565c0;">
                 {{ b.price_per_unit|floatformat:2 }} руб.
-                {% if b.price_per_unit == min_price %}
+                {% if min_price_available and b.price_per_unit == min_price_available and b.avail_remaining > 0 %}
+                <span style="color:#6a1b9a;font-size:0.78em;font-weight:700;margin-left:4px;">★ мин. своб.</span>
+                {% elif b.price_per_unit == min_price %}
                 <span style="color:#e53935;font-size:0.78em;font-weight:700;margin-left:4px;">★ мин.</span>
                 {% endif %}
             </td>
             <td style="text-align:center;font-weight:600;">{{ b.remaining }}</td>
+            <td style="text-align:center;font-weight:700;
+                {% if b.avail_remaining == 0 %}color:#c62828;
+                {% elif b.avail_remaining == b.remaining %}color:#2e7d32;
+                {% else %}color:#e65100;{% endif %}">
+                {{ b.avail_remaining }}
+                {% if b.avail_remaining == 0 %}<span style="font-size:0.78em;font-weight:400;">в резерве</span>{% endif %}
+            </td>
         </tr>
         {% endfor %}
     </tbody>

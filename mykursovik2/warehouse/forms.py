@@ -45,7 +45,7 @@ class PartForm(forms.ModelForm):
 
     class Meta:
         model = Part
-        fields = ['article', 'name', 'brand', 'category', 'package_qty', 'notes']
+        fields = ['article', 'name', 'brand', 'category', 'package_qty', 'default_markup', 'notes']
         widgets = {
             'notes': forms.Textarea(attrs={'rows': 3}),
             'brand': forms.HiddenInput(attrs={'id': 'brand-hidden-input'}),
@@ -56,6 +56,7 @@ class PartForm(forms.ModelForm):
             'brand': 'Производитель',
             'category': 'Категория',
             'package_qty': 'Штук в упаковке',
+            'default_markup': 'Наценка по умолчанию (%)',
             'notes': 'Примечания',
         }
 
@@ -360,15 +361,14 @@ class WorkOrderPartForm(forms.ModelForm):
 class WorkOrderPartStatusForm(forms.ModelForm):
     class Meta:
         model = WorkOrderPart
-        fields = ['quantity', 'status', 'sale_price', 'markup']
+        fields = ['quantity', 'markup']
         labels = {
             'quantity': 'Количество',
-            'status': 'Статус',
-            'sale_price': 'Цена продажи (за шт.)',
             'markup': 'Наценка (%)',
         }
         widgets = {
             'quantity': forms.NumberInput(attrs={'min': '1'}),
+            'markup': forms.NumberInput(attrs={'min': '0', 'step': '1'}),
         }
 
 

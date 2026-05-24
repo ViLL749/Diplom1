@@ -33,6 +33,21 @@
             </div>
             <small id="phone-hint" style="font-size:12px;color:#64748b;display:block;margin-top:3px;"></small>
         </div>
+        <div style="margin:14px 0 6px;">
+            <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                {{ form.consent_personal_data }}
+                <span>Согласие на обработку персональных данных <span style="color:#dc2626;">*</span></span>
+            </label>
+            {% if form.consent_personal_data.errors %}
+            <p style="color:#dc2626;font-size:0.85em;margin:4px 0 0 24px;">{{ form.consent_personal_data.errors|join:", " }}</p>
+            {% endif %}
+        </div>
+        <div style="margin:6px 0 14px;">
+            <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                {{ form.consent_marketing }}
+                <span>Согласие на получение рассылок</span>
+            </label>
+        </div>
         <button type="submit" class="btn">Сохранить</button>
         <a href="{{ cancel_url }}" class="btn btn-danger">Отмена</a>
     </form>
@@ -114,15 +129,21 @@ document.addEventListener("DOMContentLoaded", function () {
         }).then(r => r.exists ? "Клиент с таким номером телефона уже существует." : null);
     }
 
+    function validateConsent() {
+        const cb = document.getElementById('id_consent_personal_data');
+        return cb && !cb.checked ? 'Для регистрации необходимо согласие на обработку персональных данных.' : null;
+    }
+
     async function validateForm(event) {
         event.preventDefault();
         try {
-            const fioError   = validateFio();
-            const phoneError = validatePhone();
-            const uniqError  = (!fioError && !phoneError)
+            const fioError     = validateFio();
+            const phoneError   = validatePhone();
+            const consentError = validateConsent();
+            const uniqError    = (!fioError && !phoneError)
                 ? await checkPhoneUniqueness(phoneInput.value) : null;
 
-            const errors = [fioError, phoneError, uniqError].filter(Boolean);
+            const errors = [fioError, phoneError, consentError, uniqError].filter(Boolean);
             if (errors.length > 0) {
                 formErrors.innerHTML = "<p>Пожалуйста, исправьте ошибки:</p><ul>" +
                     errors.map(e => `<li>${e}</li>`).join('') + "</ul>";

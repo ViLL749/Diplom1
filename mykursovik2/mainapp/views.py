@@ -24,6 +24,7 @@ from .forms import (
     ClientForm, ClientCarForm, CarMakeForm, CarModelForm,
     ServiceTypeForm, ServiceForm, ClientSelectionForm, OrderForm
 )
+from .validators import normalize_plate, normalize_plate_search
 
 @login_required
 def clients_list(request):
@@ -153,12 +154,12 @@ def client_detail(request, pk):
         elif column == 'model':
             client_cars = client_cars.filter(model__name__contains=search)
         elif column == 'license_plate':
-            search_lower = search.lower()
-            client_cars = client_cars.extra(
-                select={'license_lower': 'custom_lower(license_plate)'},
-                where=['custom_lower(license_plate) LIKE %s'],
-                params=[f'%{search_lower}%']
-            )
+            from django.db.models import Q
+            variants = normalize_plate_search(search)
+            q = Q()
+            for v in variants:
+                q |= Q(license_plate__icontains=v)
+            client_cars = client_cars.filter(q)
 
     # Пагинация
     per_page = request.GET.get('per_page', 5)
@@ -207,6 +208,8 @@ def check_vin_uniqueness(request):
 @require_POST
 def check_license_plate_uniqueness(request):
     license_plate = request.POST.get('license_plate', '').strip()
+    country = request.POST.get('plate_country', 'RU') or 'RU'
+    license_plate = normalize_plate(license_plate, country)
     exists = ClientCar.objects.filter(license_plate=license_plate).exists()
     return JsonResponse({'exists': exists})
 
@@ -990,7 +993,7 @@ def _recalculate_order_cost(order):
         (w.final_price or _Decimal('0')) for w in WorkOrderService.objects.filter(work_order=order)
     )
     wop_total = sum(
-        (w.sale_price or _Decimal('0')) * w.quantity
+        (w.sale_price or _Decimal('0'))
         for w in WorkOrderPart.objects.filter(work_order=order)
     )
     order.cost = wos_total + wop_total
@@ -1021,7 +1024,7 @@ def order_commit(request, pk):
         WorkOrderService, WorkOrderPart, WorkOrderServiceEmployee,
         StockEntry, WorkshopSettings, Employee,
     )
-    from warehouse.views import _min_stock_price
+    from warehouse.views import _min_stock_price, _reserve_cheapest_first
     from mainapp.models import Service
     from mainapp.signals import _locals as _sig_locals, _create_log
 
@@ -1118,6 +1121,7 @@ def order_commit(request, pk):
                     })
 
             # 5. Add services
+            temp_wos_map = {}  # tempId (str) -> WorkOrderService instance
             settings = WorkshopSettings.objects.first()
             rate = settings.hourly_rate if settings else _Decimal('0')
             for svc_data in data.get('add_services', []):
@@ -1128,7 +1132,7 @@ def order_commit(request, pk):
                 hours = _Decimal(str(svc_data.get('hours', svc.base_hours)))
                 factor = _Decimal(str(svc_data.get('factor', '1.0')))
                 final_price = (hours * rate * factor).quantize(_Decimal('0.01'))
-                WorkOrderService.objects.create(
+                wos = WorkOrderService.objects.create(
                     work_order=order,
                     service=svc,
                     service_name_snapshot=svc.name,
@@ -1136,6 +1140,17 @@ def order_commit(request, pk):
                     hours_applied=hours,
                     complexity_factor=factor,
                 )
+                temp_id = svc_data.get('tempId')
+                if temp_id is not None:
+                    temp_wos_map[str(temp_id)] = wos
+                for emp_id in svc_data.get('employees', []):
+                    emp = Employee.objects.filter(pk=emp_id).first()
+                    if emp:
+                        WorkOrderServiceEmployee.objects.get_or_create(
+                            work_order_service=wos,
+                            employee=emp,
+                            defaults={'salary_coefficient_snapshot': emp.salary_coefficient},
+                        )
                 log_events.append({
                     'event': 'service_added',
                     'service': svc.name,
@@ -1163,24 +1178,21 @@ def order_commit(request, pk):
                         f'Зарезервировано {total_avail} шт.'
                     )
                     qty = total_avail
-                cost = _min_stock_price(part, qty)
-                sale_price = cost * (1 + markup / _Decimal('100')) if cost else None
+                cost_total = _min_stock_price(part, qty)
+                sale_price = (cost_total * (1 + markup / _Decimal('100'))).quantize(_Decimal('0.01')) if cost_total else None
+                markup = markup.quantize(_Decimal('0.01'))
+                temp_wos_id = pd.get('tempWosId')
                 wos_id = pd.get('wosId')
-                wos = WorkOrderService.objects.filter(pk=wos_id, work_order=order).first() if wos_id else None
+                if temp_wos_id is not None:
+                    wos = temp_wos_map.get(str(temp_wos_id))
+                else:
+                    wos = WorkOrderService.objects.filter(pk=wos_id, work_order=order).first() if wos_id else None
                 WorkOrderPart.objects.create(
                     work_order=order, part=part, quantity=qty,
                     markup=markup, sale_price=sale_price,
                     work_order_service=wos, status='reserved',
                 )
-                remaining = qty
-                for entry in StockEntry.objects.filter(part=part).order_by('location__rack', 'location__shelf'):
-                    if remaining <= 0:
-                        break
-                    can = min(entry.available_qty, remaining)
-                    if can > 0:
-                        entry.reserved_qty += can
-                        entry.save()
-                        remaining -= can
+                _reserve_cheapest_first(part, qty)
                 log_events.append({
                     'event': 'part_added',
                     'article': part.article,
@@ -1189,7 +1201,82 @@ def order_commit(request, pk):
                     'sale_price': str(sale_price) if sale_price else '—',
                 })
 
-            # 7. Update order status / comment
+            # 7. Update services (hours / factor)
+            for item in data.get('update_services', []):
+                wos = WorkOrderService.objects.filter(pk=item.get('wosId'), work_order=order).first()
+                if not wos:
+                    errors.append(f'Услуга ID={item.get("wosId")} не найдена.')
+                    continue
+                new_hours  = _Decimal(str(item.get('hours',  wos.hours_applied)))
+                new_factor = _Decimal(str(item.get('factor', wos.complexity_factor)))
+                wos.hours_applied      = new_hours
+                wos.complexity_factor  = new_factor
+                wos.save()
+                log_events.append({
+                    'event': 'service_updated',
+                    'service': wos.service_name_snapshot or (wos.service.name if wos.service else '—'),
+                    'hours': str(new_hours),
+                    'complexity': str(new_factor),
+                })
+
+            # 8. Update parts (qty / markup)
+            for item in data.get('update_parts', []):
+                wop = WorkOrderPart.objects.filter(pk=item.get('wopId'), work_order=order).first()
+                if not wop:
+                    errors.append(f'Деталь ID={item.get("wopId")} не найдена.')
+                    continue
+                new_qty    = int(item.get('qty',    wop.quantity))
+                new_markup = _Decimal(str(item.get('markup', wop.markup))).quantize(_Decimal('0.01'))
+                delta = new_qty - wop.quantity
+                extra_cost = None
+                if delta != 0 and wop.status == 'reserved':
+                    if delta > 0:
+                        # Price BEFORE reserving so _min_stock_price sees available batches
+                        extra_cost = _min_stock_price(wop.part, delta)
+                        shortage = _reserve_cheapest_first(wop.part, delta)
+                        if shortage > 0:
+                            warnings.append(f'{wop.part.article}: не удалось зарезервировать {shortage} шт.')
+                            actually_reserved = delta - shortage
+                            new_qty -= shortage
+                            # Scale extra_cost to what was actually reserved
+                            if extra_cost and actually_reserved > 0:
+                                extra_cost = extra_cost * _Decimal(actually_reserved) / _Decimal(delta)
+                            else:
+                                extra_cost = _Decimal('0')
+                    else:
+                        to_release = -delta
+                        for entry in StockEntry.objects.filter(part=wop.part):
+                            if to_release <= 0:
+                                break
+                            release = min(entry.reserved_qty, to_release)
+                            entry.reserved_qty -= release
+                            entry.save()
+                            to_release -= release
+                if (new_markup != wop.markup or new_qty != wop.quantity) and wop.sale_price and wop.quantity:
+                    old_factor = 1 + wop.markup / _Decimal('100')
+                    old_cost = wop.sale_price / old_factor  # total purchase cost without markup
+                    old_qty = wop.quantity
+                    if new_qty > old_qty:
+                        total_cost = old_cost + (extra_cost or _Decimal('0'))
+                    elif new_qty < old_qty:
+                        total_cost = old_cost * _Decimal(new_qty) / _Decimal(old_qty)
+                    else:
+                        total_cost = old_cost
+                    wop.sale_price = (
+                        total_cost * (1 + new_markup / _Decimal('100'))
+                    ).quantize(_Decimal('0.01'))
+                wop.quantity = new_qty
+                wop.markup   = new_markup
+                wop.save()
+                log_events.append({
+                    'event': 'part_updated',
+                    'article': wop.part.article if wop.part else '—',
+                    'part_name': wop.part.name if wop.part else '—',
+                    'quantity': str(new_qty),
+                    'markup': str(new_markup),
+                })
+
+            # 9. Update order status / comment
             order_upd = data.get('order_update')
             if order_upd:
                 new_status = order_upd.get('status', order.status)
@@ -1285,7 +1372,7 @@ def order_detail(request, pk):
     ).all())
 
     services_total = sum((w.final_price or _Decimal('0')) for w in wos_list)
-    parts_total = sum((w.sale_price or _Decimal('0')) * w.quantity for w in wop_list)
+    parts_total = sum((w.sale_price or _Decimal('0')) for w in wop_list)
     total = services_total + parts_total
 
     if order.status not in ('Завершён', 'Отменён') and order.cost != total:
@@ -1302,10 +1389,13 @@ def order_detail(request, pk):
 
     service_hours = {s.id: float(s.base_hours) for stype_name, svcs in grouped_services for s in svcs}
 
+    unlinked_wop_list = [w for w in wop_list if not w.work_order_service]
+
     return render(request, 'orders/order_detail.html', {
         'order': order,
         'wos_list': wos_list,
         'wop_list': wop_list,
+        'unlinked_wop_list': unlinked_wop_list,
         'services_total': services_total,
         'parts_total': parts_total,
         'total': total,
@@ -1527,7 +1617,7 @@ def accounting_export(request):
     total_svcs = Decimal('0'); total_parts_sum = Decimal('0'); total_all = Decimal('0')
     for i, o in enumerate(orders):
         svcs_sum  = sum(w.final_price or Decimal('0') for w in o.work_order_services.all())
-        parts_sum = sum((w.sale_price or Decimal('0')) * w.quantity for w in o.work_order_parts.all())
+        parts_sum = sum((w.sale_price or Decimal('0')) for w in o.work_order_parts.all())
         grand     = svcs_sum + parts_sum
         total_svcs  += svcs_sum
         total_parts_sum += parts_sum
@@ -1656,8 +1746,8 @@ def accounting_export(request):
         o       = wop.work_order
         is_done = (o.status == 'Завершён')
         cname   = o.client_fio_static or (o.client_car.client.fio if o.client_car else '—')
-        price   = wop.sale_price or Decimal('0')
-        total   = price * wop.quantity
+        total   = wop.sale_price or Decimal('0')
+        unit_p  = (total / wop.quantity).quantize(Decimal('0.01')) if wop.quantity else Decimal('0')
         if is_done:
             total_parts_amt += total
 
@@ -1666,7 +1756,7 @@ def accounting_export(request):
             cname,
             wop.part.article, wop.part.name,
             wop.part.brand or '—', wop.part.category or '—',
-            wop.quantity, float(price), float(wop.markup), float(total) if is_done else '',
+            wop.quantity, float(unit_p), float(wop.markup), float(total) if is_done else '',
         ])
         style_row(ws3, i + 1, len(headers3), is_money_cols={11, 13})
         if not is_done:
@@ -1926,12 +2016,9 @@ def accounting_export(request):
     for o in orders:
         for w in o.work_order_parts.all():
             if w.sale_price and w.markup is not None:
-                cost_unit = w.sale_price / (1 + w.markup / 100)
+                parts_cost += w.sale_price / (1 + w.markup / Decimal('100'))
             elif w.sale_price:
-                cost_unit = w.sale_price
-            else:
-                cost_unit = Decimal('0')
-            parts_cost += cost_unit * w.quantity
+                parts_cost += w.sale_price
     parts_cost = parts_cost.quantize(Decimal('0.01'))
     _ws6_row(ws6, 'Себестоимость запасных частей', float(parts_cost),
              'Цена продажи ÷ (1 + наценка%) × количество')
@@ -2210,7 +2297,7 @@ def order_mechanic_pdf(request, pk):
     # ── Total ────────────────────────────────────
     from decimal import Decimal
     svc_total  = sum(w.final_price or Decimal('0') for w in wos_list)
-    part_total = sum((w.sale_price or Decimal('0')) * w.quantity for w in wop_list)
+    part_total = sum((w.sale_price or Decimal('0')) for w in wop_list)
     story.append(HRFlowable(width='100%', thickness=0.5, color=GREY_RULE, spaceAfter=4))
     story.append(Paragraph(
         f'Итого услуги: {svc_total:.2f} руб.   |   Запчасти: {part_total:.2f} руб.   |   '
@@ -2372,8 +2459,8 @@ def _make_customer_pdf(order, is_final: bool):
         # Артикул | Наименование | Кол-во | Цена | Сумма
         part_rows = [[ch('Артикул'), ch('Наименование'), ch('Кол-во'), ch('Цена, руб.'), ch('Сумма, руб.')]]
         for wop in wop_list:
-            unit_price = f'{wop.sale_price:.2f}' if wop.sale_price else '—'
-            total      = f'{wop.sale_price * wop.quantity:.2f}' if wop.sale_price else '—'
+            total      = f'{wop.sale_price:.2f}' if wop.sale_price else '—'
+            unit_price = f'{wop.sale_price / wop.quantity:.2f}' if wop.sale_price and wop.quantity else '—'
             part_rows.append([
                 cb(wop.part.article),
                 cb(wop.part.name),
@@ -2386,7 +2473,7 @@ def _make_customer_pdf(order, is_final: bool):
 
     # ── Totals ───────────────────────────────────
     svc_total  = sum(w.final_price or Decimal('0') for w in wos_list)
-    part_total = sum((w.sale_price or Decimal('0')) * w.quantity for w in wop_list)
+    part_total = sum((w.sale_price or Decimal('0')) for w in wop_list)
     grand      = svc_total + part_total
 
     total_rows = [

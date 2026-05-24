@@ -52,7 +52,9 @@ class ClientTests(TestCase):
     def test_client_create_success(self):
         resp = self.tc.post(reverse('client_create'), {
             'fio': 'Новый Клиент Тестович',
+            'phone_country': 'RU',
             'phone': '+7 999 200-00-02',
+            'consent_personal_data': True,
         })
         self.assertEqual(resp.status_code, 302)
         self.assertTrue(Client.objects.filter(fio='Новый Клиент Тестович').exists())
@@ -61,6 +63,7 @@ class ClientTests(TestCase):
     def test_client_create_duplicate_phone_rejected(self):
         resp = self.tc.post(reverse('client_create'), {
             'fio': 'Дубль Клиент',
+            'phone_country': 'RU',
             'phone': '+7 999 100-00-01',  # уже занят
         })
         self.assertEqual(resp.status_code, 200)
@@ -70,6 +73,7 @@ class ClientTests(TestCase):
     def test_client_update_success(self):
         resp = self.tc.post(reverse('client_update', args=[self.client_obj.pk]), {
             'fio': 'Изменённый Клиент',
+            'phone_country': 'RU',
             'phone': '+7 999 100-00-01',
         })
         self.assertEqual(resp.status_code, 302)
@@ -110,13 +114,14 @@ class ClientCarTests(TestCase):
     # T-07
     def test_car_create_success(self):
         resp = self.tc.post(reverse('client_car_create', args=[self.client_obj.pk]), {
-            'client': self.client_obj.pk,
-            'make':   self.make.pk,
-            'model':  self.model.pk,
+            'client':        self.client_obj.pk,
+            'make':          self.make.pk,
+            'model':         self.model.pk,
+            'plate_country': 'RU',
             'license_plate': 'Н002НН77',
-            'color':  'Синий',
-            'vin':    '1HGCM82633A000002',
-            'year':   2021,
+            'color':         'Синий',
+            'vin':           '1HGCM82633A000002',
+            'year':          2021,
         })
         self.assertEqual(resp.status_code, 302)
         self.assertTrue(ClientCar.objects.filter(license_plate='Н002НН77').exists())

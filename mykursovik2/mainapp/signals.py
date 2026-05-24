@@ -45,7 +45,8 @@ def _event_identity(ev):
 
 
 def _merge_events(stored_events, new_events):
-    """Merge new_events into stored_events; opposite pairs cancel each other out."""
+    """Merge new_events into stored_events; new events only cancel previously STORED events."""
+    stored_count = len(stored_events)  # boundary: only cancel within original stored portion
     result = list(stored_events)
     for new_ev in new_events:
         opposite = _OPPOSITE_EVENT.get(new_ev.get('event', ''))
@@ -53,12 +54,13 @@ def _merge_events(stored_events, new_events):
             key = _event_identity(new_ev)
             if key:
                 cancel_idx = next(
-                    (i for i, e in enumerate(result)
+                    (i for i, e in enumerate(result[:stored_count])
                      if e.get('event') == opposite and _event_identity(e) == key),
                     None,
                 )
                 if cancel_idx is not None:
                     result.pop(cancel_idx)
+                    stored_count -= 1  # shift boundary after removal
                     continue  # drop new_ev too — net effect is zero
         result.append(new_ev)
     return result

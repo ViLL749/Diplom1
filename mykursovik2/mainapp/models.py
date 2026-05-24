@@ -16,6 +16,14 @@ class Client(models.Model):
             ('TJ', 'Таджикистан'), ('TM', 'Туркменистан'),
         ]
     )
+    consent_personal_data = models.BooleanField(
+        default=False,
+        verbose_name="Согласие на обработку персональных данных"
+    )
+    consent_marketing = models.BooleanField(
+        default=False,
+        verbose_name="Согласие на получение рассылок"
+    )
 
     def __str__(self):
         return self.fio

@@ -5,6 +5,31 @@
 """
 import re
 
+# ─── Нормализация раскладки номерных знаков ────────────────────────────────────
+# Визуально идентичные буквы: латиница ↔ кириллица
+#   A↔А  B↔В  C↔С  E↔Е  H↔Н  K↔К  M↔М  O↔О  P↔Р  T↔Т  X↔Х  I↔І(укр.)
+_LAT_TO_CYR = str.maketrans('ABCEHKMOPTX', 'АВСЕНКМОРТХ')
+_CYR_TO_LAT = str.maketrans('АВСЕНКМОРТХІ', 'ABCEHKMOPTXI')
+
+
+def normalize_plate(plate: str, country_code: str) -> str:
+    """Приводит буквы к нужной раскладке для страны.
+    Россия — кириллица (конвертируем латинские омографы в кириллические).
+    Остальные страны СНГ — латиница (конвертируем кириллические омографы в латинские).
+    """
+    plate = plate.upper()
+    if country_code == 'RU':
+        return plate.translate(_LAT_TO_CYR)
+    return plate.translate(_CYR_TO_LAT)
+
+
+def normalize_plate_search(query: str) -> list:
+    """Возвращает список вариантов (оригинал + оба направления конвертации)
+    для поиска по номеру без знания страны.
+    """
+    query = query.strip().upper()
+    return list({query, query.translate(_LAT_TO_CYR), query.translate(_CYR_TO_LAT)})
+
 # ─── Телефоны ─────────────────────────────────────────────────────────────────
 
 # Список стран СНГ для дропдауна: (код страны ISO, название, dial-код, маска)
@@ -143,8 +168,10 @@ CIS_PLATE_COUNTRY_CHOICES = [
 
 
 def validate_plate(plate: str, country_code: str = 'RU') -> tuple[bool, str]:
-    """Возвращает (True, plate.upper()) или (False, error_message)."""
-    plate = plate.strip().upper()
+    """Возвращает (True, normalized_plate) или (False, error_message).
+    Автоматически конвертирует омографы в нужную раскладку для страны.
+    """
+    plate = normalize_plate(plate.strip(), country_code)
     if not plate:
         return False, 'Госномер обязателен.'
     pattern = CIS_PLATE_PATTERNS.get(country_code)

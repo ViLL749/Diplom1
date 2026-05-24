@@ -111,36 +111,70 @@ document.addEventListener('click', function() {
 <h2 style="margin-bottom:12px;">Услуги</h2>
 <div id="svc-cards-container">
 {% for wos in wos_list %}
-<div class="svc-card" data-wos-id="{{ wos.id }}">
+<div class="svc-card" data-wos-id="{{ wos.id }}" data-wos-hours="{{ wos.hours_applied|stringformat:'g' }}" data-wos-rate="{{ wos.hourly_rate_snapshot|default:hourly_rate }}">
     <div class="svc-card-head">
         <div>
             <div class="svc-card-name">{{ wos.service_name_snapshot|default:wos.service.name }}</div>
-            <div class="svc-card-meta">
+            <div class="svc-card-meta" id="svc-meta-{{ wos.id }}">
                 {{ wos.hours_applied }} ч. × {{ wos.complexity_factor }} × {% if wos.hourly_rate_snapshot %}{{ wos.hourly_rate_snapshot }}{% else %}{{ hourly_rate }}{% endif %} р/ч
             </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
-            <div class="svc-card-price">{{ wos.final_price|floatformat:2 }} руб.</div>
+            <div class="svc-card-price" id="svc-price-{{ wos.id }}">{{ wos.final_price|floatformat:2 }} руб.</div>
             {% if editable %}
-            <a href="{% url 'workorderservice_update' wos.id %}" class="btn btn-sm">Изм.</a>
+            <button type="button" class="btn btn-sm svc-edit-btn" data-wos-id="{{ wos.id }}" data-hours="{{ wos.hours_applied }}" data-factor="{{ wos.complexity_factor }}">Изм.</button>
             <button type="button" class="btn btn-sm btn-danger svc-del-btn" data-wos-id="{{ wos.id }}">Удал.</button>
             <button type="button" class="btn btn-sm btn-success open-part-for-svc" data-wos-id="{{ wos.id }}" data-wos-name="{{ wos.service_name_snapshot|default:wos.service.name }}">+ Деталь</button>
             {% endif %}
         </div>
     </div>
+    {% if editable %}
+    <div class="svc-inline-edit" id="svc-inline-edit-{{ wos.id }}" style="display:none;padding:8px 16px;background:#f0f9ff;border-bottom:1px solid #bae6fd;font-size:0.9em;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <label style="font-weight:500;">Часы:</label>
+            <input type="number" class="svc-edit-hours" step="0.05" min="0.05" value="{{ wos.hours_applied|stringformat:'g' }}" style="width:76px;">
+            <label style="font-weight:500;">Коэф.:</label>
+            <input type="number" class="svc-edit-factor" step="0.1" min="0.1" value="{{ wos.complexity_factor|stringformat:'g' }}" style="width:72px;">
+            <span class="svc-edit-preview" style="color:#2563eb;font-weight:600;white-space:nowrap;"></span>
+            <button type="button" class="btn btn-sm btn-primary svc-edit-apply" data-wos-id="{{ wos.id }}">OK</button>
+            <button type="button" class="btn btn-sm svc-edit-cancel" data-wos-id="{{ wos.id }}">Отмена</button>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Parts linked to this service -->
     <div class="svc-card-body">
         {% for wop in wos.parts.all %}
-        <div class="svc-part-row" data-wop-id="{{ wop.id }}">
-            <span class="svc-part-article">{{ wop.part.article }}</span>
-            <span class="svc-part-name">{{ wop.part.name }}</span>
-            <span class="svc-part-qty">× {{ wop.quantity }} шт.</span>
-            <span class="svc-part-price">{{ wop.total_price|floatformat:2 }} руб.</span>
-            <span class="svc-status-pill svc-status-{{ wop.status }}">{{ wop.get_status_display }}</span>
+        <div data-wop-id="{{ wop.id }}">
+            <div class="svc-part-row" style="border-bottom:none;">
+                <span class="svc-part-article">{{ wop.part.article }}</span>
+                <span class="svc-part-name">{{ wop.part.name }}</span>
+                <span class="svc-part-qty">× {{ wop.quantity }} шт.</span>
+                <span class="svc-part-price">{% if wop.total_price %}{{ wop.total_price|floatformat:2 }} руб.{% else %}—{% endif %}</span>
+                {% if editable %}
+                <button type="button" class="btn btn-xs wop-edit-btn"
+                        data-wop-id="{{ wop.id }}"
+                        data-part-id="{{ wop.part_id }}"
+                        data-qty="{{ wop.quantity }}"
+                        data-markup="{{ wop.markup|stringformat:'g' }}"
+                        data-sale-price="{% if wop.sale_price %}{{ wop.sale_price|stringformat:'g' }}{% endif %}">Изм.</button>
+                <button type="button" class="btn btn-xs btn-danger wop-del-btn"
+                        data-wop-id="{{ wop.id }}"
+                        data-delete-url="{% url 'workorderpart_delete' wop.id %}">Удал.</button>
+                {% endif %}
+            </div>
             {% if editable %}
-            <a href="{% url 'workorderpart_update' wop.id %}" class="btn btn-xs">Изм.</a>
-            <button type="button" class="btn btn-xs btn-danger wop-del-btn" data-wop-id="{{ wop.id }}">Удал.</button>
+            <div class="wop-edit-form" style="display:none;padding:6px 0 6px 8px;background:#f0f9ff;font-size:0.85em;border-bottom:1px solid #bae6fd;">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <label>Кол-во:</label>
+                    <input type="number" class="wop-qty-inp" min="1" value="{{ wop.quantity }}" style="width:68px;">
+                    <label>Наценка (%):</label>
+                    <input type="number" class="wop-markup-inp" min="0" step="1" value="{{ wop.markup|stringformat:'g' }}" style="width:68px;">
+                    <span class="wop-price-preview" style="color:#16a34a;font-size:0.9em;white-space:nowrap;"></span>
+                    <button type="button" class="btn btn-xs btn-primary wop-edit-apply" data-wop-id="{{ wop.id }}">OK</button>
+                    <button type="button" class="btn btn-xs wop-edit-cancel">Отмена</button>
+                </div>
+            </div>
             {% endif %}
         </div>
         {% empty %}
@@ -153,10 +187,10 @@ document.addEventListener('click', function() {
         <div style="font-size:0.82em;font-weight:600;color:#6b7280;margin-bottom:6px;">Исполнители:</div>
         <div class="svc-emp-list" id="svc-emp-list-{{ wos.id }}">
             {% for a in wos.assignments.all %}
-            <div class="svc-emp-row" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:0.88em;">
+            <div class="svc-emp-row" data-emp-id="{{ a.employee.id }}" data-salary-coeff="{{ a.salary_coefficient_snapshot|default:a.employee.salary_coefficient }}" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:0.88em;">
                 <span style="min-width:160px;">{{ a.employee.name }}</span>
                 {% if a.employee.position %}<span style="color:#6b7280;">{{ a.employee.position }}</span>{% endif %}
-                <span style="color:#374151;">— {{ a.hours_share|floatformat:2 }} ч. / {{ a.earnings|floatformat:2 }} руб.</span>
+                <span class="emp-hours-display" style="color:#374151;">— {{ a.hours_share|floatformat:2 }} ч. / {{ a.earnings|floatformat:2 }} руб.</span>
                 {% if editable %}
                 <button type="button" class="btn btn-xs btn-danger emp-unassign-btn"
                     data-wos="{{ wos.id }}" data-emp="{{ a.employee.id }}">✕</button>
@@ -181,27 +215,47 @@ document.addEventListener('click', function() {
      UNLINKED PARTS
 ════════════════════════════════════════════ -->
 <div id="unlinked-parts-section">
-{% with has_unlinked=False %}
-{% for wop in wop_list %}{% if not wop.work_order_service %}{% if not has_unlinked %}
+{% if unlinked_wop_list %}
 <h2 style="margin:24px 0 12px;" id="unlinked-parts-header">Детали без привязки к услуге</h2>
-{% endif %}
+{% for wop in unlinked_wop_list %}
 <div class="svc-card" style="margin-bottom:6px;">
     <div class="svc-card-body" style="padding:10px 16px;">
-        <div class="svc-part-row" style="border:none;">
-            <span class="svc-part-article">{{ wop.part.article }}</span>
-            <span class="svc-part-name">{{ wop.part.name }}</span>
-            <span class="svc-part-qty">× {{ wop.quantity }} шт.</span>
-            <span class="svc-part-price">{{ wop.total_price|floatformat:2 }} руб.</span>
-            <span class="svc-status-pill svc-status-{{ wop.status }}">{{ wop.get_status_display }}</span>
+        <div data-wop-id="{{ wop.id }}">
+            <div class="svc-part-row" style="border-bottom:none;">
+                <span class="svc-part-article">{{ wop.part.article }}</span>
+                <span class="svc-part-name">{{ wop.part.name }}</span>
+                <span class="svc-part-qty">× {{ wop.quantity }} шт.</span>
+                <span class="svc-part-price">{% if wop.total_price %}{{ wop.total_price|floatformat:2 }} руб.{% else %}—{% endif %}</span>
+                {% if editable %}
+                <button type="button" class="btn btn-xs wop-edit-btn"
+                        data-wop-id="{{ wop.id }}"
+                        data-part-id="{{ wop.part_id }}"
+                        data-qty="{{ wop.quantity }}"
+                        data-markup="{{ wop.markup|stringformat:'g' }}"
+                        data-sale-price="{% if wop.sale_price %}{{ wop.sale_price|stringformat:'g' }}{% endif %}">Изм.</button>
+                <button type="button" class="btn btn-xs btn-danger wop-del-btn"
+                        data-wop-id="{{ wop.id }}"
+                        data-delete-url="{% url 'workorderpart_delete' wop.id %}">Удал.</button>
+                {% endif %}
+            </div>
             {% if editable %}
-            <a href="{% url 'workorderpart_update' wop.id %}" class="btn btn-xs">Изм.</a>
-            <button type="button" class="btn btn-xs btn-danger wop-del-btn" data-wop-id="{{ wop.id }}">Удал.</button>
+            <div class="wop-edit-form" style="display:none;padding:6px 0 6px 8px;background:#f0f9ff;font-size:0.85em;border-bottom:1px solid #bae6fd;">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <label>Кол-во:</label>
+                    <input type="number" class="wop-qty-inp" min="1" value="{{ wop.quantity }}" style="width:68px;">
+                    <label>Наценка (%):</label>
+                    <input type="number" class="wop-markup-inp" min="0" step="1" value="{{ wop.markup|stringformat:'g' }}" style="width:68px;">
+                    <span class="wop-price-preview" style="color:#16a34a;font-size:0.9em;white-space:nowrap;"></span>
+                    <button type="button" class="btn btn-xs btn-primary wop-edit-apply" data-wop-id="{{ wop.id }}">OK</button>
+                    <button type="button" class="btn btn-xs wop-edit-cancel">Отмена</button>
+                </div>
+            </div>
             {% endif %}
         </div>
     </div>
 </div>
-{% endif %}{% endfor %}
-{% endwith %}
+{% endfor %}
+{% endif %}
 </div><!-- /unlinked-parts-section -->
 
 {% if editable %}
@@ -346,7 +400,10 @@ document.addEventListener('click', function() {
                 </div>
                 <div style="margin-bottom:10px;">
                     <label>Наценка (%):</label>
-                    <input type="number" name="markup" id="part-markup" min="0" step="1" value="30" style="width:80px;margin-left:8px;">
+                    <input type="number" name="markup" id="part-markup" min="0" step="1" value="0" style="width:80px;margin-left:8px;">
+                </div>
+                <div id="part-price-preview" style="margin-bottom:10px;padding:6px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:0.9em;display:none;">
+                    Цена: <strong id="part-price-preview-val"></strong>
                 </div>
                 <div style="margin-bottom:14px;">
                     <label>Привязать к услуге:</label>
@@ -388,7 +445,7 @@ document.addEventListener('click', function() {
 var SERVICE_HOURS = {{ service_hours_json|safe }};
 var HOURLY_RATE = parseFloat('{{ hourly_rate }}') || 0;
 var selectedSvcs = [];
-var partPage = 1, partTotalPages = 1, preselectedWosId = null;
+var partPage = 1, partTotalPages = 1, preselectedWosId = null, partUnitPrice = null;
 var currentWosId = null;
 var _tempId = 0;
 
@@ -398,15 +455,17 @@ var draft = {
     orderUpdate:      null,
     addServices:      [],
     removeServices:   new Set(),
+    updateServices:   [],
     addParts:         [],
     removeParts:      new Set(),
+    updateParts:      [],
     assignEmployees:  [],
     unassignEmployees:[]
 };
 
 function draftSize() {
-    return draft.addServices.length + draft.removeServices.size +
-           draft.addParts.length   + draft.removeParts.size   +
+    return draft.addServices.length + draft.removeServices.size + draft.updateServices.length +
+           draft.addParts.length   + draft.removeParts.size    + draft.updateParts.length   +
            draft.assignEmployees.length + draft.unassignEmployees.length +
            (draft.orderUpdate ? 1 : 0);
 }
@@ -449,10 +508,12 @@ document.getElementById('save-all-btn').addEventListener('click', function() {
     btn.textContent = 'Сохранение...';
     var payload = {
         client_version:   '{{ order_version }}',
-        add_services:     draft.addServices.map(function(s){return {id:s.id,hours:s.hours,factor:s.factor};}),
+        add_services:     draft.addServices.map(function(s){return {id:s.id,hours:s.hours,factor:s.factor,tempId:s.tempId,employees:(s.employees||[]).map(function(e){return e.empId;})};}),
         remove_services:  Array.from(draft.removeServices),
-        add_parts:        draft.addParts.map(function(p){return {partId:p.partId,qty:p.qty,markup:p.markup,wosId:p.wosId||null};}),
+        update_services:  draft.updateServices.map(function(s){return {wosId:s.wosId,hours:s.hours,factor:s.factor};}),
+        add_parts:        draft.addParts.map(function(p){return {partId:p.partId,qty:p.qty,markup:p.markup,wosId:p.wosId||null,tempWosId:p.tempWosId!=null?p.tempWosId:null};}),
         remove_parts:     Array.from(draft.removeParts),
+        update_parts:     draft.updateParts.map(function(p){return {wopId:p.wopId,qty:p.qty,markup:p.markup};}),
         assign_employees: draft.assignEmployees.map(function(e){return {wosId:e.wosId,empId:e.empId};}),
         unassign_employees: draft.unassignEmployees,
         order_update:     draft.orderUpdate
@@ -497,13 +558,31 @@ $(document).on('click', '.svc-del-btn', function() {
     updatePendingBar();
 });
 
-// ── Stage part removal ────────────────────────────────────────────
+// ── Direct AJAX delete for saved parts ───────────────────────────
 $(document).on('click', '.wop-del-btn', function() {
-    var wopId = parseInt($(this).data('wop-id'));
-    if (draft.removeParts.has(wopId)) return;
-    draft.removeParts.add(wopId);
-    $(this).closest('[data-wop-id]').hide();
-    updatePendingBar();
+    var $btn = $(this);
+    var url  = $btn.data('delete-url');
+    var $container = $btn.closest('div[data-wop-id]');
+    $btn.prop('disabled', true).text('...');
+    $.ajax({
+        url: url,
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}', 'X-Requested-With': 'XMLHttpRequest'},
+        success: function() {
+            var $parentCard = $container.closest('#unlinked-parts-section > .svc-card');
+            $container.remove();
+            if ($parentCard.length && $parentCard.find('[data-wop-id]').length === 0) {
+                $parentCard.remove();
+            }
+            if ($('#unlinked-parts-section .svc-card').length === 0) {
+                $('#unlinked-parts-header').remove();
+            }
+        },
+        error: function() {
+            $btn.prop('disabled', false).text('Удал.');
+            alert('Ошибка при удалении детали.');
+        }
+    });
 });
 
 {% endif %}{# editable #}
@@ -588,7 +667,7 @@ $('#svc-bulk-form').on('submit', function(e) {
     if (!selectedSvcs.length) return;
     selectedSvcs.forEach(function(s) {
         var t = ++_tempId;
-        var svc = {id:s.id, name:s.name, hours:s.hours, factor:s.factor, tempId:t};
+        var svc = {id:s.id, name:s.name, hours:s.hours, factor:s.factor, tempId:t, employees:[]};
         draft.addServices.push(svc);
         renderStagedSvc(svc);
     });
@@ -600,22 +679,48 @@ $('#svc-bulk-form').on('submit', function(e) {
 
 function renderStagedSvc(s) {
     var price = calcPrice(s.hours, s.factor);
-    var card = $('<div class="svc-card" data-staged-svc="' + s.tempId + '">' +
+    var t = s.tempId;
+    var card = $('<div class="svc-card" data-staged-svc="' + t + '">' +
         '<div class="svc-card-head"><div>' +
         '<div class="svc-card-name">' + $('<span>').text(s.name).html() + '</div>' +
-        '<div class="svc-card-meta">' + s.hours + ' ч. × ' + s.factor + ' × ' + HOURLY_RATE + ' р/ч</div>' +
+        '<div class="svc-card-meta" id="staged-meta-' + t + '">' + s.hours + ' ч. × ' + s.factor + ' × ' + HOURLY_RATE + ' р/ч</div>' +
         '</div><div style="display:flex;align-items:center;gap:10px;">' +
-        '<div class="svc-card-price">' + price + ' руб.</div>' +
-        '<button type="button" class="btn btn-sm btn-danger staged-svc-del" data-temp-id="' + s.tempId + '">Удал.</button>' +
+        '<div class="svc-card-price" id="staged-price-' + t + '">' + price + ' руб.</div>' +
+        '<button type="button" class="btn btn-sm staged-svc-edit-btn" data-temp-id="' + t + '">Изм.</button>' +
+        '<button type="button" class="btn btn-sm btn-success staged-part-add-btn" data-temp-id="' + t + '">+ Деталь</button>' +
+        '<button type="button" class="btn btn-sm btn-danger staged-svc-del" data-temp-id="' + t + '">Удал.</button>' +
         '</div></div>' +
-        '<div class="svc-card-body"><div style="color:#aaa;font-size:0.85em;padding:6px 0;">Детали и исполнителей можно добавить после сохранения</div></div>' +
+        '<div class="staged-svc-edit-form" id="staged-svc-edit-form-' + t + '" data-temp-id="' + t + '" style="display:none;padding:8px 16px;background:#f0f9ff;border-bottom:1px solid #bae6fd;font-size:0.9em;">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+        '<label style="font-weight:500;">Часы:</label>' +
+        '<input type="number" class="staged-svc-hours-inp" step="0.05" min="0.05" value="' + s.hours + '" style="width:76px;">' +
+        '<label style="font-weight:500;">Коэф.:</label>' +
+        '<input type="number" class="staged-svc-factor-inp" step="0.1" min="0.1" value="' + s.factor + '" style="width:72px;">' +
+        '<span class="staged-svc-edit-preview" style="color:#2563eb;font-weight:600;white-space:nowrap;"></span>' +
+        '<button type="button" class="btn btn-sm btn-primary staged-svc-edit-apply" data-temp-id="' + t + '">OK</button>' +
+        '<button type="button" class="btn btn-sm staged-svc-edit-cancel" data-temp-id="' + t + '">Отмена</button>' +
+        '</div></div>' +
+        '<div class="svc-card-body" id="staged-parts-' + t + '" style="min-height:0;"></div>' +
+        '<div class="svc-employees" style="border-top:1px solid #e5e7eb;padding:8px 16px;background:#f9fafb;">' +
+        '<div style="font-size:0.82em;font-weight:600;color:#6b7280;margin-bottom:6px;">Исполнители:</div>' +
+        '<div id="staged-emp-list-' + t + '"></div>' +
+        '<button type="button" class="btn btn-xs staged-emp-add-btn" style="margin-top:6px;" data-temp-id="' + t + '">+ Назначить</button>' +
+        '</div>' +
         '</div>');
     $('#svc-cards-container').append(card);
+    $('#part-service-select').append(
+        $('<option>').val('temp_' + t).text(s.name).attr('data-temp-id', t)
+    );
 }
 $(document).on('click', '.staged-svc-del', function() {
     var t = parseInt($(this).data('temp-id'));
+    draft.addParts = draft.addParts.filter(function(p) {
+        if (p.tempWosId === t) { $('[data-staged-part="' + p.tempId + '"]').remove(); return false; }
+        return true;
+    });
     draft.addServices = draft.addServices.filter(function(s){return s.tempId!==t;});
     $('[data-staged-svc="' + t + '"]').remove();
+    $('#part-service-select option[data-temp-id="' + t + '"]').remove();
     updatePendingBar();
 });
 
@@ -629,6 +734,11 @@ function openPartModal(wosId, wosName) {
 }
 $('#open-part-modal').click(function() { openPartModal(null, null); });
 $(document).on('click', '.open-part-for-svc', function() { openPartModal($(this).data('wos-id'), $(this).data('wos-name')); });
+$(document).on('click', '.staged-part-add-btn', function() {
+    var tempId = parseInt($(this).data('temp-id'));
+    var svc = draft.addServices.find(function(s){return s.tempId===tempId;});
+    if (svc) openPartModal('temp_' + tempId, svc.name);
+});
 
 function resetPartModal() {
     partPage = 1; partTotalPages = 1;
@@ -638,6 +748,25 @@ function resetPartModal() {
     $('#part-page-info').text('');
     $('#part-prev-btn, #part-next-btn').prop('disabled', true);
 }
+// Returns qty already staged in draft for a given partId (add + update deltas)
+function _draftQtyFor(partId) {
+    var total = 0;
+    draft.addParts.forEach(function(p) {
+        if (p.partId === partId) total += p.qty;
+    });
+    draft.updateParts.forEach(function(u) {
+        var $btn = $('[data-wop-id="' + u.wopId + '"] .wop-edit-btn');
+        if (!$btn.length) return;
+        var wopPartId = parseInt($btn.data('part-id'));
+        if (wopPartId === partId) {
+            var origQty = parseInt($btn.data('qty')) || 0;
+            var delta = (u.qty || 0) - origQty;
+            if (delta > 0) total += delta;
+        }
+    });
+    return total;
+}
+
 function loadParts(page) {
     var q = $('#part-search-input').val();
     $.getJSON('{% url "api_parts" %}', {search: q, page: page}, function(data) {
@@ -646,14 +775,18 @@ function loadParts(page) {
             tbody.html('<tr><td colspan="4" style="text-align:center;color:#aaa;padding:12px;">Ничего не найдено</td></tr>');
         } else {
             $.each(data.parts, function(_, p) {
-                var avail = p.available;
-                tbody.append('<tr class="part-avail-row" data-id="' + p.id + '" data-article="' + $('<span>').text(p.article).html() +
-                    '" data-name="' + $('<span>').text(p.name).html() + '" data-available="' + avail + '"' +
-                    (avail === 0 ? ' style="color:#bbb;"' : '') + '>' +
+                // Store raw server value; subtract staged draft qty only for display
+                var avail = Math.max(0, p.available - _draftQtyFor(p.id));
+                var $tr = $('<tr class="part-avail-row"' + (avail === 0 ? ' style="color:#bbb;"' : '') + '>' +
                     '<td style="padding:6px 8px;">' + $('<span>').text(p.article).html() + '</td>' +
                     '<td style="padding:6px 8px;">' + $('<span>').text(p.name).html() + '</td>' +
                     '<td style="padding:6px 8px;color:#888;">' + (p.brand ? $('<span>').text(p.brand).html() : '—') + '</td>' +
                     '<td style="padding:6px 8px;text-align:center;font-weight:600;' + (avail > 0 ? 'color:#27ae60;' : 'color:#bbb;') + '">' + avail + '</td></tr>');
+                $tr.data('id', p.id).data('article', p.article).data('name', p.name)
+                   .data('available', p.available)  // raw value — click handler subtracts draft
+                   .data('unit-price', p.unit_price != null ? p.unit_price : null)
+                   .data('default-markup', p.default_markup != null ? p.default_markup : 0);
+                tbody.append($tr);
             });
         }
         partPage = data.current_page; partTotalPages = data.total_pages;
@@ -667,31 +800,69 @@ $('#part-search-input').on('keydown', function(e) { if (e.key==='Enter'){e.preve
 $('#part-prev-btn').click(function() { if (partPage>1) loadParts(partPage-1); });
 $('#part-next-btn').click(function() { if (partPage<partTotalPages) loadParts(partPage+1); });
 $('#part-table-body').on('click', '.part-avail-row', function() {
-    var id=$(this).data('id'), article=$(this).data('article'), name=$(this).data('name'), avail=parseInt($(this).data('available'));
+    partUnitPrice = $(this).data('unit-price') != null ? parseFloat($(this).data('unit-price')) : null;
+    var defMarkup = parseFloat($(this).data('default-markup')) || 0;
+    $('#part-markup').val(defMarkup);
+    var id=$(this).data('id'), article=$(this).data('article'), name=$(this).data('name');
+    // Re-compute available accounting for anything staged since last loadParts
+    var avail = Math.max(0, parseInt($(this).data('available')) - _draftQtyFor(id));
     $('#part-hidden-id').val(id);
     $('#part-selected-display').text(article + ' — ' + name);
     $('#part-qty').val(1).attr('max', avail);
-    $('#part-available-hint').text('Доступно: ' + avail + ' шт.');
+    $('#part-available-hint').text('Доступно: ' + avail + ' шт.' + (avail === 0 ? ' (всё в черновике заказа)' : ''));
     $('#part-phase-search').hide(); $('#part-phase-confirm').show();
     if (preselectedWosId) $('#part-service-select').val(preselectedWosId);
+    updatePartPricePreview();
 });
 $('#part-back-btn').click(function() { $('#part-phase-confirm').hide(); $('#part-phase-search').show(); });
+
+var _partPriceTimer = null;
+var _lastPartPriceReq = null;
+
+function updatePartPricePreview() {
+    var partId = parseInt($('#part-hidden-id').val());
+    if (!partId || isNaN(partId)) { $('#part-price-preview').hide(); return; }
+    var qty    = parseInt($('#part-qty').val()) || 1;
+    var markup = parseFloat($('#part-markup').val()); if (isNaN(markup) || markup < 0) markup = 0;
+
+    clearTimeout(_partPriceTimer);
+    _partPriceTimer = setTimeout(function() {
+        var req = $.getJSON('{% url "api_part_price" %}', {partId: partId, qty: qty}, function(data) {
+            if (data.total_cost == null) { $('#part-price-preview').hide(); return; }
+            var sale_total = data.total_cost * (1 + markup / 100);
+            var unit = sale_total / qty;
+            $('#part-price-preview-val').text(
+                sale_total.toFixed(2) + ' руб. (' + unit.toFixed(2) + ' руб. × ' + qty + ' шт.)'
+            );
+            $('#part-price-preview').show();
+            partUnitPrice = data.total_cost / qty;  // per-unit cost (for staged display)
+        });
+    }, 200);
+}
+$('#part-qty, #part-markup').on('input', updatePartPricePreview);
 
 // ── Intercept part confirm form → stage ───────────────────────────
 $('#part-phase-confirm form').on('submit', function(e) {
     e.preventDefault();
     var partId  = parseInt($('#part-hidden-id').val());
     var qty     = parseInt($('#part-qty').val()) || 1;
-    var markup  = parseInt($('#part-markup').val()) || 30;
-    var wosId   = $('#part-service-select').val() ? parseInt($('#part-service-select').val()) : null;
-    var wosName = wosId ? $('#part-service-select option:selected').text() : null;
+    var markup  = parseFloat($('#part-markup').val()); if (isNaN(markup) || markup < 0) markup = 0;
+    var wosVal  = $('#part-service-select').val() || '';
+    var wosId = null, tempWosId = null, wosName = null;
+    if (wosVal.indexOf('temp_') === 0) {
+        tempWosId = parseInt(wosVal.replace('temp_', ''));
+        wosName = $('#part-service-select option:selected').text();
+    } else if (wosVal) {
+        wosId = parseInt(wosVal);
+        wosName = $('#part-service-select option:selected').text();
+    }
     var display = $('#part-selected-display').text();
     var article = display.split(' — ')[0];
     var name    = display.split(' — ').slice(1).join(' — ');
     var avail   = parseInt($('#part-qty').attr('max')) || 0;
     if (avail === 0) { alert('Деталь отсутствует на складе.'); return; }
     var t = ++_tempId;
-    var part = {partId:partId, article:article, name:name, qty:qty, markup:markup, wosId:wosId, wosName:wosName, tempId:t};
+    var part = {partId:partId, article:article, name:name, qty:qty, markup:markup, wosId:wosId, tempWosId:tempWosId, wosName:wosName, unitPrice:partUnitPrice, tempId:t};
     draft.addParts.push(part);
     renderStagedPart(part);
     closeModal('part-modal');
@@ -699,32 +870,62 @@ $('#part-phase-confirm form').on('submit', function(e) {
 });
 
 function renderStagedPart(p) {
-    var section = document.getElementById('unlinked-parts-section');
-    var hdr = document.getElementById('unlinked-parts-header');
-    if (!hdr) {
-        $(section).prepend('<h2 style="margin:24px 0 12px;" id="unlinked-parts-header">Детали без привязки к услуге</h2>');
-    }
-    var row = $('<div class="svc-card" data-staged-part="' + p.tempId + '" style="margin-bottom:6px;">' +
-        '<div class="svc-card-body" style="padding:10px 16px;">' +
-        '<div class="svc-part-row" style="border:none;">' +
+    var estPrice = p.unitPrice != null
+        ? '<span class="svc-part-price">' + (p.unitPrice * p.qty * (1 + p.markup / 100)).toFixed(2) + ' руб.</span>'
+        : '';
+    var rowHtml =
+        '<div data-staged-part="' + p.tempId + '" style="border-bottom:1px solid #f1f5f9;">' +
+        '<div class="svc-part-row" style="border-bottom:none;">' +
         '<span class="svc-part-article">' + $('<span>').text(p.article).html() + '</span>' +
         '<span class="svc-part-name">' + $('<span>').text(p.name).html() + '</span>' +
         '<span class="svc-part-qty">× ' + p.qty + ' шт.</span>' +
-        (p.wosName ? '<span style="font-size:0.8em;color:#64748b;">↳ ' + $('<span>').text(p.wosName).html() + '</span>' : '') +
+        estPrice +
+        '<button type="button" class="btn btn-xs staged-part-edit-btn" data-temp-id="' + p.tempId + '">Изм.</button>' +
         '<button type="button" class="btn btn-xs btn-danger staged-part-del" data-temp-id="' + p.tempId + '">Удал.</button>' +
-        '</div></div></div>');
-    $(section).append(row);
+        '</div>' +
+        '<div class="staged-part-edit-form" data-temp-id="' + p.tempId + '" style="display:none;padding:6px 0 6px 8px;background:#f0f9ff;font-size:0.85em;border-bottom:1px solid #bae6fd;">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+        '<label>Кол-во:</label>' +
+        '<input type="number" class="sp-qty-inp" min="1" value="' + p.qty + '" style="width:68px;">' +
+        '<label>Наценка (%):</label>' +
+        '<input type="number" class="sp-markup-inp" min="0" step="1" value="' + p.markup + '" style="width:68px;">' +
+        '<span class="sp-price-preview" style="color:#16a34a;font-size:0.9em;white-space:nowrap;"></span>' +
+        '<button type="button" class="btn btn-xs btn-primary sp-edit-apply" data-temp-id="' + p.tempId + '">OK</button>' +
+        '<button type="button" class="btn btn-xs sp-edit-cancel">Отмена</button>' +
+        '</div></div></div>';
+    if (p.tempWosId != null) {
+        $('#staged-parts-' + p.tempWosId).append(rowHtml);
+    } else if (p.wosId) {
+        $('[data-wos-id="' + p.wosId + '"] .svc-card-body').append(rowHtml);
+    } else {
+        var section = document.getElementById('unlinked-parts-section');
+        if (!document.getElementById('unlinked-parts-header')) {
+            $(section).prepend('<h2 style="margin:24px 0 12px;" id="unlinked-parts-header">Детали без привязки к услуге</h2>');
+        }
+        $(section).append('<div class="svc-card" style="margin-bottom:6px;"><div class="svc-card-body" style="padding:10px 16px;">' + rowHtml + '</div></div>');
+    }
 }
 $(document).on('click', '.staged-part-del', function() {
     var t = parseInt($(this).data('temp-id'));
     draft.addParts = draft.addParts.filter(function(p){return p.tempId!==t;});
-    $('[data-staged-part="' + t + '"]').remove();
+    var $row = $('[data-staged-part="' + t + '"]');
+    var $parentCard = $row.closest('#unlinked-parts-section > .svc-card');
+    $row.remove();
+    if ($parentCard.length && $parentCard.find('[data-staged-part]').length === 0) {
+        $parentCard.remove();
+    }
+    if ($('#unlinked-parts-section .svc-card').length === 0) $('#unlinked-parts-header').remove();
     updatePendingBar();
 });
 
 // ── EMPLOYEE MODAL ─────────────────────────────────
 $(document).on('click', '.emp-add-btn', function() {
     currentWosId = $(this).data('wos');
+    $('#emp-modal-list').empty(); $('#emp-search-input').val('');
+    loadEmpSearch(''); openModal('emp-modal');
+});
+$(document).on('click', '.staged-emp-add-btn', function() {
+    currentWosId = 'temp_' + $(this).data('temp-id');
     $('#emp-modal-list').empty(); $('#emp-search-input').val('');
     loadEmpSearch(''); openModal('emp-modal');
 });
@@ -735,7 +936,8 @@ function loadEmpSearch(q) {
         $.each(data.employees, function(i, e) {
             var pos = e.position ? ' <span style="color:#6b7280;font-size:0.85em;">— ' + $('<span>').text(e.position).html() + '</span>' : '';
             $ul.append($('<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;" class="emp-pick-row">' +
-                $('<span>').text(e.name).html() + pos + '</div>').data('emp-id', e.id).data('emp-name', e.name));
+                $('<span>').text(e.name).html() + pos + '</div>')
+                .data('emp-id', e.id).data('emp-name', e.name).data('salary-coeff', parseFloat(e.salary_coefficient) || 1));
         });
     });
 }
@@ -750,17 +952,36 @@ $(document).on('click', '.emp-pick-row', function() {
     var empId   = $(this).data('emp-id');
     var empName = $(this).data('emp-name') || $(this).text().trim();
     var wosId   = currentWosId;
-    // Prevent duplicate
-    var already = draft.assignEmployees.find(function(a){return a.wosId==wosId&&a.empId==empId;});
-    if (!already) {
-        draft.assignEmployees.push({wosId:wosId, empId:empId, empName:empName});
-        var $list = $('#svc-emp-list-' + wosId);
-        $list.find('.emp-empty-hint').hide();
-        $list.append($('<div class="svc-emp-row" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:0.88em;">' +
-            '<span style="min-width:160px;">' + $('<span>').text(empName).html() + '</span>' +
-            '<button type="button" class="btn btn-xs btn-danger staged-emp-del" data-wos="' + wosId + '" data-emp="' + empId + '">✕</button>' +
-            '</div>'));
-        updatePendingBar();
+
+    if (typeof wosId === 'string' && wosId.indexOf('temp_') === 0) {
+        // Staged (unsaved) service — store employee in draft.addServices entry
+        var tempId = parseInt(wosId.replace('temp_', ''));
+        var svc = draft.addServices.find(function(s){return s.tempId===tempId;});
+        if (svc) {
+            var salaryCoeff = parseFloat($(this).data('salary-coeff')) || 1;
+            var already = svc.employees.find(function(e){return e.empId===empId;});
+            if (!already) {
+                svc.employees.push({empId:empId, empName:empName, salaryCoeff:salaryCoeff});
+                renderStagedEmpList(svc);
+            }
+        }
+    } else {
+        // Existing (saved) service — track in draft.assignEmployees
+        var alreadyInDom   = $('#svc-emp-list-' + wosId + ' [data-emp-id="' + empId + '"]:visible').length > 0;
+        var alreadyInDraft = draft.assignEmployees.find(function(a){return a.wosId==wosId&&a.empId==empId;});
+        if (!alreadyInDom && !alreadyInDraft) {
+            var salaryCoeff = parseFloat($(this).data('salary-coeff')) || 1;
+            draft.assignEmployees.push({wosId:wosId, empId:empId, empName:empName, salaryCoeff:salaryCoeff});
+            var $list = $('#svc-emp-list-' + wosId);
+            $list.find('.emp-empty-hint').hide();
+            $list.append($('<div class="svc-emp-row" data-emp-id="' + empId + '" data-salary-coeff="' + salaryCoeff + '" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:0.88em;">' +
+                '<span style="min-width:160px;">' + $('<span>').text(empName).html() + '</span>' +
+                '<span class="emp-hours-display" style="color:#374151;"></span>' +
+                '<button type="button" class="btn btn-xs btn-danger staged-emp-del" data-wos="' + wosId + '" data-emp="' + empId + '">✕</button>' +
+                '</div>'));
+            updateSavedSvcEmpDisplay(wosId);
+            updatePendingBar();
+        }
     }
     closeModal('emp-modal');
 });
@@ -768,7 +989,291 @@ $(document).on('click', '.staged-emp-del', function() {
     var wosId=parseInt($(this).data('wos')), empId=parseInt($(this).data('emp'));
     draft.assignEmployees = draft.assignEmployees.filter(function(a){return !(a.wosId===wosId&&a.empId===empId);});
     $(this).closest('.svc-emp-row').remove();
+    updateSavedSvcEmpDisplay(wosId);
     updatePendingBar();
+});
+function updateSavedSvcEmpDisplay(wosId) {
+    var $card = $('[data-wos-id="' + wosId + '"]');
+    var wosHours = parseFloat($card.data('wos-hours')) || 0;
+    var wosRate  = parseFloat($card.data('wos-rate'))  || HOURLY_RATE;
+    var $rows = $('#svc-emp-list-' + wosId + ' .svc-emp-row:visible');
+    var n = Math.max(1, $rows.length);
+    var hoursEach = wosHours / n;
+    $rows.each(function() {
+        var coeff = parseFloat($(this).data('salary-coeff')) || 1;
+        var earn = (hoursEach * coeff * wosRate).toFixed(2);
+        $(this).find('.emp-hours-display').text('— ' + hoursEach.toFixed(2) + ' ч. / ' + earn + ' руб.');
+    });
+}
+
+function renderStagedEmpList(svc) {
+    var $list = $('#staged-emp-list-' + svc.tempId);
+    $list.empty();
+    var n = svc.employees.length;
+    if (!n) return;
+    var hoursEach = n > 0 ? svc.hours / n : 0;
+    svc.employees.forEach(function(e) {
+        var earn = (hoursEach * e.salaryCoeff * HOURLY_RATE).toFixed(2);
+        $list.append($('<div class="svc-emp-row" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:0.88em;">' +
+            '<span style="min-width:160px;">' + $('<span>').text(e.empName).html() + '</span>' +
+            '<span style="color:#374151;">— ' + hoursEach.toFixed(2) + ' ч. / ' + earn + ' руб.</span>' +
+            '<button type="button" class="btn btn-xs btn-danger staged-emp-del-temp" data-temp-id="' + svc.tempId + '" data-emp-id="' + e.empId + '">✕</button>' +
+            '</div>'));
+    });
+}
+$(document).on('click', '.staged-emp-del-temp', function() {
+    var tempId=parseInt($(this).data('temp-id')), empId=parseInt($(this).data('emp-id'));
+    var svc = draft.addServices.find(function(s){return s.tempId===tempId;});
+    if (svc) {
+        svc.employees = svc.employees.filter(function(e){return e.empId!==empId;});
+        renderStagedEmpList(svc);
+    }
+});
+
+// ── Inline edit: saved service ─────────────────────────────────────
+$(document).on('click', '.svc-edit-btn', function() {
+    var wosId = $(this).data('wos-id');
+    var $form = $('#svc-inline-edit-' + wosId);
+    $('.svc-inline-edit').not($form).hide();
+    $form.toggle();
+    if ($form.is(':visible')) {
+        var $card = $('[data-wos-id="' + wosId + '"]');
+        var rate = parseFloat($card.data('wos-rate')) || HOURLY_RATE;
+        var h = parseFloat($form.find('.svc-edit-hours').val()) || 0;
+        var f = parseFloat($form.find('.svc-edit-factor').val()) || 0;
+        $form.find('.svc-edit-preview').text('→ ' + (h * f * rate).toFixed(2) + ' руб.');
+    }
+});
+$(document).on('input', '.svc-inline-edit .svc-edit-hours, .svc-inline-edit .svc-edit-factor', function() {
+    var $form = $(this).closest('.svc-inline-edit');
+    var $card = $form.closest('.svc-card');
+    var rate = parseFloat($card.data('wos-rate')) || HOURLY_RATE;
+    var h = parseFloat($form.find('.svc-edit-hours').val()) || 0;
+    var f = parseFloat($form.find('.svc-edit-factor').val()) || 0;
+    $form.find('.svc-edit-preview').text('→ ' + (h * f * rate).toFixed(2) + ' руб.');
+});
+$(document).on('click', '.svc-edit-cancel', function() {
+    $('#svc-inline-edit-' + $(this).data('wos-id')).hide();
+});
+$(document).on('click', '.svc-edit-apply', function() {
+    var wosId = parseInt($(this).data('wos-id'));
+    var $form = $('#svc-inline-edit-' + wosId);
+    var newHours  = parseFloat($form.find('.svc-edit-hours').val())  || 0;
+    var newFactor = parseFloat($form.find('.svc-edit-factor').val()) || 0;
+    if (newHours <= 0 || newFactor <= 0) { alert('Укажите корректные значения.'); return; }
+    var $card = $('[data-wos-id="' + wosId + '"]');
+    var rate = parseFloat($card.data('wos-rate')) || HOURLY_RATE;
+    var newPrice = (newHours * newFactor * rate).toFixed(2);
+    var existing = draft.updateServices.find(function(s){return s.wosId===wosId;});
+    if (existing) { existing.hours = newHours; existing.factor = newFactor; }
+    else { draft.updateServices.push({wosId:wosId, hours:newHours, factor:newFactor}); }
+    $card.data('wos-hours', newHours);
+    $('#svc-meta-' + wosId).text(newHours + ' ч. × ' + newFactor + ' × ' + rate.toFixed(2) + ' р/ч');
+    $('#svc-price-' + wosId).text(newPrice + ' руб.');
+    $form.hide();
+    updatePendingBar();
+    updateSavedSvcEmpDisplay(wosId);
+});
+
+// ── Inline edit: saved part ─────────────────────────────────────────
+var _wopPriceTimers = {};
+var _wopCostCache   = {};  // wopId → total purchase cost (no markup), last fetched
+var _spTimers       = {};
+var _spCostCache    = {};  // tempId → total purchase cost (no markup) for current qty
+
+$(document).on('click', '.wop-edit-btn', function() {
+    var $container = $(this).closest('div[data-wop-id]');
+    var $form = $container.find('.wop-edit-form');
+    $('.wop-edit-form').not($form).hide();
+    $('.staged-part-edit-form').hide();
+    $('.svc-inline-edit').hide();
+    $('.staged-svc-edit-form').hide();
+    $form.toggle();
+    if ($form.is(':visible')) _updateWopPreview($container);
+});
+$(document).on('input', '.wop-qty-inp, .wop-markup-inp', function() {
+    _updateWopPreview($(this).closest('div[data-wop-id]'));
+});
+
+function _updateWopPreview($c) {
+    var wopId = parseInt($c.data('wop-id'));
+    var sp = parseFloat($c.find('.wop-edit-btn').data('sale-price'));
+    if (isNaN(sp)) { $c.find('.wop-price-preview').text(''); return; }
+    var om    = parseFloat($c.find('.wop-edit-btn').data('markup')) || 0;
+    var origQ = parseInt($c.find('.wop-edit-btn').data('qty')) || 1;
+    var nm    = parseFloat($c.find('.wop-markup-inp').val()) || 0;
+    var q     = parseInt($c.find('.wop-qty-inp').val()) || 1;
+
+    if (q === origQ) {
+        // Only markup changed — pure math, no network call needed
+        var old_cost = sp / (1 + om / 100);
+        var sale_total = old_cost * (1 + nm / 100);
+        var unit = sale_total / q;
+        _wopCostCache[wopId] = old_cost;
+        $c.find('.wop-price-preview').text(
+            '→ ' + sale_total.toFixed(2) + ' руб. (' + unit.toFixed(2) + ' × ' + q + ' шт.)');
+        return;
+    }
+
+    // Qty changed — ask server for correct cost (extra units from real stock batches)
+    clearTimeout(_wopPriceTimers[wopId]);
+    $c.find('.wop-price-preview').text('…');
+    _wopPriceTimers[wopId] = setTimeout(function() {
+        $.getJSON('{% url "api_part_price" %}', {wopId: wopId, qty: q}, function(data) {
+            if (data.total_cost == null) { $c.find('.wop-price-preview').text(''); return; }
+            _wopCostCache[wopId] = data.total_cost;
+            var sale_total = data.total_cost * (1 + nm / 100);
+            var unit = sale_total / q;
+            $c.find('.wop-price-preview').text(
+                '→ ' + sale_total.toFixed(2) + ' руб. (' + unit.toFixed(2) + ' × ' + q + ' шт.)');
+        });
+    }, 200);
+}
+
+$(document).on('click', '.wop-edit-cancel', function() {
+    $(this).closest('div[data-wop-id]').find('.wop-edit-form').hide();
+});
+$(document).on('click', '.wop-edit-apply', function() {
+    var wopId = parseInt($(this).data('wop-id'));
+    var $c = $(this).closest('div[data-wop-id]');
+    var newQty    = parseInt($c.find('.wop-qty-inp').val()) || 1;
+    var newMarkup = parseFloat($c.find('.wop-markup-inp').val()) || 0;
+    if (newQty < 1) { alert('Неверное количество.'); return; }
+    var existing = draft.updateParts.find(function(p){return p.wopId===wopId;});
+    if (existing) { existing.qty = newQty; existing.markup = newMarkup; }
+    else { draft.updateParts.push({wopId:wopId, qty:newQty, markup:newMarkup}); }
+    $c.find('.svc-part-qty').text('× ' + newQty + ' шт.');
+
+    // Use cached purchase cost if available (fetched by AJAX preview); fall back to math
+    var totalCost = _wopCostCache[wopId];
+    if (totalCost == null) {
+        var sp = parseFloat($c.find('.wop-edit-btn').data('sale-price'));
+        var om = parseFloat($c.find('.wop-edit-btn').data('markup')) || 0;
+        var origQ = parseInt($c.find('.wop-edit-btn').data('qty')) || 1;
+        if (!isNaN(sp)) {
+            var old_cost = sp / (1 + om / 100);
+            // scale proportionally as fallback
+            totalCost = old_cost * newQty / origQ;
+        }
+    }
+    if (totalCost != null) {
+        var newTotal = (totalCost * (1 + newMarkup / 100)).toFixed(2);
+        $c.find('.svc-part-price').text(newTotal + ' руб.');
+        $c.find('.wop-edit-btn')
+            .data('markup', newMarkup)
+            .data('sale-price', parseFloat(newTotal))
+            .data('qty', newQty);
+        delete _wopCostCache[wopId];
+    }
+    $c.find('.wop-edit-form').hide();
+    updatePendingBar();
+});
+
+// ── Inline edit: staged service ────────────────────────────────────
+$(document).on('click', '.staged-svc-edit-btn', function() {
+    var t = $(this).data('temp-id');
+    var $form = $('#staged-svc-edit-form-' + t);
+    $('.staged-svc-edit-form').not($form).hide();
+    $('.svc-inline-edit').hide();
+    $form.toggle();
+    if ($form.is(':visible')) {
+        var h = parseFloat($form.find('.staged-svc-hours-inp').val()) || 0;
+        var f = parseFloat($form.find('.staged-svc-factor-inp').val()) || 0;
+        $form.find('.staged-svc-edit-preview').text('→ ' + calcPrice(h, f) + ' руб.');
+    }
+});
+$(document).on('input', '.staged-svc-hours-inp, .staged-svc-factor-inp', function() {
+    var $form = $(this).closest('.staged-svc-edit-form');
+    var h = parseFloat($form.find('.staged-svc-hours-inp').val()) || 0;
+    var f = parseFloat($form.find('.staged-svc-factor-inp').val()) || 0;
+    $form.find('.staged-svc-edit-preview').text('→ ' + calcPrice(h, f) + ' руб.');
+});
+$(document).on('click', '.staged-svc-edit-cancel', function() {
+    $('#staged-svc-edit-form-' + $(this).data('temp-id')).hide();
+});
+$(document).on('click', '.staged-svc-edit-apply', function() {
+    var t = parseInt($(this).data('temp-id'));
+    var $form = $('#staged-svc-edit-form-' + t);
+    var svc = draft.addServices.find(function(s){return s.tempId===t;});
+    if (!svc) return;
+    var newHours  = parseFloat($form.find('.staged-svc-hours-inp').val())  || svc.hours;
+    var newFactor = parseFloat($form.find('.staged-svc-factor-inp').val()) || svc.factor;
+    svc.hours  = newHours;
+    svc.factor = newFactor;
+    var price = calcPrice(newHours, newFactor);
+    $('#staged-meta-' + t).text(newHours + ' ч. × ' + newFactor + ' × ' + HOURLY_RATE + ' р/ч');
+    $('#staged-price-' + t).text(price + ' руб.');
+    renderStagedEmpList(svc);
+    $form.hide();
+});
+
+// ── Inline edit: staged part ───────────────────────────────────────
+$(document).on('click', '.staged-part-edit-btn', function() {
+    var t = $(this).data('temp-id');
+    var $form = $('.staged-part-edit-form[data-temp-id="' + t + '"]');
+    $('.staged-part-edit-form').not($form).hide();
+    $('.wop-edit-form').hide();
+    $form.toggle();
+    if ($form.is(':visible')) _updateStagedPartPreview($form);
+});
+$(document).on('input', '.sp-qty-inp, .sp-markup-inp', function() {
+    _updateStagedPartPreview($(this).closest('.staged-part-edit-form'));
+});
+function _updateStagedPartPreview($form) {
+    var t = parseInt($form.data('temp-id'));
+    var p = draft.addParts.find(function(x){return x.tempId===t;});
+    if (!p) return;
+    var q      = parseInt($form.find('.sp-qty-inp').val()) || 1;
+    var m      = parseFloat($form.find('.sp-markup-inp').val()) || 0;
+    var origQ  = p.qty;  // qty stored in draft (before this edit is applied)
+
+    if (q === origQ) {
+        // Only markup changed — pure math, no network call
+        if (p.unitPrice == null) { $form.find('.sp-price-preview').text(''); return; }
+        var sale = p.unitPrice * q * (1 + m / 100);
+        _spCostCache[t] = p.unitPrice * q;
+        $form.find('.sp-price-preview').text(
+            '→ ' + sale.toFixed(2) + ' руб. (' + (sale / q).toFixed(2) + ' × ' + q + ' шт.)');
+        return;
+    }
+
+    // Qty changed — ask server (cheapest batches for new qty)
+    clearTimeout(_spTimers[t]);
+    $form.find('.sp-price-preview').text('…');
+    _spTimers[t] = setTimeout(function() {
+        $.getJSON('{% url "api_part_price" %}', {partId: p.partId, qty: q}, function(data) {
+            if (data.total_cost == null) { $form.find('.sp-price-preview').text(''); return; }
+            _spCostCache[t] = data.total_cost;
+            var sale = data.total_cost * (1 + m / 100);
+            $form.find('.sp-price-preview').text(
+                '→ ' + sale.toFixed(2) + ' руб. (' + (sale / q).toFixed(2) + ' × ' + q + ' шт.)');
+        });
+    }, 200);
+}
+$(document).on('click', '.sp-edit-cancel', function() {
+    $(this).closest('.staged-part-edit-form').hide();
+});
+$(document).on('click', '.sp-edit-apply', function() {
+    var t = parseInt($(this).data('temp-id'));
+    var $form = $('.staged-part-edit-form[data-temp-id="' + t + '"]');
+    var p = draft.addParts.find(function(x){return x.tempId===t;});
+    if (!p) return;
+    p.qty    = parseInt($form.find('.sp-qty-inp').val())    || p.qty;
+    p.markup = parseFloat($form.find('.sp-markup-inp').val()) || 0;
+
+    // If server returned fresh cost for new qty, update unitPrice in draft
+    var totalCost = _spCostCache[t];
+    if (totalCost != null) {
+        p.unitPrice = totalCost / p.qty;
+        delete _spCostCache[t];
+    }
+
+    var $row = $('[data-staged-part="' + t + '"]');
+    $row.find('.svc-part-qty').text('× ' + p.qty + ' шт.');
+    if (p.unitPrice != null) {
+        $row.find('.svc-part-price').text((p.unitPrice * p.qty * (1 + p.markup / 100)).toFixed(2) + ' руб.');
+    }
+    $form.hide();
 });
 
 // ── Intercept employee unassign → stage ───────────────────────────
@@ -776,6 +1281,7 @@ $(document).on('click', '.emp-unassign-btn', function() {
     var wosId=parseInt($(this).data('wos')), empId=parseInt($(this).data('emp'));
     draft.unassignEmployees.push({wosId:wosId, empId:empId});
     $(this).closest('.svc-emp-row').hide();
+    updateSavedSvcEmpDisplay(wosId);
     updatePendingBar();
 });
 

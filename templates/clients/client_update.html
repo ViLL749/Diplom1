@@ -33,6 +33,20 @@
             </div>
             <small id="phone-hint" style="font-size:12px;color:#64748b;display:block;margin-top:3px;"></small>
         </div>
+        <div style="margin:14px 0 6px;">
+            <label style="display:flex;align-items:flex-start;gap:8px;">
+                {{ form.consent_personal_data }}
+                <span style="color:#64748b;">Согласие на обработку персональных данных
+                    <span style="font-size:0.8em;">(не изменяется после регистрации)</span>
+                </span>
+            </label>
+        </div>
+        <div style="margin:6px 0 14px;">
+            <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                {{ form.consent_marketing }}
+                <span>Согласие на получение рассылок</span>
+            </label>
+        </div>
         <button type="submit" class="btn">Сохранить</button>
         <a href="{{ cancel_url }}" class="btn btn-danger">Отмена</a>
     </form>
