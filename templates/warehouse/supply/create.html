@@ -97,12 +97,13 @@
                     {% if item_form.location.errors %}<p class="error">{{ item_form.location.errors|join:", " }}</p>{% endif %}
                 </td>
                 <td style="width:80px;">
-                    {# Visible pkg_qty input — штук в упаковке #}
+                    {# pkg_qty is read-only — always taken from part nomenclature #}
                     <input type="number" min="1"
                            id="{{ prefix }}-package_qty"
                            name="{{ prefix }}-package_qty"
                            value="{{ item_form.package_qty.value|default:'1' }}"
-                           style="width:70px;">
+                           readonly tabindex="-1"
+                           style="width:70px;background:#f0f4ff;color:#1e40af;cursor:default;">
                 </td>
                 <td>
                     <div style="display:flex;align-items:center;gap:6px;">

@@ -1071,6 +1071,8 @@ def order_commit(request, pk):
     if order.status in ('Завершён', 'Отменён'):
         return _json_response({'error': 'Редактирование закрытого заказа запрещено'}, 400)
 
+    old_cost = order.cost  # capture before transaction for cost-change logging
+
     try:
         data = _json_mod.loads(request.body)
     except (ValueError, _json_mod.JSONDecodeError):
@@ -1217,6 +1219,15 @@ def order_commit(request, pk):
                 cost_total = _min_stock_price(part, qty)
                 sale_price = (cost_total * (1 + markup / _Decimal('100'))).quantize(_Decimal('0.01')) if cost_total else None
                 markup = markup.quantize(_Decimal('0.01'))
+                expected_price = pd.get('expectedPrice')
+                if expected_price is not None and sale_price is not None:
+                    exp = _Decimal(str(expected_price)).quantize(_Decimal('0.01'))
+                    if abs(sale_price - exp) > _Decimal('0.01'):
+                        warnings.append(
+                            f'Цена {part.article} «{part.name}» изменилась при сохранении: '
+                            f'ожидалось {exp} руб., фактически {sale_price} руб. '
+                            f'(складские остатки изменились пока вы работали).'
+                        )
                 temp_wos_id = pd.get('tempWosId')
                 wos_id = pd.get('wosId')
                 if temp_wos_id is not None:
@@ -1379,6 +1390,14 @@ def order_commit(request, pk):
             # _recalculate_order_cost uses update_fields=['cost'] which skips auto_now.
             from django.utils import timezone as _tz
             Order.objects.filter(pk=order.pk).update(updated_at=_tz.now())
+
+            new_cost = order.cost
+            if old_cost != new_cost:
+                log_field_changes.append({
+                    'field': 'Стоимость',
+                    'from': str(old_cost) if old_cost is not None else '—',
+                    'to': str(new_cost) if new_cost is not None else '—',
+                })
     finally:
         _sig_locals.suppress_signals = False
 
@@ -2664,58 +2683,3 @@ MODEL_VERBOSE = {
 }
 
 
-@login_required
-@staff_required
-def action_log(request):
-    from .models import ActionLog
-    from django.contrib.auth import get_user_model
-    from django.core.paginator import Paginator
-
-    qs = ActionLog.objects.select_related('user')
-
-    search = request.GET.get('search', '').strip()
-    action = request.GET.get('action', '')
-    model = request.GET.get('model', '')
-    user_id = request.GET.get('user', '')
-    date_from = request.GET.get('date_from', '')
-    date_to = request.GET.get('date_to', '')
-
-    if search:
-        qs = qs.filter(object_repr__icontains=search)
-    if action:
-        qs = qs.filter(action=action)
-    if model:
-        qs = qs.filter(model_name=model)
-    if user_id:
-        qs = qs.filter(user_id=user_id)
-    if date_from:
-        qs = qs.filter(timestamp__date__gte=date_from)
-    if date_to:
-        qs = qs.filter(timestamp__date__lte=date_to)
-
-    paginator = Paginator(qs, 30)
-    page = paginator.get_page(request.GET.get('page'))
-
-    # Аннотируем каждую запись читаемым названием модели
-    for entry in page.object_list:
-        entry.model_verbose = MODEL_VERBOSE.get(entry.model_name, entry.model_name)
-
-    User = get_user_model()
-    users = User.objects.filter(actionlog__isnull=False).distinct().order_by('username')
-    models_used = [
-        (m, MODEL_VERBOSE.get(m, m))
-        for m in ActionLog.objects.values_list('model_name', flat=True).distinct().order_by('model_name')
-    ]
-
-    return render(request, 'admin/action_log.html', {
-        'page_obj': page,
-        'search': search,
-        'action': action,
-        'model': model,
-        'user_id': user_id,
-        'date_from': date_from,
-        'date_to': date_to,
-        'users': users,
-        'models_used': models_used,
-        'action_choices': ActionLog.ACTION_CHOICES,
-    })

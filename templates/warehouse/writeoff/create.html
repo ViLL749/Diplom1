@@ -103,6 +103,22 @@
         return el ? el.name.replace(/-part$/, '') : null;
     }
 
+    // Returns set of locationId strings already picked in OTHER visible rows for the same partId.
+    function getUsedLocations(partId, excludeRow) {
+        var used = new Set();
+        tbody.querySelectorAll('.writeoff-row').forEach(function(row) {
+            if (row === excludeRow || row.style.display === 'none') return;
+            var p = getPrefix(row);
+            if (!p) return;
+            var pi = row.querySelector('input[name="' + p + '-part"]');
+            var ls = row.querySelector('select[name="' + p + '-location"]');
+            if (pi && String(pi.value) === String(partId) && ls && ls.value) {
+                used.add(String(ls.value));
+            }
+        });
+        return used;
+    }
+
     // Rebuild the location <select> for a row based on the chosen part.
     // Fetches from API, replaces options, updates available qty cell.
     function loadLocations(row, partId, keepLocationId) {
@@ -123,8 +139,12 @@
         fetch(API_LOCATIONS + '?part=' + partId)
             .then(function(r) { return r.json(); })
             .then(function(data) {
+                var usedLocs = getUsedLocations(partId, row);
+                var available = data.locations.filter(function(loc) {
+                    return !usedLocs.has(String(loc.id));
+                });
                 locSelect.innerHTML = '<option value="">— выберите полку —</option>';
-                data.locations.forEach(function(loc) {
+                available.forEach(function(loc) {
                     var opt = document.createElement('option');
                     opt.value = loc.id;
                     opt.textContent = loc.label + ' (' + loc.available_qty + ' шт.)';
@@ -134,13 +154,33 @@
                     }
                     locSelect.appendChild(opt);
                 });
-                if (data.locations.length === 0) {
-                    locSelect.innerHTML = '<option value="">Нет в наличии</option>';
+                if (available.length === 0) {
+                    locSelect.innerHTML = '<option value="">Нет доступных полок</option>';
                     if (availCell) { availCell.textContent = '0'; availCell.style.color = '#dc2626'; }
                 } else {
                     updateAvailCell(row);
                 }
             });
+    }
+
+    // After a location is selected/changed in one row, refresh sibling rows with same part.
+    function refreshSiblingLocations(changedRow) {
+        var prefix = getPrefix(changedRow);
+        if (!prefix) return;
+        var partInput = changedRow.querySelector('input[name="' + prefix + '-part"]');
+        if (!partInput || !partInput.value) return;
+        var partId = partInput.value;
+        tbody.querySelectorAll('.writeoff-row').forEach(function(row) {
+            if (row === changedRow || row.style.display === 'none') return;
+            var p = getPrefix(row);
+            if (!p) return;
+            var pi = row.querySelector('input[name="' + p + '-part"]');
+            if (pi && String(pi.value) === String(partId)) {
+                var ls = row.querySelector('select[name="' + p + '-location"]');
+                var curLoc = ls ? ls.value : null;
+                loadLocations(row, partId, curLoc);
+            }
+        });
     }
 
     function updateAvailCell(row) {
@@ -171,7 +211,10 @@
     tbody.addEventListener('change', function(e) {
         if (e.target.name && e.target.name.endsWith('-location')) {
             var row = e.target.closest('tr');
-            if (row) updateAvailCell(row);
+            if (row) {
+                updateAvailCell(row);
+                refreshSiblingLocations(row);
+            }
         }
     });
 
@@ -186,7 +229,10 @@
                 var partInput = document.getElementById(target);
                 if (partInput) {
                     var row = partInput.closest('tr');
-                    if (row) loadLocations(row, partInput.value, null);
+                    if (row) {
+                        loadLocations(row, partInput.value, null);
+                        refreshSiblingLocations(row);
+                    }
                 }
             }
         };
@@ -235,6 +281,8 @@
     // reload the location list and keep the previously selected location.
     document.addEventListener('DOMContentLoaded', function() {
         tbody.querySelectorAll('.writeoff-row').forEach(function(row) {
+            var del = row.querySelector('input[type=checkbox][name$="-DELETE"]');
+            if (del && del.checked) { row.style.display = 'none'; return; }
             var prefix = getPrefix(row);
             if (!prefix) return;
             var partInput = row.querySelector('input[name="' + prefix + '-part"]');
@@ -243,7 +291,6 @@
                 var keepLoc = locSelect ? locSelect.value : null;
                 loadLocations(row, partInput.value, keepLoc);
             } else {
-                // Blank row — replace location select placeholder
                 if (locSelect) locSelect.innerHTML = '<option value="">— сначала выберите деталь —</option>';
             }
         });

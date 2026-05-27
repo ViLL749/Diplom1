@@ -268,9 +268,11 @@ def api_part_price(request):
                 total_cost = old_cost
         else:
             total_cost = _min_stock_price(part, qty)
+        extra_avail = sum(e.available_qty for e in StockEntry.objects.filter(part=part))
         return JsonResponse({
             'total_cost': float(total_cost) if total_cost is not None else None,
             'qty': qty,
+            'available_qty': old_qty + extra_avail,  # already reserved + still free
         })
 
     part_id = request.GET.get('partId')
@@ -280,9 +282,11 @@ def api_part_price(request):
     if not part:
         return JsonResponse({'error': 'Not found'}, status=404)
     total_cost = _min_stock_price(part, qty)
+    avail = sum(e.available_qty for e in StockEntry.objects.filter(part=part))
     return JsonResponse({
         'total_cost': float(total_cost) if total_cost is not None else None,
         'qty': qty,
+        'available_qty': avail,
     })
 
 
@@ -825,7 +829,7 @@ def supply_create(request):
                     continue
                 # Rows that have errors (missing fields) are caught by formset.is_valid()
                 item = form.save(commit=False)
-                item._pkg_qty = max(1, int(cd.get('package_qty') or 1))
+                item._pkg_qty = item.part.package_qty if item.part and item.part.package_qty else 1
                 valid_items.append(item)
 
             if not valid_items:
@@ -1109,8 +1113,10 @@ def workorderpart_update(request, pk):
                 old_factor = 1 + old_markup / Decimal('100')
                 old_cost = old_sale_price / old_factor  # total purchase cost without markup
                 if new_qty > old_qty:
-                    extra_cost = _min_stock_price(wop.part, new_qty - old_qty)
-                    total_cost = old_cost + (extra_cost or Decimal('0'))
+                    # _min_stock_price returns cost for min(delta, available) units,
+                    # so sale_price is already correct even when shortage occurs later.
+                    extra_cost = _min_stock_price(wop.part, new_qty - old_qty) or Decimal('0')
+                    total_cost = old_cost + extra_cost
                 elif new_qty < old_qty:
                     total_cost = old_cost * Decimal(new_qty) / Decimal(old_qty)
                 else:
@@ -1126,10 +1132,8 @@ def workorderpart_update(request, pk):
                         actually_reserved = delta - shortage
                         new_qty -= shortage
                         form.instance.quantity = new_qty
-                        if form.instance.sale_price and delta > 0:
-                            form.instance.sale_price = (
-                                form.instance.sale_price * Decimal(actually_reserved) / Decimal(delta)
-                            ).quantize(Decimal('0.01'))
+                        # sale_price was already computed using _min_stock_price(part, delta)
+                        # which prices min(delta, available) = actually_reserved units — no adjustment needed.
                         messages.warning(request, f'Не удалось зарезервировать {shortage} шт. — сохранено {old_qty + actually_reserved} шт.')
                     # Merge new reservations into tracked list
                     existing = list(wop.reserved_entries or [])

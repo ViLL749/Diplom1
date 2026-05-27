@@ -511,7 +511,10 @@ document.getElementById('save-all-btn').addEventListener('click', function() {
         add_services:     draft.addServices.map(function(s){return {id:s.id,hours:s.hours,factor:s.factor,tempId:s.tempId,employees:(s.employees||[]).map(function(e){return e.empId;})};}),
         remove_services:  Array.from(draft.removeServices),
         update_services:  draft.updateServices.map(function(s){return {wosId:s.wosId,hours:s.hours,factor:s.factor};}),
-        add_parts:        draft.addParts.map(function(p){return {partId:p.partId,qty:p.qty,markup:p.markup,wosId:p.wosId||null,tempWosId:p.tempWosId!=null?p.tempWosId:null};}),
+        add_parts:        draft.addParts.map(function(p){
+            var exp = (p.unitPrice != null) ? Math.round(p.unitPrice * p.qty * (1 + p.markup / 100) * 100) / 100 : null;
+            return {partId:p.partId,qty:p.qty,markup:p.markup,wosId:p.wosId||null,tempWosId:p.tempWosId!=null?p.tempWosId:null,expectedPrice:exp};
+        }),
         remove_parts:     Array.from(draft.removeParts),
         update_parts:     draft.updateParts.map(function(p){return {wopId:p.wopId,qty:p.qty,markup:p.markup};}),
         assign_employees: draft.assignEmployees.map(function(e){return {wosId:e.wosId,empId:e.empId};}),
@@ -825,17 +828,22 @@ function updatePartPricePreview() {
     var qty    = parseInt($('#part-qty').val()) || 1;
     var markup = parseFloat($('#part-markup').val()); if (isNaN(markup) || markup < 0) markup = 0;
 
+    $('#part-price-preview').hide();  // clear immediately while AJAX loads
     clearTimeout(_partPriceTimer);
     _partPriceTimer = setTimeout(function() {
         var req = $.getJSON('{% url "api_part_price" %}', {partId: partId, qty: qty}, function(data) {
             if (data.total_cost == null) { $('#part-price-preview').hide(); return; }
+            var avail = (data.available_qty != null) ? data.available_qty : qty;
+            var priced = Math.min(qty, avail);
             var sale_total = data.total_cost * (1 + markup / 100);
-            var unit = sale_total / qty;
-            $('#part-price-preview-val').text(
-                sale_total.toFixed(2) + ' руб. (' + unit.toFixed(2) + ' руб. × ' + qty + ' шт.)'
-            );
+            var unit = priced > 0 ? sale_total / priced : sale_total;
+            var txt = sale_total.toFixed(2) + ' руб. (' + unit.toFixed(2) + ' руб. × ' + priced + ' шт.)';
+            if (qty > avail) {
+                txt += ' — доступно только ' + avail + ' шт.';
+            }
+            $('#part-price-preview-val').text(txt);
             $('#part-price-preview').show();
-            partUnitPrice = data.total_cost / qty;  // per-unit cost (for staged display)
+            partUnitPrice = priced > 0 ? data.total_cost / priced : 0;  // per-unit cost (for staged display)
         });
     }, 200);
 }
@@ -1088,6 +1096,11 @@ $(document).on('click', '.wop-edit-btn', function() {
     $('.staged-part-edit-form').hide();
     $('.svc-inline-edit').hide();
     $('.staged-svc-edit-form').hide();
+    // Reset inputs to current staged values every time the form is opened (fix: cancel doesn't leave stale values)
+    if (!$form.is(':visible')) {
+        $form.find('.wop-qty-inp').val($(this).data('qty'));
+        $form.find('.wop-markup-inp').val($(this).data('markup'));
+    }
     $form.toggle();
     if ($form.is(':visible')) _updateWopPreview($container);
 });
@@ -1122,10 +1135,13 @@ function _updateWopPreview($c) {
         $.getJSON('{% url "api_part_price" %}', {wopId: wopId, qty: q}, function(data) {
             if (data.total_cost == null) { $c.find('.wop-price-preview').text(''); return; }
             _wopCostCache[wopId] = data.total_cost;
+            var avail = (data.available_qty != null) ? data.available_qty : q;
+            var priced = Math.min(q, avail);
             var sale_total = data.total_cost * (1 + nm / 100);
-            var unit = sale_total / q;
-            $c.find('.wop-price-preview').text(
-                '→ ' + sale_total.toFixed(2) + ' руб. (' + unit.toFixed(2) + ' × ' + q + ' шт.)');
+            var unit = priced > 0 ? sale_total / priced : sale_total;
+            var txt = '→ ' + sale_total.toFixed(2) + ' руб. (' + unit.toFixed(2) + ' × ' + priced + ' шт.)';
+            if (q > avail) txt += ' — доступно ' + avail + ' шт.';
+            $c.find('.wop-price-preview').text(txt);
         });
     }, 200);
 }

@@ -73,7 +73,6 @@ urlpatterns = [
     path('export/', views.export_db, name='export_db'),
     path('import/', views.import_db, name='import_db'),
     path('accounting-export/', views.accounting_export, name='accounting_export'),
-    path('action-log/', views.action_log, name='action_log'),
 
     # Аутентификация (login/logout)
     path('accounts/', include('accounts.urls')),
