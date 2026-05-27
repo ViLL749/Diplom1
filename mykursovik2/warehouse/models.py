@@ -274,6 +274,11 @@ class WorkOrderPart(models.Model):
         max_digits=5, decimal_places=2,
         verbose_name="Наценка (%)", default=30
     )
+    reserved_entries = models.JSONField(
+        default=list, blank=True,
+        verbose_name="Трекинг резерваций",
+        help_text='[{"entry_id": N, "qty": M}, ...]',
+    )
 
     @property
     def total_price(self):

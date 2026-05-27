@@ -203,7 +203,7 @@ class Command(BaseCommand):
 
         supply2 = SupplyDocument.objects.create(supplier=sup2)
 
-        receive(supply2, p_brake_f,  loc_b1, 16, 4,  Decimal('1800.00'))
+        receive(supply2, p_brake_f,  loc_b1, 20, 4,  Decimal('1800.00'))
         receive(supply2, p_brake_r,  loc_b1, 16, 4,  Decimal('1600.00'))
         receive(supply2, p_disc_f,   loc_b1,  8, 1,  Decimal('2800.00'))
         receive(supply2, p_belt,     loc_b2, 10, 1,  Decimal('2200.00'))
@@ -334,11 +334,15 @@ class Command(BaseCommand):
                 sale_price=sale_total, markup=Decimal(str(markup_pct)),
                 status='installed',
             )
+            remaining = qty
             for e in StockEntry.objects.filter(part=p):
-                if e.total_qty >= qty:
-                    e.total_qty -= qty
+                if remaining <= 0:
+                    break
+                take = min(e.total_qty, remaining)
+                if take > 0:
+                    e.total_qty -= take
                     e.save()
-                break
+                    remaining -= take
 
         def assign(wos_obj, *employees):
             for emp in employees:

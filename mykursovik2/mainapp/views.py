@@ -937,18 +937,52 @@ def orders_list(request):
 
 # ── Order helpers ─────────────────────────────────────────────
 
-def _unreserve_order_parts(order):
-    """Release stock reservations for all reserved parts in this order."""
-    from warehouse.models import WorkOrderPart, StockEntry
-    for wop in WorkOrderPart.objects.filter(work_order=order, status='reserved'):
+def _entries_cheapest_first(part):
+    """Return StockEntry objects sorted cheapest-first, matching _reserve_cheapest_first order.
+
+    _reserve_cheapest_first places reservations on the cheapest location first.
+    When releasing/issuing we must visit entries in the same order so we always
+    touch the entry where the reservation actually sits, not a random sibling.
+    """
+    from warehouse.models import StockEntry
+    from warehouse.views import _in_stock_batches
+    from decimal import Decimal as _D
+    loc_min_price = {}
+    for b in _in_stock_batches(part, available_only=False):
+        lid = b['location'].id
+        if lid not in loc_min_price or b['price_per_unit'] < loc_min_price[lid]:
+            loc_min_price[lid] = b['price_per_unit']
+    entries = list(StockEntry.objects.filter(part=part).select_related('location'))
+    entries.sort(key=lambda e: (loc_min_price.get(e.location_id, _D('999999')), e.id))
+    return entries
+
+
+def _release_wop_reservation(wop):
+    """Release stock reservation for a WOP using tracked entry list (or cheapest-first fallback)."""
+    from warehouse.models import StockEntry
+    tracked = wop.reserved_entries or []
+    if tracked:
+        for item in tracked:
+            entry = StockEntry.objects.filter(id=item['entry_id']).first()
+            if entry:
+                entry.reserved_qty -= min(entry.reserved_qty, item['qty'])
+                entry.save()
+    else:
         remaining = wop.quantity
-        for entry in StockEntry.objects.filter(part=wop.part):
+        for entry in _entries_cheapest_first(wop.part):
             if remaining <= 0:
                 break
             release = min(entry.reserved_qty, remaining)
             entry.reserved_qty -= release
             entry.save()
             remaining -= release
+
+
+def _unreserve_order_parts(order):
+    """Release stock reservations for all reserved parts in this order."""
+    from warehouse.models import WorkOrderPart
+    for wop in WorkOrderPart.objects.filter(work_order=order, status='reserved'):
+        _release_wop_reservation(wop)
         wop.status = 'cancelled'
         wop.save()
 
@@ -957,15 +991,25 @@ def _issue_order_parts(order):
     """Move reserved parts out of stock when an order is completed."""
     from warehouse.models import WorkOrderPart, StockEntry
     for wop in WorkOrderPart.objects.filter(work_order=order, status='reserved'):
-        remaining = wop.quantity
-        for entry in StockEntry.objects.filter(part=wop.part):
-            if remaining <= 0:
-                break
-            take = min(entry.reserved_qty, remaining)
-            entry.reserved_qty -= take
-            entry.total_qty -= take
-            entry.save()
-            remaining -= take
+        tracked = wop.reserved_entries or []
+        if tracked:
+            for item in tracked:
+                entry = StockEntry.objects.filter(id=item['entry_id']).first()
+                if entry:
+                    take = min(entry.reserved_qty, item['qty'])
+                    entry.reserved_qty -= take
+                    entry.total_qty -= take
+                    entry.save()
+        else:
+            remaining = wop.quantity
+            for entry in _entries_cheapest_first(wop.part):
+                if remaining <= 0:
+                    break
+                take = min(entry.reserved_qty, remaining)
+                entry.reserved_qty -= take
+                entry.total_qty -= take
+                entry.save()
+                remaining -= take
         wop.status = 'issued'
         wop.save()
 
@@ -1002,17 +1046,9 @@ def _recalculate_order_cost(order):
 
 def _unreserve_single_wop(wop):
     """Release stock reservation for one WorkOrderPart (reserved status only)."""
-    from warehouse.models import StockEntry
     if wop.status != 'reserved':
         return
-    remaining = wop.quantity
-    for entry in StockEntry.objects.filter(part=wop.part):
-        if remaining <= 0:
-            break
-        release = min(entry.reserved_qty, remaining)
-        entry.reserved_qty -= release
-        entry.save()
-        remaining -= release
+    _release_wop_reservation(wop)
 
 
 @login_required
@@ -1187,12 +1223,13 @@ def order_commit(request, pk):
                     wos = temp_wos_map.get(str(temp_wos_id))
                 else:
                     wos = WorkOrderService.objects.filter(pk=wos_id, work_order=order).first() if wos_id else None
+                shortage, res_entries = _reserve_cheapest_first(part, qty)
                 WorkOrderPart.objects.create(
                     work_order=order, part=part, quantity=qty,
                     markup=markup, sale_price=sale_price,
                     work_order_service=wos, status='reserved',
+                    reserved_entries=res_entries,
                 )
-                _reserve_cheapest_first(part, qty)
                 log_events.append({
                     'event': 'part_added',
                     'article': part.article,
@@ -1233,25 +1270,46 @@ def order_commit(request, pk):
                     if delta > 0:
                         # Price BEFORE reserving so _min_stock_price sees available batches
                         extra_cost = _min_stock_price(wop.part, delta)
-                        shortage = _reserve_cheapest_first(wop.part, delta)
+                        shortage, new_res = _reserve_cheapest_first(wop.part, delta)
                         if shortage > 0:
                             warnings.append(f'{wop.part.article}: не удалось зарезервировать {shortage} шт.')
                             actually_reserved = delta - shortage
                             new_qty -= shortage
-                            # Scale extra_cost to what was actually reserved
                             if extra_cost and actually_reserved > 0:
                                 extra_cost = extra_cost * _Decimal(actually_reserved) / _Decimal(delta)
                             else:
                                 extra_cost = _Decimal('0')
+                        # Merge new reservation tracking into wop
+                        tracked = list(wop.reserved_entries or [])
+                        for nr in new_res:
+                            merged = False
+                            for ex in tracked:
+                                if ex['entry_id'] == nr['entry_id']:
+                                    ex['qty'] += nr['qty']
+                                    merged = True
+                                    break
+                            if not merged:
+                                tracked.append(nr)
+                        wop.reserved_entries = tracked
                     else:
+                        # Release excess — remove from most-expensive end (last in list)
                         to_release = -delta
-                        for entry in StockEntry.objects.filter(part=wop.part):
+                        tracked = list(wop.reserved_entries or [])
+                        new_tracked = []
+                        for item in reversed(tracked):
                             if to_release <= 0:
-                                break
-                            release = min(entry.reserved_qty, to_release)
-                            entry.reserved_qty -= release
-                            entry.save()
+                                new_tracked.insert(0, item)
+                                continue
+                            entry = StockEntry.objects.filter(id=item['entry_id']).first()
+                            release = min(item['qty'], to_release)
+                            if entry and release > 0:
+                                entry.reserved_qty -= release
+                                entry.save()
                             to_release -= release
+                            remaining_in_item = item['qty'] - release
+                            if remaining_in_item > 0:
+                                new_tracked.insert(0, {'entry_id': item['entry_id'], 'qty': remaining_in_item})
+                        wop.reserved_entries = new_tracked
                 if (new_markup != wop.markup or new_qty != wop.quantity) and wop.sale_price and wop.quantity:
                     old_factor = 1 + wop.markup / _Decimal('100')
                     old_cost = wop.sale_price / old_factor  # total purchase cost without markup
@@ -1267,7 +1325,7 @@ def order_commit(request, pk):
                     ).quantize(_Decimal('0.01'))
                 wop.quantity = new_qty
                 wop.markup   = new_markup
-                wop.save()
+                wop.save(update_fields=['quantity', 'markup', 'sale_price', 'reserved_entries'])
                 log_events.append({
                     'event': 'part_updated',
                     'article': wop.part.article if wop.part else '—',

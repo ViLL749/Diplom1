@@ -130,15 +130,17 @@ def _min_stock_price(part, quantity=1):
 def _reserve_cheapest_first(part, quantity):
     """Reserve `quantity` units picking cheapest available batches first.
 
-    Matches the batch ordering of _min_stock_price so price and reservation
-    always refer to the same physical stock.
-    Returns number of units that could not be reserved (shortage).
+    Returns (shortage, reserved_entries) where:
+      shortage        = units that could not be reserved (0 = fully reserved)
+      reserved_entries = [{'entry_id': id, 'qty': n}, ...] — exact entries touched,
+                         in cheapest-first order (used for deterministic issue/unreserve).
     """
     avail_batches = _in_stock_batches(part, available_only=True)
     if not avail_batches:
-        return quantity
+        return quantity, []
     by_price = sorted(avail_batches, key=lambda b: b['price_per_unit'])
     remaining = quantity
+    reserved_entries = []
     for batch in by_price:
         if remaining <= 0:
             break
@@ -150,8 +152,9 @@ def _reserve_cheapest_first(part, quantity):
             continue
         entry.reserved_qty += use
         entry.save()
+        reserved_entries.append({'entry_id': entry.id, 'qty': use})
         remaining -= use
-    return remaining
+    return remaining, reserved_entries
 
 
 def _recalculate_order_cost(order):
@@ -1118,20 +1121,48 @@ def workorderpart_update(request, pk):
 
             if delta != 0 and wop.status == 'reserved':
                 if delta > 0:
-                    # Reserve extra units from cheapest available batches first
-                    shortage = _reserve_cheapest_first(wop.part, delta)
+                    shortage, new_res = _reserve_cheapest_first(wop.part, delta)
                     if shortage > 0:
-                        messages.warning(request, f'Не удалось зарезервировать {shortage} шт. — недостаточно на складе.')
+                        actually_reserved = delta - shortage
+                        new_qty -= shortage
+                        form.instance.quantity = new_qty
+                        if form.instance.sale_price and delta > 0:
+                            form.instance.sale_price = (
+                                form.instance.sale_price * Decimal(actually_reserved) / Decimal(delta)
+                            ).quantize(Decimal('0.01'))
+                        messages.warning(request, f'Не удалось зарезервировать {shortage} шт. — сохранено {old_qty + actually_reserved} шт.')
+                    # Merge new reservations into tracked list
+                    existing = list(wop.reserved_entries or [])
+                    for nr in new_res:
+                        merged = False
+                        for ex in existing:
+                            if ex['entry_id'] == nr['entry_id']:
+                                ex['qty'] += nr['qty']
+                                merged = True
+                                break
+                        if not merged:
+                            existing.append(nr)
+                    form.instance.reserved_entries = existing
                 else:
-                    # Release excess reservation
+                    # Release excess — remove from most-expensive end (last in list = highest price)
                     to_release = -delta
-                    for entry in StockEntry.objects.filter(part=wop.part):
+                    tracked = list(wop.reserved_entries or [])
+                    from warehouse.models import StockEntry as _SE
+                    new_tracked = []
+                    for item in reversed(tracked):
                         if to_release <= 0:
-                            break
-                        release = min(entry.reserved_qty, to_release)
-                        entry.reserved_qty -= release
-                        entry.save()
+                            new_tracked.insert(0, item)
+                            continue
+                        entry = _SE.objects.filter(id=item['entry_id']).first()
+                        release = min(item['qty'], to_release)
+                        if entry and release > 0:
+                            entry.reserved_qty -= release
+                            entry.save()
                         to_release -= release
+                        remaining_in_item = item['qty'] - release
+                        if remaining_in_item > 0:
+                            new_tracked.insert(0, {'entry_id': item['entry_id'], 'qty': remaining_in_item})
+                    form.instance.reserved_entries = new_tracked
 
             form.save()
             _recalculate_order_cost(wop.work_order)
@@ -1155,14 +1186,24 @@ def workorderpart_delete(request, pk):
     order_pk = wop.work_order.pk
     if request.method == 'POST':
         if wop.status == 'reserved':
-            remaining = wop.quantity
-            for entry in StockEntry.objects.filter(part=wop.part):
-                if remaining <= 0:
-                    break
-                release = min(entry.reserved_qty, remaining)
-                entry.reserved_qty -= release
-                entry.save()
-                remaining -= release
+            from warehouse.models import StockEntry as _SE
+            tracked = wop.reserved_entries or []
+            if tracked:
+                for item in tracked:
+                    entry = _SE.objects.filter(id=item['entry_id']).first()
+                    if entry:
+                        entry.reserved_qty -= min(entry.reserved_qty, item['qty'])
+                        entry.save()
+            else:
+                from mainapp.views import _entries_cheapest_first
+                remaining = wop.quantity
+                for entry in _entries_cheapest_first(wop.part):
+                    if remaining <= 0:
+                        break
+                    release = min(entry.reserved_qty, remaining)
+                    entry.reserved_qty -= release
+                    entry.save()
+                    remaining -= release
         order = wop.work_order
         wop.delete()
         _recalculate_order_cost(order)
