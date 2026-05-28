@@ -3,38 +3,159 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Регистрация</title>
+    <title>Регистрация — Автосервис</title>
     {% load static %}
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous">
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: var(--bg);
+            padding: 24px 0;
+        }
+        .auth-card {
+            background: var(--surface);
+            border-radius: var(--r-lg);
+            box-shadow: var(--shadow-md);
+            width: 100%;
+            max-width: 420px;
+            padding: 36px 36px 28px;
+        }
+        .auth-logo {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .auth-logo .icon-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 52px;
+            height: 52px;
+            background: var(--primary);
+            border-radius: 50%;
+            margin-bottom: 12px;
+        }
+        .auth-logo .icon-wrap i { font-size: 1.4em; color: #fff; }
+        .auth-logo h2 {
+            margin: 0;
+            font-size: 1.4em;
+            font-weight: 700;
+            color: var(--txt);
+            border: none;
+            padding: 0;
+        }
+        .auth-logo p {
+            margin: 4px 0 0;
+            font-size: .87em;
+            color: var(--txt-muted);
+        }
+        .auth-footer {
+            text-align: center;
+            margin-top: 18px;
+            font-size: .87em;
+            color: var(--txt-muted);
+        }
+        .auth-footer a { font-weight: 600; }
+        .auth-submit {
+            width: 100%;
+            justify-content: center;
+            padding: 10px;
+            font-size: .95em;
+            margin-top: 6px;
+        }
+        .field-icon { position: relative; }
+        .field-icon i {
+            position: absolute;
+            left: 11px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--txt-light);
+            font-size: .85em;
+            pointer-events: none;
+        }
+        .field-icon input { padding-left: 32px; }
+        .hint-text {
+            font-size: .78em;
+            color: var(--txt-light);
+            margin-top: 3px;
+            line-height: 1.4;
+        }
+        .pending-notice {
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            border-radius: var(--r);
+            padding: 10px 14px;
+            font-size: .85em;
+            color: #92400e;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .pending-notice i { margin-top: 2px; flex-shrink: 0; }
+    </style>
 </head>
 <body>
-    <div class="auth-container">
-        <h2>Регистрация</h2>
+    <div class="auth-card">
+        <div class="auth-logo">
+            <div class="icon-wrap"><i class="fas fa-user-plus"></i></div>
+            <h2>Регистрация</h2>
+            <p>Создайте аккаунт для доступа к системе</p>
+        </div>
+
+        <div class="pending-notice">
+            <i class="fas fa-info-circle"></i>
+            После регистрации аккаунт требует активации администратором.
+        </div>
+
         {% if form.errors and request.method == "POST" %}
-            <div class="form-errors">
-                <ul>
-                    {% for field in form %}
-                        {% for error in field.errors %}
-                            <li>{{ field.label }}: {{ error }}</li>
-                        {% endfor %}
+        <div class="form-errors">
+            <ul>
+                {% for field in form %}
+                    {% for error in field.errors %}
+                        <li>{{ field.label }}: {{ error }}</li>
                     {% endfor %}
-                    {% for error in form.non_field_errors %}
-                        <li>{{ error }}</li>
-                    {% endfor %}
-                </ul>
-            </div>
+                {% endfor %}
+                {% for error in form.non_field_errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
         {% endif %}
+
         <form method="POST" novalidate>
             {% csrf_token %}
             {% for field in form %}
-                <div class="form-field">
-                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            <div class="form-field">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                <div class="field-icon">
+                    {% if field.html_name == "username" %}<i class="fas fa-user"></i>
+                    {% elif field.html_name == "email" %}<i class="fas fa-envelope"></i>
+                    {% elif field.html_name == "password1" or field.html_name == "password2" %}<i class="fas fa-lock"></i>
+                    {% endif %}
                     {{ field }}
                 </div>
+                {% if field.help_text %}
+                    <p class="hint-text">{{ field.help_text }}</p>
+                {% endif %}
+                {% if field.errors %}
+                    {% for error in field.errors %}
+                        <span class="error">{{ error }}</span>
+                    {% endfor %}
+                {% endif %}
+            </div>
             {% endfor %}
-            <button type="submit" class="btn">Зарегистрироваться</button>
+            <button type="submit" class="btn auth-submit">
+                <i class="fas fa-check"></i> Зарегистрироваться
+            </button>
         </form>
-        <p>Уже есть аккаунт? <a href="{% url 'login' %}">Войдите здесь</a></p>
+
+        <div class="auth-footer">
+            Уже есть аккаунт? <a href="{% url 'login' %}">Войдите здесь</a>
+        </div>
     </div>
 </body>
 </html>

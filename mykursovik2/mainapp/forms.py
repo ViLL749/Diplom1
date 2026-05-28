@@ -173,6 +173,8 @@ class ClientCarForm(forms.ModelForm):
         self.fields['client'].queryset = Client.objects.all()
         self.fields['vin'].required = False
         self.fields['make'].queryset = CarMake.objects.all()
+        self.fields['plate_country'].widget.attrs.update({'style': 'width:auto;max-width:none;flex-shrink:0;'})
+        self.fields['license_plate'].widget.attrs.update({'style': 'width:220px;max-width:220px;'})
         if self.instance.pk:
             self.fields['model'].queryset = CarModel.objects.filter(make=self.instance.make)
         elif make_id:
@@ -225,11 +227,21 @@ class ClientCarForm(forms.ModelForm):
 
 # Кастомная форма для регистрации
 class CustomUserCreationForm(UserCreationForm):
-    email = forms.EmailField()
+    email = forms.EmailField(label='Email')
 
     class Meta:
         model = User
         fields = ('username', 'email', 'password1', 'password2')
+        labels = {
+            'username': 'Имя пользователя',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['password1'].label = 'Пароль'
+        self.fields['password2'].label = 'Повторите пароль'
+        self.fields['password1'].help_text = 'Минимум 8 символов. Не используйте только цифры или слишком простые пароли.'
+        self.fields['password2'].help_text = ''
 
 
 from django import forms
@@ -238,9 +250,10 @@ from django.contrib.auth.forms import AuthenticationForm
 class CustomAuthenticationForm(AuthenticationForm):
     username = forms.CharField(
         max_length=254,
-        label='Имя пользователя'  # Устанавливаем метку на русском
+        label='Имя пользователя',
     )
     password = forms.CharField(
-        widget=forms.PasswordInput,
-        label='Пароль'  # Устанавливаем метку на русском
+        widget=forms.PasswordInput(attrs={'autocomplete': 'current-password'}),
+        label='Пароль',
+        strip=False,
     )

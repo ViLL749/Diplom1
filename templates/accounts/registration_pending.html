@@ -3,15 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Регистрация ожидает подтверждения</title>
+    <title>Ожидание активации — Автосервис</title>
     {% load static %}
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous">
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: var(--bg);
+        }
+        .auth-card {
+            background: var(--surface);
+            border-radius: var(--r-lg);
+            box-shadow: var(--shadow-md);
+            width: 100%;
+            max-width: 420px;
+            padding: 44px 36px 36px;
+            text-align: center;
+        }
+        .success-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            height: 64px;
+            background: #f0fdf4;
+            border: 2px solid #86efac;
+            border-radius: 50%;
+            margin-bottom: 20px;
+        }
+        .success-icon i { font-size: 1.8em; color: #16a34a; }
+        h2 {
+            border: none;
+            padding: 0;
+            margin-bottom: 12px;
+            font-size: 1.4em;
+        }
+        .desc {
+            color: var(--txt-muted);
+            font-size: .92em;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+    </style>
 </head>
 <body>
-    <div class="auth-container">
-        <h1>Регистрация ожидает подтверждения</h1>
-        <p>Ваша учетная запись будет активирована после подтверждения.</p>
-        <p>Уже есть аккаунт? <a href="{% url 'login' %}">Войдите здесь</a></p>
+    <div class="auth-card">
+        <div class="success-icon"><i class="fas fa-check"></i></div>
+        <h2>Заявка отправлена</h2>
+        <p class="desc">
+            Ваш аккаунт создан и ожидает активации администратором.<br>
+            После активации вы сможете войти в систему.
+        </p>
+        <a href="{% url 'login' %}" class="btn" style="justify-content:center;">
+            <i class="fas fa-sign-in-alt"></i> Перейти к входу
+        </a>
     </div>
 </body>
 </html>

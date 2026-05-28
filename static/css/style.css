@@ -340,6 +340,7 @@ input[type="text"],
 input[type="number"],
 input[type="email"],
 input[type="date"],
+input[type="password"],
 input[type="search"],
 select,
 textarea,
@@ -369,6 +370,7 @@ input[type="text"]:focus,
 input[type="number"]:focus,
 input[type="email"]:focus,
 input[type="date"]:focus,
+input[type="password"]:focus,
 input[type="search"]:focus,
 select:focus,
 textarea:focus,
@@ -393,6 +395,7 @@ form input[type="text"],
 form input[type="number"],
 form input[type="email"],
 form input[type="date"],
+form input[type="password"],
 form input[type="file"],
 form select,
 form textarea {
@@ -400,6 +403,23 @@ form textarea {
   max-width: 420px;
 }
 form input[type="file"] { height: auto; padding: 6px 11px; }
+
+/* Auth form fields — full width inside card */
+.auth-container .form-field { margin-bottom: 14px; text-align: left; }
+.auth-container .form-field label {
+  display: block;
+  font-size: .85em;
+  font-weight: 600;
+  color: var(--txt-muted);
+  margin-bottom: 5px;
+  letter-spacing: .01em;
+}
+.auth-container input[type="text"],
+.auth-container input[type="email"],
+.auth-container input[type="password"] {
+  max-width: 100%;
+  width: 100%;
+}
 
 /* Form error text */
 .error, p.error {
