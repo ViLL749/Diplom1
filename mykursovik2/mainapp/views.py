@@ -2194,9 +2194,9 @@ def accounting_export(request):
         for o in orders
         for w in o.work_order_services.all()
     )
-    # Запчасти: выручка = sale_price × qty
+    # Запчасти: sale_price уже содержит итог (цена × кол-во), умножать на qty не нужно
     parts_revenue = sum(
-        (w.sale_price or Decimal('0')) * w.quantity
+        (w.sale_price or Decimal('0'))
         for o in orders
         for w in o.work_order_parts.all()
     )
