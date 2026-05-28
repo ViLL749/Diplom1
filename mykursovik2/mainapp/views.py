@@ -1519,6 +1519,7 @@ def order_create(request):
         order_form = OrderForm(request.POST)
         if client_form.is_valid() and order_form.is_valid():
             order = order_form.save(commit=False)
+            order.status = 'Первичный осмотр'
             ws = WorkshopSettings.objects.first()
             if ws:
                 order.org_snapshot = ws.as_snapshot()

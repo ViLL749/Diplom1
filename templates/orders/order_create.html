@@ -19,7 +19,7 @@
     </div>
 
     <p>{{ order_form.order_date.label_tag }} {{ order_form.order_date }}</p>
-    <p>{{ order_form.status.label_tag }} {{ order_form.status }}</p>
+    <p><label>Статус:</label> <span style="color:#64748b;">Первичный осмотр</span></p>
     <p>{{ order_form.comment.label_tag }} {{ order_form.comment }}</p>
 
     <div style="margin-top:16px;">
@@ -149,7 +149,6 @@ $(document).ready(function() {
         var errors = [];
         if (!$('#id_client_car').val()) errors.push('Необходимо выбрать клиента и автомобиль.');
         if (!$('#id_order_date').val()) errors.push('Укажите дату заказа.');
-        if (!$('#id_status').val()) errors.push('Укажите статус заказа.');
         if (errors.length) {
             e.preventDefault();
             var html = '<p>Исправьте ошибки:</p><ul>' + errors.map(function(x) { return '<li>' + x + '</li>'; }).join('') + '</ul>';

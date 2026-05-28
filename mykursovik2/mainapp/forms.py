@@ -34,13 +34,10 @@ class OrderForm(forms.ModelForm):
             if self.instance.order_date:
                 self.initial['order_date'] = self.instance.order_date.strftime('%Y-%m-%d')
         else:
-            # При создании исключаем статус "Завершён" и "Отменён"
+            # При создании статус всегда «Первичный осмотр» — поле не показываем
             self.fields['client_car'].queryset = ClientCar.objects.all()
             self.initial['order_date'] = timezone.now().date().strftime('%Y-%m-%d')
-            self.fields['status'].choices = [
-                (key, value) for key, value in Order.STATUS_CHOICES
-                if key not in ('Завершён', 'Отменён')
-            ]
+            del self.fields['status']
 
     def clean_client_car(self):
         client_car = self.cleaned_data.get('client_car')
@@ -255,5 +252,5 @@ class CustomAuthenticationForm(AuthenticationForm):
     password = forms.CharField(
         widget=forms.PasswordInput(attrs={'autocomplete': 'current-password'}),
         label='Пароль',
-        strip=False,
+        strip=True,
     )

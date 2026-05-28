@@ -2,10 +2,8 @@
 {% block title %}Лист отборки — заказ №{{ order.id }}{% endblock %}
 {% block content %}
 <h1>Лист отборки — заказ-наряд №{{ order.id }}</h1>
-{% if order.client_car %}
-<p><strong>Клиент:</strong> {{ order.client_car.client.fio }}</p>
-<p><strong>Автомобиль:</strong> {{ order.client_car.make.name }} {{ order.client_car.model.name }} ({{ order.client_car.license_plate|default:'' }})</p>
-{% endif %}
+<p><strong>Клиент:</strong> {{ order.client_fio_static|default:"—" }}</p>
+<p><strong>Автомобиль:</strong> {{ order.car_details_static|default:"—" }}</p>
 
 <a href="{% url 'order_detail' order.id %}" class="btn">Вернуться к заказу</a>
 <button onclick="window.print()" class="btn">Печать</button>
