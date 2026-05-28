@@ -242,8 +242,6 @@ class SupplyItem(models.Model):
 class WorkOrderPart(models.Model):
     STATUS_CHOICES = [
         ('reserved', 'Зарезервировано'),
-        ('issued', 'Выдано'),
-        ('installed', 'Установлено'),
         ('cancelled', 'Отменено'),
     ]
 
@@ -260,7 +258,7 @@ class WorkOrderPart(models.Model):
         verbose_name="Услуга в заказ-наряде",
         related_name='parts',
     )
-    part = models.ForeignKey(Part, on_delete=models.CASCADE, verbose_name="Деталь")
+    part = models.ForeignKey(Part, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Деталь")
     quantity = models.IntegerField(verbose_name="Количество")
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES,
@@ -278,6 +276,12 @@ class WorkOrderPart(models.Model):
         default=list, blank=True,
         verbose_name="Трекинг резерваций",
         help_text='[{"entry_id": N, "qty": M}, ...]',
+    )
+    part_article_snapshot = models.CharField(
+        max_length=100, blank=True, verbose_name="Артикул (снапшот)"
+    )
+    part_name_snapshot = models.CharField(
+        max_length=255, blank=True, verbose_name="Название детали (снапшот)"
     )
 
     @property
@@ -382,12 +386,16 @@ class WorkOrderServiceEmployee(models.Model):
         related_name='assignments'
     )
     employee = models.ForeignKey(
-        Employee, on_delete=models.CASCADE,
+        Employee, on_delete=models.SET_NULL,
+        null=True, blank=True,
         verbose_name="Сотрудник",
         related_name='assignments'
     )
     # Frozen at assignment time — changing the employee's coefficient later
     # will not affect already-recorded work.
+    employee_name_snapshot = models.CharField(
+        max_length=255, blank=True, verbose_name="ФИО сотрудника (снапшот)"
+    )
     salary_coefficient_snapshot = models.DecimalField(
         max_digits=4, decimal_places=2, null=True, blank=True,
         verbose_name="К. ЗП (снапшот)"
@@ -405,14 +413,14 @@ class WorkOrderServiceEmployee(models.Model):
         rate = self.work_order_service.hourly_rate_snapshot or Decimal('0')
         hours = self.work_order_service.hours_applied / Decimal(n)
         coeff = self.salary_coefficient_snapshot if self.salary_coefficient_snapshot is not None \
-            else (self.employee.salary_coefficient or Decimal('1'))
+            else (self.employee.salary_coefficient if self.employee else Decimal('1'))
         return hours * rate * coeff
 
     def __str__(self):
-        return f"{self.employee.name} → {self.work_order_service}"
+        name = self.employee_name_snapshot or (self.employee.name if self.employee else '—')
+        return f"{name} → {self.work_order_service}"
 
     class Meta:
-        unique_together = ('work_order_service', 'employee')
         verbose_name = "Назначение сотрудника"
         verbose_name_plural = "Назначения сотрудников"
 
@@ -451,9 +459,34 @@ class WriteOffItem(models.Model):
 
 
 class WorkshopSettings(models.Model):
+    ORG_TYPE_CHOICES = [
+        ('ИП', 'ИП'),
+        ('ООО', 'ООО'),
+        ('АО', 'АО'),
+        ('ПАО', 'ПАО'),
+        ('ЗАО', 'ЗАО'),
+    ]
+
     hourly_rate = models.DecimalField(
         max_digits=10, decimal_places=2,
         verbose_name="Стоимость нормо-часа (руб.)", default=2000
+    )
+
+    # Organisation details
+    org_type = models.CharField(
+        max_length=10, choices=ORG_TYPE_CHOICES,
+        verbose_name="Форма организации", blank=True, default='ИП'
+    )
+    org_name = models.CharField(max_length=255, verbose_name="Название организации / ФИО ИП", blank=True)
+    inn = models.CharField(max_length=12, verbose_name="ИНН", blank=True)
+    kpp = models.CharField(max_length=9, verbose_name="КПП (для ООО/АО)", blank=True)
+    ogrn = models.CharField(max_length=13, verbose_name="ОГРН (для ООО/АО)", blank=True)
+    ogrnip = models.CharField(max_length=15, verbose_name="ОГРНИП (для ИП)", blank=True)
+    org_address = models.CharField(max_length=500, verbose_name="Адрес", blank=True)
+    org_phone = models.CharField(max_length=50, verbose_name="Телефон организации", blank=True)
+    org_email = models.EmailField(max_length=254, verbose_name="Email организации", blank=True)
+    warranty_days = models.PositiveIntegerField(
+        verbose_name="Срок гарантии (дней)", default=30
     )
 
     def __str__(self):
@@ -462,6 +495,20 @@ class WorkshopSettings(models.Model):
     def save(self, *args, **kwargs):
         self.pk = 1
         super().save(*args, **kwargs)
+
+    def as_snapshot(self):
+        return {
+            'org_type': self.org_type,
+            'org_name': self.org_name,
+            'inn': self.inn,
+            'kpp': self.kpp,
+            'ogrn': self.ogrn,
+            'ogrnip': self.ogrnip,
+            'org_address': self.org_address,
+            'org_phone': self.org_phone,
+            'org_email': self.org_email,
+            'warranty_days': self.warranty_days,
+        }
 
     class Meta:
         verbose_name = "Настройки сервиса"

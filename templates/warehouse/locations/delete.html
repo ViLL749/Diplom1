@@ -2,11 +2,23 @@
 {% block title %}Удалить место хранения{% endblock %}
 {% block content %}
 <h1>Удалить место хранения?</h1>
-<p>Вы уверены, что хотите удалить место <strong>{{ location.label }}</strong>?</p>
-<p>Все остатки на этом месте также будут удалены.</p>
+<p>Место: <strong>{{ location.label }}</strong></p>
+
+{% if has_stock %}
+<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+    <strong style="color:#991b1b;">Удаление невозможно</strong>
+    <p style="margin:6px 0 0;color:#7f1d1d;">
+        На этом месте хранения есть товары или зарезервированные остатки.<br>
+        Сначала переместите или спишите весь товар.
+    </p>
+</div>
+<a href="{% url 'location_detail' location.id %}" class="btn">← Назад</a>
+{% else %}
+<p style="color:#64748b;font-size:.9em;">История поступлений на это место сохранится в документах прихода.</p>
 <form method="post">
     {% csrf_token %}
     <button type="submit" class="btn btn-danger">Удалить</button>
     <a href="{% url 'location_detail' location.id %}" class="btn">Отмена</a>
 </form>
+{% endif %}
 {% endblock %}

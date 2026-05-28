@@ -2,7 +2,11 @@
 {% block title %}Удалить деталь из заказ-наряда{% endblock %}
 {% block content %}
 <h1>Удалить деталь из заказ-наряда №{{ wop.work_order.id }}?</h1>
-<p><strong>Деталь:</strong> {{ wop.part.article }} — {{ wop.part.name }}</p>
+<p><strong>Деталь:</strong>
+    {% if wop.part_article_snapshot %}{{ wop.part_article_snapshot }}{% elif wop.part %}{{ wop.part.article }}{% else %}—{% endif %}
+    —
+    {% if wop.part_name_snapshot %}{{ wop.part_name_snapshot }}{% elif wop.part %}{{ wop.part.name }}{% else %}—{% endif %}
+</p>
 <p><strong>Количество:</strong> {{ wop.quantity }}</p>
 {% if wop.status == 'reserved' %}
 <p>Резерв на складе будет снят автоматически.</p>

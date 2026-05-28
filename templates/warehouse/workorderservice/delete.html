@@ -2,7 +2,7 @@
 {% block title %}Удалить услугу из заказ-наряда{% endblock %}
 {% block content %}
 <h1>Удалить услугу из заказ-наряда №{{ wos.work_order.id }}?</h1>
-<p><strong>Услуга:</strong> {{ wos.service.name }}</p>
+<p><strong>Услуга:</strong> {% if wos.service_name_snapshot %}{{ wos.service_name_snapshot }}{% elif wos.service %}{{ wos.service.name }}{% else %}—{% endif %}</p>
 <p><strong>Часы:</strong> {{ wos.hours_applied }} ч. × коэф. {{ wos.complexity_factor }} = {{ wos.final_price|floatformat:2 }} руб.</p>
 <form method="post">
     {% csrf_token %}

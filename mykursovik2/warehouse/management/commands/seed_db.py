@@ -372,7 +372,7 @@ class Command(BaseCommand):
                 work_order=order, work_order_service=wos_obj,
                 part=p, quantity=qty,
                 sale_price=sale_total, markup=Decimal(str(markup_pct)),
-                status='installed',
+                status='cancelled',
             )
             remaining = qty
             for e in StockEntry.objects.filter(part=p):

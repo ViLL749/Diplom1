@@ -2,15 +2,88 @@
 {% block title %}Настройки сервиса{% endblock %}
 {% block content %}
 <h1>Настройки сервиса</h1>
-<form method="post">
+
+{% if form.warnings %}
+<div style="background:#fffbeb;border:1px solid #fbbf24;border-radius:8px;padding:12px 16px;margin-bottom:16px;max-width:600px;">
+    <strong style="color:#92400e;">Предупреждения (форма не сохранена из-за ошибок выше, но также обратите внимание):</strong>
+    <ul style="margin:6px 0 0;padding-left:20px;color:#92400e;font-size:.9em;">
+        {% for w in form.warnings %}<li>{{ w }}</li>{% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<form method="post" style="max-width:600px;">
     {% csrf_token %}
-    {% for field in form %}
-    <div>
-        <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
-        {{ field }}
-        {% if field.errors %}<p class="error">{{ field.errors|join:", " }}</p>{% endif %}
+
+    <h2 style="margin-top:0;">Тарификация</h2>
+    <div class="form-field">
+        <label for="{{ form.hourly_rate.id_for_label }}">{{ form.hourly_rate.label }}:</label>
+        {{ form.hourly_rate }}
+        {% if form.hourly_rate.errors %}<p class="error">{{ form.hourly_rate.errors|join:", " }}</p>{% endif %}
     </div>
-    {% endfor %}
-    <button type="submit" class="btn">Сохранить</button>
+
+    <h2>Данные организации</h2>
+    <p style="font-size:.85em;color:var(--txt-muted);margin-top:-8px;">
+        Эти данные отображаются в PDF-документах для клиентов и фиксируются снапшотом при создании заказа.
+    </p>
+
+    <div class="form-field">
+        <label for="{{ form.org_type.id_for_label }}">{{ form.org_type.label }}:</label>
+        {{ form.org_type }}
+        {% if form.org_type.errors %}<p class="error">{{ form.org_type.errors|join:", " }}</p>{% endif %}
+    </div>
+    <div class="form-field">
+        <label for="{{ form.org_name.id_for_label }}">{{ form.org_name.label }}:</label>
+        {{ form.org_name }}
+        {% if form.org_name.errors %}<p class="error">{{ form.org_name.errors|join:", " }}</p>{% endif %}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-field">
+            <label for="{{ form.inn.id_for_label }}">{{ form.inn.label }}:</label>
+            {{ form.inn }}
+            {% if form.inn.errors %}<p class="error">{{ form.inn.errors|join:", " }}</p>{% endif %}
+        </div>
+        <div class="form-field">
+            <label for="{{ form.kpp.id_for_label }}">{{ form.kpp.label }}: <small style="color:var(--txt-muted);">(только для ООО/АО)</small></label>
+            {{ form.kpp }}
+            {% if form.kpp.errors %}<p class="error">{{ form.kpp.errors|join:", " }}</p>{% endif %}
+        </div>
+        <div class="form-field">
+            <label for="{{ form.ogrnip.id_for_label }}">{{ form.ogrnip.label }}: <small style="color:var(--txt-muted);">(для ИП)</small></label>
+            {{ form.ogrnip }}
+            {% if form.ogrnip.errors %}<p class="error">{{ form.ogrnip.errors|join:", " }}</p>{% endif %}
+        </div>
+        <div class="form-field">
+            <label for="{{ form.ogrn.id_for_label }}">{{ form.ogrn.label }}: <small style="color:var(--txt-muted);">(для ООО/АО)</small></label>
+            {{ form.ogrn }}
+            {% if form.ogrn.errors %}<p class="error">{{ form.ogrn.errors|join:", " }}</p>{% endif %}
+        </div>
+    </div>
+    <div class="form-field">
+        <label for="{{ form.org_address.id_for_label }}">{{ form.org_address.label }}:</label>
+        {{ form.org_address }}
+        {% if form.org_address.errors %}<p class="error">{{ form.org_address.errors|join:", " }}</p>{% endif %}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-field">
+            <label for="{{ form.org_phone.id_for_label }}">{{ form.org_phone.label }}:</label>
+            {{ form.org_phone }}
+            {% if form.org_phone.errors %}<p class="error">{{ form.org_phone.errors|join:", " }}</p>{% endif %}
+        </div>
+        <div class="form-field">
+            <label for="{{ form.org_email.id_for_label }}">{{ form.org_email.label }}:</label>
+            {{ form.org_email }}
+            {% if form.org_email.errors %}<p class="error">{{ form.org_email.errors|join:", " }}</p>{% endif %}
+        </div>
+    </div>
+
+    <h2>Гарантия</h2>
+    <div class="form-field">
+        <label for="{{ form.warranty_days.id_for_label }}">{{ form.warranty_days.label }}:</label>
+        {{ form.warranty_days }}
+        {% if form.warranty_days.errors %}<p class="error">{{ form.warranty_days.errors|join:", " }}</p>{% endif %}
+    </div>
+
+    <button type="submit" class="btn" style="margin-top:8px;">Сохранить</button>
 </form>
 {% endblock %}

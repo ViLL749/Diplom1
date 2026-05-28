@@ -33,7 +33,7 @@
         <select name="work_order_service" style="width:320px;">
             <option value="">— не привязывать —</option>
             {% for wos in wos_list %}
-            <option value="{{ wos.id }}">{{ wos.service.name }} ({{ wos.hours_applied }} ч.)</option>
+            <option value="{{ wos.id }}">{% if wos.service_name_snapshot %}{{ wos.service_name_snapshot }}{% elif wos.service %}{{ wos.service.name }}{% else %}—{% endif %} ({{ wos.hours_applied }} ч.)</option>
             {% endfor %}
         </select>
     </div>

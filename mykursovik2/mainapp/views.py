@@ -789,15 +789,36 @@ from .models import ServiceType
 
 
 def service_type_delete(request, pk):
+    from warehouse.models import WorkOrderService
     service_type = get_object_or_404(ServiceType, pk=pk)
+
+    active_statuses = ('Первичный осмотр', 'Диагностика', 'В работе', 'Готов')
+    active_wos = WorkOrderService.objects.filter(
+        service__service_type=service_type,
+        work_order__status__in=active_statuses,
+    ).select_related('work_order')
+    active_orders = list({w.work_order for w in active_wos})
+
     if request.method == 'POST':
+        if active_orders:
+            order_ids = ', '.join(f'№{o.id}' for o in active_orders)
+            messages.error(
+                request,
+                f'Нельзя удалить тип услуги «{service_type.name}»: '
+                f'его услуги используются в активных заказах {order_ids}.'
+            )
+            return redirect('service_management')
         service_type.delete()
         messages.success(request, 'Тип услуги успешно удалён!')
         return redirect('service_management')
     return render(request, 'confirm_delete.html', {
         'object': service_type,
         'deleted_object_type': 'ServiceType',
-        'cancel_url': reverse('service_management')
+        'cancel_url': reverse('service_management'),
+        'extra_warning': (
+            f'Будут удалены все услуги этого типа ({service_type.service_set.count()} шт.). '
+            'Данные завершённых заказов сохранятся (названия зафиксированы в снапшоте).'
+        ) if not active_orders else None,
     })
 
 
@@ -967,7 +988,7 @@ def _release_wop_reservation(wop):
             if entry:
                 entry.reserved_qty -= min(entry.reserved_qty, item['qty'])
                 entry.save()
-    else:
+    elif wop.part:
         remaining = wop.quantity
         for entry in _entries_cheapest_first(wop.part):
             if remaining <= 0:
@@ -1010,7 +1031,7 @@ def _issue_order_parts(order):
                 entry.total_qty -= take
                 entry.save()
                 remaining -= take
-        wop.status = 'issued'
+        wop.status = 'cancelled'
         wop.save()
 
 
@@ -1101,6 +1122,7 @@ def order_commit(request, pk):
                     svc_name = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
                     for wop in wos.parts.filter(status='reserved'):
                         _unreserve_single_wop(wop)
+                    wos.parts.all().delete()
                     wos.delete()
                     log_events.append({'event': 'service_removed', 'service': svc_name})
 
@@ -1146,11 +1168,21 @@ def order_commit(request, pk):
                     continue
                 asgn, created = WorkOrderServiceEmployee.objects.get_or_create(
                     work_order_service=wos, employee=emp,
-                    defaults={'salary_coefficient_snapshot': emp.salary_coefficient},
+                    defaults={
+                        'salary_coefficient_snapshot': emp.salary_coefficient,
+                        'employee_name_snapshot': emp.name,
+                    },
                 )
-                if not created and asgn.salary_coefficient_snapshot is None:
-                    asgn.salary_coefficient_snapshot = emp.salary_coefficient
-                    asgn.save(update_fields=['salary_coefficient_snapshot'])
+                if not created:
+                    update_fields = []
+                    if asgn.salary_coefficient_snapshot is None:
+                        asgn.salary_coefficient_snapshot = emp.salary_coefficient
+                        update_fields.append('salary_coefficient_snapshot')
+                    if not asgn.employee_name_snapshot:
+                        asgn.employee_name_snapshot = emp.name
+                        update_fields.append('employee_name_snapshot')
+                    if update_fields:
+                        asgn.save(update_fields=update_fields)
                 if created:
                     log_events.append({
                         'event': 'employee_assigned',
@@ -1187,7 +1219,10 @@ def order_commit(request, pk):
                         WorkOrderServiceEmployee.objects.get_or_create(
                             work_order_service=wos,
                             employee=emp,
-                            defaults={'salary_coefficient_snapshot': emp.salary_coefficient},
+                            defaults={
+                                'salary_coefficient_snapshot': emp.salary_coefficient,
+                                'employee_name_snapshot': emp.name,
+                            },
                         )
                 log_events.append({
                     'event': 'service_added',
@@ -1240,6 +1275,8 @@ def order_commit(request, pk):
                     markup=markup, sale_price=sale_price,
                     work_order_service=wos, status='reserved',
                     reserved_entries=res_entries,
+                    part_article_snapshot=part.article or '',
+                    part_name_snapshot=part.name or '',
                 )
                 log_events.append({
                     'event': 'part_added',
@@ -1345,8 +1382,14 @@ def order_commit(request, pk):
                     'markup': str(new_markup),
                 })
 
-            # 9. Update order status / comment
+            # 9. Update order status / comment / payment / mileage
             order_upd = data.get('order_update')
+            if order_upd:
+                # Block all field changes on completed orders
+                if order.status == 'Завершён':
+                    errors.append('Заказ завершён — изменение статуса и параметров запрещено.')
+                    order_upd = None
+
             if order_upd:
                 new_status = order_upd.get('status', order.status)
                 new_comment = order_upd.get('comment', order.comment or '')
@@ -1358,6 +1401,58 @@ def order_commit(request, pk):
                         'from': order.comment or '—',
                         'to': new_comment or '—',
                     })
+
+                # Payment method — only allowed when order is/becomes 'Готов'
+                effective_status = new_status
+                if effective_status != 'Готов' and order.status != 'Готов':
+                    order_upd['payment_method'] = order.payment_method  # ignore submitted value
+
+                new_payment = order_upd.get('payment_method', order.payment_method)
+                if new_payment != order.payment_method:
+                    payment_labels = dict(Order.PAYMENT_METHOD_CHOICES)
+                    log_field_changes.append({
+                        'field': 'Форма оплаты',
+                        'from': payment_labels.get(order.payment_method, order.payment_method or '—'),
+                        'to': payment_labels.get(new_payment, new_payment or '—'),
+                    })
+                order.payment_method = new_payment or None
+
+                # Mileage
+                raw_mileage = order_upd.get('mileage')
+                if raw_mileage is not None and raw_mileage != '':
+                    try:
+                        new_mileage = int(raw_mileage)
+                    except (ValueError, TypeError):
+                        new_mileage = order.mileage
+                else:
+                    new_mileage = order.mileage
+
+                if new_mileage is not None and new_mileage != order.mileage:
+                    mileage_reason = (order_upd.get('mileage_change_reason') or '').strip()
+                    log_field_changes.append({
+                        'field': 'Пробег',
+                        'from': str(order.mileage) if order.mileage is not None else '—',
+                        'reason': mileage_reason or '—',
+                        'to': str(new_mileage),
+                    })
+                    if order.mileage is not None:
+                        order.mileage_prev = order.mileage
+                        order.mileage_change_reason = mileage_reason or None
+                order.mileage = new_mileage
+
+                if new_status == 'Завершён' and order.status != 'Готов':
+                    errors.append(
+                        'Нельзя завершить заказ: текущий статус должен быть «Готов». '
+                        'Сначала переведите заказ в статус «Готов» и укажите форму оплаты.'
+                    )
+                    new_status = order.status  # revert
+                elif new_status == 'Завершён' and not (order.payment_method or new_payment):
+                    errors.append(
+                        'Нельзя завершить заказ: не указана форма оплаты. '
+                        'Укажите форму оплаты в статусе «Готов» перед завершением.'
+                    )
+                    new_status = order.status  # revert
+
                 if new_status == 'Отменён':
                     _unreserve_order_parts(order)
                     _freeze_service_snapshots(order)
@@ -1376,7 +1471,7 @@ def order_commit(request, pk):
                             for w in WorkOrderService.objects.filter(work_order=order).select_related('service')
                         )
                         wop_sum = "; ".join(
-                            f"{w.part.article} × {w.quantity}"
+                            f"{w.part_article_snapshot or (w.part.article if w.part else '—')} × {w.quantity}"
                             for w in WorkOrderPart.objects.filter(work_order=order).select_related('part')
                         )
                         order.services_static = wos_sum or "Нет услуг"
@@ -1418,11 +1513,16 @@ def _json_response(data, status=200):
 
 @login_required
 def order_create(request):
+    from warehouse.models import WorkshopSettings
     if request.method == 'POST':
         client_form = ClientSelectionForm(request.POST)
         order_form = OrderForm(request.POST)
         if client_form.is_valid() and order_form.is_valid():
-            order = order_form.save()
+            order = order_form.save(commit=False)
+            ws = WorkshopSettings.objects.first()
+            if ws:
+                order.org_snapshot = ws.as_snapshot()
+            order.save()
             messages.success(request, 'Заказ создан.')
             return redirect('order_detail', pk=order.pk)
     else:
@@ -1468,6 +1568,26 @@ def order_detail(request, pk):
 
     unlinked_wop_list = [w for w in wop_list if not w.work_order_service]
 
+    # Detect if live car/client data differs from snapshot (to show a note in the card)
+    car_snap_live = None
+    if order.car_snapshot and order.client_car:
+        cs = order.car_snapshot
+        cc = order.client_car
+        live = {
+            'client_fio':   cc.client.fio,
+            'client_phone': cc.client.phone or '',
+            'make':         cc.make.name,
+            'model':        cc.model.name,
+            'plate':        cc.license_plate or '',
+            'vin':          cc.vin or '',
+        }
+        changed = [k for k in live if cs.get(k, '') != live[k]]
+        if changed:
+            car_snap_live = {
+                'client': f'{live["client_fio"]}' + (f', {live["client_phone"]}' if live['client_phone'] else ''),
+                'car':    f'{live["make"]} {live["model"]}' + (f' ({live["plate"]})' if live['plate'] else ''),
+            }
+
     return render(request, 'orders/order_detail.html', {
         'order': order,
         'wos_list': wos_list,
@@ -1482,6 +1602,8 @@ def order_detail(request, pk):
         'editable': order.status not in ('Завершён', 'Отменён'),
         'order_version': order.updated_at.isoformat(),
         'order_status_choices': Order.STATUS_CHOICES,
+        'payment_method_choices': Order.PAYMENT_METHOD_CHOICES,
+        'car_snap_live': car_snap_live,
     })
 
 
@@ -1528,7 +1650,7 @@ def order_update(request, pk):
                         for w in _WOS.objects.filter(work_order=order).select_related('service')
                     )
                     wop_sum = "; ".join(
-                        f"{w.part.article} × {w.quantity}"
+                        f"{w.part_article_snapshot or (w.part.article if w.part else '—')} × {w.quantity}"
                         for w in _WOP.objects.filter(work_order=order).select_related('part')
                     )
                     order_obj.services_static = wos_sum or "Нет услуг"
@@ -1831,8 +1953,10 @@ def accounting_export(request):
         ws3.append([
             o.order_date, o.completion_date or '', o.pk, o.status,
             cname,
-            wop.part.article, wop.part.name,
-            wop.part.brand or '—', wop.part.category or '—',
+            wop.part_article_snapshot or (wop.part.article if wop.part else '—'),
+            wop.part_name_snapshot or (wop.part.name if wop.part else '—'),
+            (wop.part.brand if wop.part else '—') or '—',
+            (wop.part.category if wop.part else '—') or '—',
             wop.quantity, float(unit_p), float(wop.markup), float(total) if is_done else '',
         ])
         style_row(ws3, i + 1, len(headers3), is_money_cols={11, 13})
@@ -1953,7 +2077,7 @@ def accounting_export(request):
         n     = wos.assignments.count() or 1
         rate  = wos.hourly_rate_snapshot or Decimal('0')
         coeff = asgn.salary_coefficient_snapshot if asgn.salary_coefficient_snapshot is not None \
-            else (emp.salary_coefficient or Decimal('1'))
+            else ((emp.salary_coefficient if emp else None) or Decimal('1'))
         hours_share = (wos.hours_applied / Decimal(n)).quantize(Decimal('0.01'))
         earn  = (hours_share * rate * coeff).quantize(Decimal('0.01'))
         total_fot += earn
@@ -1961,11 +2085,13 @@ def accounting_export(request):
         cname = o.client_fio_static or (o.client_car.client.fio if o.client_car else '—')
         car   = o.car_details_static or '—'
         sname = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
+        emp_name = asgn.employee_name_snapshot or (emp.name if emp else '—')
+        emp_pos  = (emp.position if emp else None) or '—'
 
         row_num = i + 3
         ws5.append([
             o.completion_date, o.pk, cname, car,
-            emp.name, emp.position or '—', sname,
+            emp_name, emp_pos, sname,
             float(hours_share), float(rate), float(coeff), float(earn),
         ])
         fill = alt_fill(i)
@@ -2333,7 +2459,10 @@ def order_mechanic_pdf(request, pk):
         for wos in wos_list:
             name  = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
             rate  = str(wos.hourly_rate_snapshot or '—')
-            emps  = ', '.join(a.employee.name for a in wos.assignments.all()) or '—'
+            emps  = ', '.join(
+                a.employee_name_snapshot or (a.employee.name if a.employee else '—')
+                for a in wos.assignments.all()
+            ) or '—'
             svc_data.append([
                 p(name), p(wos.hours_applied), p(wos.complexity_factor),
                 p(rate), p(emps),
@@ -2353,15 +2482,15 @@ def order_mechanic_pdf(request, pk):
         # Widths: Артикул(2.1) Название(5.5) Кол-во(1.3) Место(2.8) Статус(2.2) Услуга(3.3) = 17.2
         part_data = [[ph('Артикул'), ph('Название'), ph('Кол-во'), ph('Место хранения'), ph('Статус'), ph('Услуга')]]
         for wop in wop_list:
-            entry = wop.part.stock_entries.first()
+            entry = wop.part.stock_entries.first() if wop.part else None
             loc   = entry.location.label if entry else '—'
             svc_name = '—'
             if wop.work_order_service:
                 svc_name = (wop.work_order_service.service_name_snapshot or
                             (wop.work_order_service.service.name if wop.work_order_service.service else '—'))
             part_data.append([
-                p(wop.part.article),
-                p(wop.part.name),
+                p(wop.part_article_snapshot or (wop.part.article if wop.part else '—')),
+                p(wop.part_name_snapshot or (wop.part.name if wop.part else '—')),
                 p(wop.quantity),
                 p(loc),
                 p(wop.get_status_display()),
@@ -2384,7 +2513,7 @@ def _make_customer_pdf(order, is_final: bool):
     from reportlab.lib.units import cm
     from reportlab.platypus import (
         SimpleDocTemplate, Table, TableStyle,
-        Paragraph, Spacer, HRFlowable,
+        Paragraph, Spacer, HRFlowable, KeepTogether,
     )
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.pdfbase import pdfmetrics
@@ -2413,30 +2542,40 @@ def _make_customer_pdf(order, is_final: bool):
                             leftMargin=2*cm, rightMargin=2*cm,
                             topMargin=2*cm, bottomMargin=2*cm)
 
-    BLUE     = colors.HexColor('#1e40af')
-    GREY     = colors.HexColor('#cbd5e1')
-    STRIPE   = colors.HexColor('#f0f4ff')
-    DARKTEXT = colors.HexColor('#1e293b')
+    BLUE      = colors.HexColor('#1e40af')
+    BLUE_DARK = colors.HexColor('#1e3a8a')
+    GREY      = colors.HexColor('#cbd5e1')
+    STRIPE    = colors.HexColor('#f0f4ff')
+    DARKTEXT  = colors.HexColor('#1e293b')
+    MUTED     = colors.HexColor('#64748b')
+    WARN_BG   = colors.HexColor('#fef9c3')
+    WARN_TXT  = colors.HexColor('#92400e')
 
-    H1  = ParagraphStyle('H1',  fontName=fn, fontSize=15, leading=20, textColor=BLUE, spaceAfter=2)
-    SUB = ParagraphStyle('SUB', fontName=fn, fontSize=9,  leading=12, textColor=colors.HexColor('#64748b'), spaceAfter=6)
-    H2  = ParagraphStyle('H2',  fontName=fn, fontSize=10, leading=13, textColor=BLUE, spaceBefore=8, spaceAfter=3)
+    H1  = ParagraphStyle('H1',  fontName=fn, fontSize=16, leading=20, textColor=BLUE_DARK, spaceAfter=2)
+    H1S = ParagraphStyle('H1S', fontName=fn, fontSize=10, leading=13, textColor=MUTED, spaceAfter=4)
+    SUB = ParagraphStyle('SUB', fontName=fn, fontSize=8,  leading=11, textColor=MUTED, spaceAfter=4)
+    H2  = ParagraphStyle('H2',  fontName=fn, fontSize=10, leading=13, textColor=BLUE, spaceBefore=8, spaceAfter=4)
     NR  = ParagraphStyle('NR',  fontName=fn, fontSize=9,  leading=12, textColor=DARKTEXT)
     SIG = ParagraphStyle('SIG', fontName=fn, fontSize=9,  leading=14, textColor=DARKTEXT)
     PRE = ParagraphStyle('PRE', fontName=fn, fontSize=8,  leading=11,
-                         textColor=colors.HexColor('#b45309'),
-                         backColor=colors.HexColor('#fef9c3'),
+                         textColor=WARN_TXT, backColor=WARN_BG,
                          spaceAfter=8, leftIndent=6, rightIndent=6)
+    ORG = ParagraphStyle('ORG', fontName=fn, fontSize=8,  leading=11, textColor=DARKTEXT)
+    ORG_LBL = ParagraphStyle('ORGL', fontName=fn, fontSize=7, leading=9, textColor=MUTED)
+    LEGAL = ParagraphStyle('LEG', fontName=fn, fontSize=7, leading=10,
+                           textColor=MUTED, spaceAfter=6)
 
     def ch(text):
         return Paragraph(str(text), ParagraphStyle('ch', fontName=fn, fontSize=8, leading=10,
                                                     textColor=colors.white))
-    def cb(text, bold=False):
-        st = ParagraphStyle('cb', fontName=fn, fontSize=8, leading=10)
-        if bold:
-            st = ParagraphStyle('cbb', fontName=fn, fontSize=8, leading=10,
-                                textColor=DARKTEXT)
-        return Paragraph(str(text) if text is not None else '—', st)
+
+    def cb(text, align='LEFT'):
+        return Paragraph(str(text) if text is not None else '—',
+                         ParagraphStyle('cb', fontName=fn, fontSize=8, leading=10, alignment={'RIGHT':2,'CENTER':1}.get(align, 0)))
+
+    def cb_bold(text):
+        return Paragraph(str(text) if text is not None else '—',
+                         ParagraphStyle('cbb', fontName=fn, fontSize=9, leading=11, textColor=DARKTEXT))
 
     def make_table(data, col_widths):
         t = Table(data, colWidths=col_widths, repeatRows=1)
@@ -2452,190 +2591,307 @@ def _make_customer_pdf(order, is_final: bool):
         ]))
         return t
 
+    # ── Extract org data ─────────────────────────
+    org = order.org_snapshot or {}
+    org_type    = org.get('org_type', '')
+    org_name    = org.get('org_name', '')
+    inn         = org.get('inn', '')
+    kpp         = org.get('kpp', '')
+    ogrn        = org.get('ogrn', '')
+    ogrnip      = org.get('ogrnip', '')
+    org_address = org.get('org_address', '')
+    org_phone   = org.get('org_phone', '')
+    org_email   = org.get('org_email', '')
+    warranty_days = org.get('warranty_days', 30)
+
     story = []
+    PAGE_W = A4[0] - 4*cm  # usable width
 
-    # ── Header ──────────────────────────────────
-    title = 'Заказ-наряд' if is_final else 'Предварительный заказ-наряд'
-    story.append(Paragraph(f'{title} №{order.id}', H1))
+    # ── Org header block ─────────────────────────
+    if org_name or org_type:
+        full_org_name = f'{org_type} {org_name}'.strip() if org_name else org_type
+        org_detail_parts = []
+        if inn:
+            org_detail_parts.append(f'ИНН: {inn}')
+        if kpp and org_type != 'ИП':
+            org_detail_parts.append(f'КПП: {kpp}')
+        reg_no = ogrnip if org_type == 'ИП' else ogrn
+        if reg_no:
+            label = 'ОГРНИП' if org_type == 'ИП' else 'ОГРН'
+            org_detail_parts.append(f'{label}: {reg_no}')
+        org_detail_str = '   |   '.join(org_detail_parts) if org_detail_parts else ''
 
-    date_line = f'Дата оформления: {order.order_date.strftime("%d.%m.%Y")}'
+        contact_parts = []
+        if org_address:
+            contact_parts.append(org_address)
+        if org_phone:
+            contact_parts.append(f'Тел.: {org_phone}')
+        if org_email:
+            contact_parts.append(f'Email: {org_email}')
+        contact_str = '   |   '.join(contact_parts)
+
+        org_data = [[
+            Paragraph(full_org_name, ParagraphStyle('on', fontName=fn, fontSize=11, leading=14, textColor=BLUE_DARK)),
+            Paragraph(
+                f'<font size="7" color="#64748b">{org_detail_str}</font><br/>'
+                f'<font size="7" color="#64748b">{contact_str}</font>',
+                ParagraphStyle('od', fontName=fn, fontSize=7, leading=10, textColor=MUTED),
+            ),
+        ]]
+        org_tbl = Table(org_data, colWidths=[7*cm, PAGE_W - 7*cm])
+        org_tbl.setStyle(TableStyle([
+            ('VALIGN',      (0,0), (-1,-1), 'MIDDLE'),
+            ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ('RIGHTPADDING',(0,0), (-1,-1), 0),
+            ('TOPPADDING',  (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING',(0,0), (-1,-1), 0),
+        ]))
+        story.append(org_tbl)
+        story.append(HRFlowable(width='100%', thickness=1, color=BLUE, spaceBefore=6, spaceAfter=6))
+
+    # ── Title ────────────────────────────────────
+    if is_final:
+        doc_title = f'АКТ ВЫПОЛНЕННЫХ РАБОТ  №{order.id}'
+        doc_subtitle = 'Заказ-наряд'
+    else:
+        doc_title = f'ЗАКАЗ-НАРЯД  №{order.id}'
+        doc_subtitle = 'Предварительный — цены могут измениться до выдачи автомобиля'
+
+    story.append(Paragraph(doc_title, H1))
+    story.append(Paragraph(doc_subtitle, H1S))
+
+    date_parts = [f'Дата оформления: {order.order_date.strftime("%d.%m.%Y")}']
     if is_final and order.completion_date:
-        date_line += f'   |   Дата завершения: {order.completion_date.strftime("%d.%m.%Y")}'
-    story.append(Paragraph(date_line, SUB))
+        date_parts.append(f'Дата выдачи: {order.completion_date.strftime("%d.%m.%Y")}')
+    story.append(Paragraph('   |   '.join(date_parts), SUB))
 
     if not is_final:
         story.append(Paragraph(
-            'Предварительный документ — стоимость работ и запчастей может измениться.',
+            'Предварительный документ. Окончательная стоимость определяется после выполнения работ.',
             PRE
         ))
 
-    story.append(HRFlowable(width='100%', thickness=1, color=BLUE, spaceAfter=6))
+    story.append(HRFlowable(width='100%', thickness=0.5, color=GREY, spaceAfter=6))
 
-    # ── Client / Car info ────────────────────────
-    client_name = order.client_fio_static or (order.client_car.client.fio if order.client_car else '—')
-    client_phone = (order.client_car.client.phone if order.client_car else '') or ''
-    car_str = order.car_details_static or '—'
-    vin_str = ''
-    if order.client_car and order.client_car.vin:
-        vin_str = order.client_car.vin
+    # ── Client + Car info (two-column) ────────────
+    cs = order.car_snapshot or {}
+    client_name  = cs.get('client_fio') or order.client_fio_static or (order.client_car.client.fio if order.client_car else '—')
+    client_phone = cs.get('client_phone') or (order.client_car.client.phone if order.client_car else '') or ''
+    vin_str      = cs.get('vin') or (order.client_car.vin if order.client_car else '') or ''
+    plate_str    = cs.get('plate') or (order.client_car.license_plate if order.client_car else '') or ''
+    car_make     = cs.get('make') or (order.client_car.make.name if order.client_car else '') or order.car_details_static or ''
+    car_model    = cs.get('model') or (order.client_car.model.name if order.client_car else '') or ''
+    car_year     = cs.get('year') or (order.client_car.year if order.client_car else None)
+    car_color    = cs.get('color') or (order.client_car.color if order.client_car else '') or ''
 
-    LBL = ParagraphStyle('LBL', fontName=fn, fontSize=8, leading=10,
-                          textColor=colors.HexColor('#475569'))
-    VAL = ParagraphStyle('VAL', fontName=fn, fontSize=8, leading=10, textColor=DARKTEXT)
+    def info_block(rows):
+        """rows = [(label, value), ...]"""
+        items = []
+        for lbl, val in rows:
+            items.append(Paragraph(lbl, ORG_LBL))
+            items.append(Paragraph(str(val) if val else '—', ORG))
+        return items
 
-    info_rows = [[Paragraph('Параметр', ParagraphStyle('lh', fontName=fn, fontSize=8, leading=10, textColor=colors.white)),
-                  Paragraph('Значение',  ParagraphStyle('lh', fontName=fn, fontSize=8, leading=10, textColor=colors.white))]]
-    def irow(label, val):
-        return [Paragraph(label, LBL), Paragraph(str(val) if val else '—', VAL)]
+    col_w = (PAGE_W - 0.5*cm) / 2
 
-    info_rows.append(irow('Клиент', client_name))
-    if client_phone:
-        info_rows.append(irow('Телефон', client_phone))
-    info_rows.append(irow('Автомобиль', car_str))
-    if vin_str:
-        info_rows.append(irow('VIN', vin_str))
-    if order.comment:
-        info_rows.append(irow('Описание', order.comment))
+    client_block = info_block([
+        ('Клиент', client_name),
+        ('Телефон', client_phone or '—'),
+    ])
+    car_name = f'{car_make} {car_model}'.strip() or '—'
+    if car_year:
+        car_name += f' ({car_year} г.)'
+    car_rows = [
+        ('Марка / Модель', car_name),
+        ('Госномер', plate_str or '—'),
+        ('VIN', vin_str or '—'),
+    ]
+    if car_color:
+        car_rows.append(('Цвет', car_color))
+    if order.mileage is not None:
+        if order.mileage_prev is not None:
+            mileage_val = f'{order.mileage} (изменён с {order.mileage_prev})'
+            if order.mileage_change_reason:
+                mileage_val += f'; причина: {order.mileage_change_reason}'
+            car_rows.append(('Пробег (км)', mileage_val))
+        else:
+            car_rows.append(('Пробег при приёмке, км', order.mileage))
+    car_block = info_block(car_rows)
 
-    story.append(make_table(info_rows, [3.5*cm, 13.7*cm]))
-    story.append(Spacer(1, 0.3*cm))
-
-    # ── Services ────────────────────────────────
-    wos_list = list(order.work_order_services.all())
-    wop_list = list(
-        order.work_order_parts
-        .select_related('part')
-        .all()
+    two_col = Table(
+        [[client_block, car_block]],
+        colWidths=[col_w, col_w + 0.5*cm],
     )
+    two_col.setStyle(TableStyle([
+        ('VALIGN',          (0,0), (-1,-1), 'TOP'),
+        ('LEFTPADDING',     (0,0), (-1,-1), 0),
+        ('RIGHTPADDING',    (0,0), (-1,-1), 4),
+        ('TOPPADDING',      (0,0), (-1,-1), 0),
+        ('BOTTOMPADDING',   (0,0), (-1,-1), 0),
+    ]))
+    story.append(two_col)
+
+    if order.comment:
+        story.append(Spacer(1, 0.2*cm))
+        story.append(Paragraph(f'Описание: {order.comment}', ORG))
+
+    story.append(Spacer(1, 0.4*cm))
+
+    # ── Services ─────────────────────────────────
+    wos_list = list(order.work_order_services.all())
+    wop_list = list(order.work_order_parts.select_related('part').all())
 
     if wos_list:
-        story.append(Paragraph('Работы', H2))
-        # Услуга | Часы | Коэф. | Стоимость
-        svc_rows = [[ch('Наименование работы'), ch('Часы'), ch('Коэф.'), ch('Стоимость, руб.')]]
-        for wos in wos_list:
+        story.append(Paragraph('Выполненные работы', H2))
+        svc_rows = [[ch('№'), ch('Наименование работы'), ch('Часы'), ch('Коэф.'), ch('Сумма, руб.')]]
+        for i, wos in enumerate(wos_list, 1):
             name  = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
             price = f'{wos.final_price:.2f}' if wos.final_price else '—'
-            svc_rows.append([cb(name), cb(wos.hours_applied), cb(wos.complexity_factor), cb(price)])
-        story.append(make_table(svc_rows, [9.7*cm, 2.0*cm, 2.0*cm, 3.5*cm]))
+            svc_rows.append([cb(i), cb(name), cb(wos.hours_applied), cb(wos.complexity_factor), cb(price, 'RIGHT')])
+        svc_tbl = make_table(svc_rows, [0.8*cm, 10.5*cm, 1.5*cm, 1.5*cm, 3.0*cm])
+        svc_tbl.setStyle(TableStyle([
+            ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ]))
+        story.append(svc_tbl)
         story.append(Spacer(1, 0.3*cm))
 
     # ── Parts ────────────────────────────────────
     if wop_list:
         story.append(Paragraph('Запчасти и материалы', H2))
-        # Артикул | Наименование | Кол-во | Цена | Сумма
-        part_rows = [[ch('Артикул'), ch('Наименование'), ch('Кол-во'), ch('Цена, руб.'), ch('Сумма, руб.')]]
-        for wop in wop_list:
-            total      = f'{wop.sale_price:.2f}' if wop.sale_price else '—'
+        part_rows = [[ch('№'), ch('Артикул'), ch('Наименование'), ch('Кол-во'), ch('Цена, руб.'), ch('Сумма, руб.')]]
+        for i, wop in enumerate(wop_list, 1):
             unit_price = f'{wop.sale_price / wop.quantity:.2f}' if wop.sale_price and wop.quantity else '—'
-            part_rows.append([
-                cb(wop.part.article),
-                cb(wop.part.name),
-                cb(wop.quantity),
-                cb(unit_price),
-                cb(total),
-            ])
-        story.append(make_table(part_rows, [2.2*cm, 7.5*cm, 1.5*cm, 2.5*cm, 3.5*cm]))
+            total      = f'{wop.sale_price:.2f}' if wop.sale_price else '—'
+            article = wop.part_article_snapshot or (wop.part.article if wop.part else '—')
+            name    = wop.part_name_snapshot    or (wop.part.name    if wop.part else '—')
+            part_rows.append([cb(i), cb(article), cb(name), cb(wop.quantity, 'RIGHT'),
+                               cb(unit_price, 'RIGHT'), cb(total, 'RIGHT')])
+        part_tbl = make_table(part_rows, [0.8*cm, 2.2*cm, 7.2*cm, 1.3*cm, 2.4*cm, 3.4*cm])
+        part_tbl.setStyle(TableStyle([
+            ('ALIGN', (3, 0), (-1, -1), 'RIGHT'),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ]))
+        story.append(part_tbl)
         story.append(Spacer(1, 0.3*cm))
 
     # ── Totals ───────────────────────────────────
-    svc_total  = sum(w.final_price or Decimal('0') for w in wos_list)
-    part_total = sum((w.sale_price or Decimal('0')) for w in wop_list)
+    svc_total  = sum(w.final_price  or Decimal('0') for w in wos_list)
+    part_total = sum(w.sale_price   or Decimal('0') for w in wop_list)
     grand      = svc_total + part_total
 
+    BOLD_NR = ParagraphStyle('BNR', fontName=fn, fontSize=10, leading=13, textColor=DARKTEXT)
     total_rows = [
         [Paragraph('', NR), Paragraph('Работы:', NR), Paragraph(f'{svc_total:.2f} руб.', NR)],
-        [Paragraph('', NR), Paragraph('Запчасти:', NR), Paragraph(f'{part_total:.2f} руб.', NR)],
+        [Paragraph('', NR), Paragraph('Запчасти и материалы:', NR), Paragraph(f'{part_total:.2f} руб.', NR)],
+        [Paragraph('', BOLD_NR), Paragraph('ИТОГО:', BOLD_NR), Paragraph(f'{grand:.2f} руб.', BOLD_NR)],
     ]
-    # Bold total row
-    BOLD_NR = ParagraphStyle('BNR', fontName=fn, fontSize=10, leading=13, textColor=DARKTEXT)
-    total_rows.append([
-        Paragraph('', BOLD_NR),
-        Paragraph('ИТОГО:', BOLD_NR),
-        Paragraph(f'{grand:.2f} руб.', BOLD_NR),
-    ])
-    tot_tbl = Table(total_rows, colWidths=[9.7*cm, 4.0*cm, 3.5*cm])
+    if order.payment_method:
+        labels = dict(Order.PAYMENT_METHOD_CHOICES)
+        total_rows.append([
+            Paragraph('', NR),
+            Paragraph('Форма оплаты:', NR),
+            Paragraph(labels.get(order.payment_method, order.payment_method), NR),
+        ])
+    tot_tbl = Table(total_rows, colWidths=[9.7*cm, 4.3*cm, 3.3*cm])
     tot_tbl.setStyle(TableStyle([
-        ('ALIGN',       (1, 0), (-1, -1), 'RIGHT'),
-        ('LINEABOVE',   (0, 2), (-1, 2), 0.5, GREY),
-        ('TOPPADDING',  (0, 0), (-1, -1), 3),
+        ('ALIGN',        (1, 0), (-1, -1), 'RIGHT'),
+        ('LINEABOVE',    (0, 2), (-1, 2), 0.8, DARKTEXT),
+        ('LINEBELOW',    (0, 2), (-1, 2), 0.8, DARKTEXT),
+        ('TOPPADDING',   (0, 0), (-1, -1), 3),
         ('BOTTOMPADDING',(0, 0), (-1, -1), 3),
-        ('FONTNAME',    (0, 0), (-1, -1), fn),
-        ('FONTSIZE',    (0, 0), (-1, 1), 8),
-        ('FONTSIZE',    (0, 2), (-1, 2), 10),
+        ('FONTNAME',     (0, 0), (-1, -1), fn),
+        ('FONTSIZE',     (0, 0), (-1, 1), 8),
+        ('FONTSIZE',     (0, 2), (-1, 2), 10),
+        ('FONTSIZE',     (0, 3), (-1, 3), 8),
     ]))
     story.append(tot_tbl)
 
-    # ── Signatures (final only) ──────────────────
-    if is_final:
-        story.append(Spacer(1, 0.8*cm))
-        story.append(HRFlowable(width='100%', thickness=0.5, color=GREY, spaceAfter=6))
-
-        HINT = ParagraphStyle('hint', fontName=fn, fontSize=7,
-                              leading=9, textColor=colors.HexColor('#9ca3af'))
-        BLANK = [Paragraph('', SIG)] * 4
-        date_str = (order.completion_date.strftime('%d.%m.%Y')
-                    if order.completion_date else '________________')
-
-        # Collect unique employees across all work order services
-        seen_emp_ids = set()
-        unique_employees = []
-        for wos in order.work_order_services.prefetch_related('assignments__employee').all():
-            for asgn in wos.assignments.all():
-                emp = asgn.employee
-                if emp.pk not in seen_emp_ids:
-                    seen_emp_ids.add(emp.pk)
-                    unique_employees.append(emp)
-        if not unique_employees:
-            unique_employees = [None]  # one blank row
-
-        sig_data = []
-        for emp in unique_employees:
-            fio_fill = emp.name if emp else '______________________'
-            sig_data.append([
-                Paragraph('Работу выполнил:', SIG),
-                Paragraph('_______________________', SIG),
-                Paragraph(f'/ {fio_fill} /', SIG),
-                Paragraph(f'Дата: {date_str}', SIG),
-            ])
-            sig_data.append([
-                Paragraph('', SIG),
-                Paragraph('(подпись)', HINT),
-                Paragraph('(ФИО)', HINT),
-                Paragraph('', SIG),
-            ])
-            sig_data.append(BLANK)
-
-        sig_data += [
-            [
-                Paragraph('Работу принял:', SIG),
-                Paragraph('_______________________', SIG),
-                Paragraph('/ ______________________ /', SIG),
-                Paragraph('Дата: ________________', SIG),
-            ],
-            [
-                Paragraph('', SIG),
-                Paragraph('(подпись)', HINT),
-                Paragraph('(ФИО)', HINT),
-                Paragraph('', SIG),
-            ],
-        ]
-
-        sig_tbl = Table(sig_data, colWidths=[3.5*cm, 4.5*cm, 5.0*cm, 4.2*cm])
-        sig_tbl.setStyle(TableStyle([
-            ('FONTNAME',    (0,0), (-1,-1), fn),
-            ('FONTSIZE',    (0,0), (-1,-1), 9),
-            ('VALIGN',      (0,0), (-1,-1), 'BOTTOM'),
-            ('TOPPADDING',  (0,0), (-1,-1), 2),
-            ('BOTTOMPADDING',(0,0), (-1,-1), 2),
-        ]))
-        story.append(sig_tbl)
+    # ── Warranty block ───────────────────────────
+    if is_final and warranty_days:
         story.append(Spacer(1, 0.4*cm))
+        story.append(HRFlowable(width='100%', thickness=0.5, color=GREY, spaceAfter=5))
         story.append(Paragraph(
-            'Подписывая данный документ, клиент подтверждает, что выполненные работы '
-            'приняты в полном объёме, претензий к качеству не имеется.',
-            ParagraphStyle('note', fontName=fn, fontSize=7, leading=10,
-                           textColor=colors.HexColor('#94a3b8'))
+            f'Гарантийные обязательства: гарантийный срок на выполненные работы составляет '
+            f'{warranty_days} ({"тридцать" if warranty_days == 30 else str(warranty_days)}) календарных дней '
+            f'с даты подписания настоящего акта.',
+            LEGAL
         ))
+
+    # ── Signatures ───────────────────────────────
+    story.append(Spacer(1, 0.6*cm))
+    story.append(HRFlowable(width='100%', thickness=0.5, color=GREY, spaceAfter=8))
+
+    HINT = ParagraphStyle('hint', fontName=fn, fontSize=7,
+                          leading=9, textColor=colors.HexColor('#9ca3af'))
+    date_str = (order.completion_date.strftime('%d.%m.%Y')
+                if is_final and order.completion_date else '________________')
+
+    # Collect unique employees
+    seen_emp_ids = set()
+    unique_employees = []
+    for wos in order.work_order_services.prefetch_related('assignments__employee').all():
+        for asgn in wos.assignments.all():
+            emp = asgn.employee
+            if emp.pk not in seen_emp_ids:
+                seen_emp_ids.add(emp.pk)
+                unique_employees.append(emp)
+    if not unique_employees:
+        unique_employees = [None]
+
+    sig_data = []
+    for emp in unique_employees:
+        fio_str = emp.name if emp else ''
+        sig_data.append([
+            Paragraph('Исполнитель:', SIG),
+            Paragraph('_______________________', SIG),
+            Paragraph(f'/ {fio_str or "______________________"} /', SIG),
+            Paragraph(f'Дата: {date_str}', SIG),
+        ])
+        sig_data.append([
+            Paragraph('', SIG),
+            Paragraph('(подпись)', HINT),
+            Paragraph('(расшифровка подписи)', HINT),
+            Paragraph('', SIG),
+        ])
+        sig_data.append([Paragraph('', SIG)] * 4)
+
+    cs2 = order.car_snapshot or {}
+    client_fio = cs2.get('client_fio') or order.client_fio_static or (order.client_car.client.fio if order.client_car else '')
+    sig_data += [
+        [
+            Paragraph('Клиент:', SIG),
+            Paragraph('_______________________', SIG),
+            Paragraph(f'/ {client_fio or "______________________"} /', SIG),
+            Paragraph('Дата: ________________', SIG),
+        ],
+        [
+            Paragraph('', SIG),
+            Paragraph('(подпись)', HINT),
+            Paragraph('(расшифровка подписи)', HINT),
+            Paragraph('', SIG),
+        ],
+    ]
+
+    sig_tbl = Table(sig_data, colWidths=[3.0*cm, 4.5*cm, 5.5*cm, 4.2*cm])
+    sig_tbl.setStyle(TableStyle([
+        ('FONTNAME',     (0,0), (-1,-1), fn),
+        ('FONTSIZE',     (0,0), (-1,-1), 9),
+        ('VALIGN',       (0,0), (-1,-1), 'BOTTOM'),
+        ('TOPPADDING',   (0,0), (-1,-1), 2),
+        ('BOTTOMPADDING',(0,0), (-1,-1), 2),
+    ]))
+    story.append(KeepTogether(sig_tbl))
+
+    # ── Legal protection text ─────────────────────
+    story.append(Spacer(1, 0.5*cm))
+    story.append(Paragraph(
+        'Подписывая настоящий акт, Клиент подтверждает, что выполненные работы приняты '
+        'в полном объёме, в установленные сроки, претензий к объёму, качеству и стоимости '
+        'выполненных работ и использованных материалов не имеется. '
+        'Настоящий документ является основанием для передачи транспортного средства.',
+        LEGAL
+    ))
 
     doc.build(story)
     buf.seek(0)

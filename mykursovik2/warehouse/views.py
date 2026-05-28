@@ -553,11 +553,31 @@ def part_update(request, pk):
 @login_required
 def part_delete(request, pk):
     part = get_object_or_404(Part, pk=pk)
+
+    # Find active WOP reservations (orders in progress)
+    active_wops = WorkOrderPart.objects.filter(
+        part=part,
+        status='reserved',
+    ).select_related('work_order')
+    active_orders = list({w.work_order for w in active_wops})
+
     if request.method == 'POST':
+        if active_orders:
+            order_ids = ', '.join(f'№{o.id}' for o in active_orders)
+            messages.error(
+                request,
+                f'Нельзя удалить деталь «{part.article}»: она зарезервирована '
+                f'в активных заказах {order_ids}. Сначала снимите резервацию.'
+            )
+            return redirect('part_detail', pk=pk)
         part.delete()
         messages.success(request, 'Деталь удалена.')
         return redirect('parts_list')
-    return render(request, 'warehouse/parts/delete.html', {'part': part})
+
+    return render(request, 'warehouse/parts/delete.html', {
+        'part': part,
+        'active_orders': active_orders,
+    })
 
 
 # ──────────────────────────────────────────────────────────────
@@ -647,11 +667,34 @@ def location_update(request, pk):
 @login_required
 def location_delete(request, pk):
     location = get_object_or_404(StorageLocation, pk=pk)
+
+    # Block if any stock remains at this location
+    occupied = StockEntry.objects.filter(location=location, total_qty__gt=0)
+    reserved = StockEntry.objects.filter(location=location, reserved_qty__gt=0)
+
     if request.method == 'POST':
+        if occupied.exists():
+            messages.error(
+                request,
+                f'Нельзя удалить место хранения «{location.label}»: '
+                f'на нём есть остатки товаров. Сначала переместите или спишите весь товар.'
+            )
+            return redirect('locations_list')
+        if reserved.exists():
+            messages.error(
+                request,
+                f'Нельзя удалить место хранения «{location.label}»: '
+                f'на нём есть зарезервированные товары.'
+            )
+            return redirect('locations_list')
         location.delete()
         messages.success(request, 'Место хранения удалено.')
         return redirect('locations_list')
-    return render(request, 'warehouse/locations/delete.html', {'location': location})
+
+    return render(request, 'warehouse/locations/delete.html', {
+        'location': location,
+        'has_stock': occupied.exists() or reserved.exists(),
+    })
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1110,6 +1153,9 @@ def workorderpart_create(request, order_pk):
             if cost_total is not None:
                 markup = wop.markup / Decimal('100')
                 wop.sale_price = (cost_total * (1 + markup)).quantize(Decimal('0.01'))
+            # Freeze part name/article at time of adding
+            wop.part_article_snapshot = wop.part.article or ''
+            wop.part_name_snapshot = wop.part.name or ''
             # Optional link to a WorkOrderService
             wos_pk = request.POST.get('work_order_service') or ''
             if wos_pk.strip():
@@ -1344,10 +1390,15 @@ def workorderservice_update(request, pk):
 
 @login_required
 def workorderservice_delete(request, pk):
+    from mainapp.views import _release_wop_reservation
     wos = get_object_or_404(WorkOrderService, pk=pk)
     order_pk = wos.work_order.pk
     if request.method == 'POST':
         order = wos.work_order
+        # Release stock reservations and delete all linked parts
+        for wop in wos.parts.filter(status='reserved'):
+            _release_wop_reservation(wop)
+        wos.parts.all().delete()
         wos.delete()
         _recalculate_order_cost(order)
         messages.success(request, 'Услуга удалена.')
@@ -1413,9 +1464,11 @@ def picking_list(request, order_pk):
     header = ['Место хранения', 'Артикул', 'Название', 'Кол-во', 'Статус', '✓']
     rows = [header]
     for wop in parts:
-        entry = wop.part.stock_entries.first()
+        entry = wop.part.stock_entries.first() if wop.part else None
         loc = entry.location.label if entry else '—'
-        rows.append([loc, wop.part.article, wop.part.name,
+        rows.append([loc,
+            wop.part_article_snapshot or (wop.part.article if wop.part else '—'),
+            wop.part_name_snapshot or (wop.part.name if wop.part else '—'),
                      str(wop.quantity), wop.get_status_display(), ''])
     if len(rows) == 1:
         rows.append(['Деталей нет', '', '', '', '', ''])
@@ -1456,6 +1509,8 @@ def settings_view(request):
         if form.is_valid():
             form.save()
             messages.success(request, 'Настройки сохранены.')
+            for w in form.warnings:
+                messages.warning(request, w)
             return redirect('warehouse_settings')
     else:
         form = WorkshopSettingsForm(instance=settings)
@@ -1524,11 +1579,32 @@ def employee_update(request, pk):
 @login_required
 def employee_delete(request, pk):
     employee = get_object_or_404(Employee, pk=pk)
+
+    active_assignments = WorkOrderServiceEmployee.objects.filter(
+        employee=employee,
+        work_order_service__work_order__status__in=(
+            'Первичный осмотр', 'Диагностика', 'В работе', 'Готов'
+        )
+    ).select_related('work_order_service__work_order')
+    active_orders = list({a.work_order_service.work_order for a in active_assignments})
+
     if request.method == 'POST':
+        if active_orders:
+            order_ids = ', '.join(f'№{o.id}' for o in active_orders)
+            messages.error(
+                request,
+                f'Нельзя удалить сотрудника «{employee.name}»: '
+                f'он назначен в активных заказах {order_ids}.'
+            )
+            return redirect('employee_detail', pk=pk)
         employee.delete()
         messages.success(request, 'Сотрудник удалён.')
         return redirect('employees_list')
-    return render(request, 'warehouse/employees/delete.html', {'employee': employee})
+
+    return render(request, 'warehouse/employees/delete.html', {
+        'employee': employee,
+        'active_orders': active_orders,
+    })
 
 
 @login_required
@@ -1631,6 +1707,7 @@ def employees_report_all(request):
     return render(request, 'warehouse/employees/report_all.html', {'data': data})
 
 
+# DEAD CODE — не используется в шаблонах. Назначение сотрудников идёт через order_commit.
 @login_required
 def api_assign_employee(request, wos_pk):
     """AJAX: assign an employee to a WorkOrderService."""
@@ -1663,6 +1740,7 @@ def api_assign_employee(request, wos_pk):
     return JsonResponse({'created': created, 'assignments': assignments})
 
 
+# DEAD CODE — не используется в шаблонах. Снятие сотрудников идёт через order_commit.
 @login_required
 def api_unassign_employee(request, wos_pk, emp_pk):
     """AJAX: remove an employee from a WorkOrderService."""

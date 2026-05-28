@@ -12,21 +12,21 @@
 
 <!-- ── Info card ── -->
 <div class="ord-info-card">
-    {% if order.status == 'Завершён' or order.status == 'Отменён' %}
-        <div class="ord-info-row"><span>Клиент:</span>
-            {% if order.client_fio_static %}{{ order.client_fio_static }}{% elif order.client_car %}{{ order.client_car.client.fio }}{% else %}—{% endif %}
-        </div>
-        <div class="ord-info-row"><span>Автомобиль:</span> {{ order.car_details_static|default:"—" }}</div>
-    {% else %}
-        <div class="ord-info-row"><span>Клиент:</span>
-            {% if order.client_car %}{{ order.client_car.client.fio }}{% else %}—{% endif %}
-        </div>
-        <div class="ord-info-row"><span>Автомобиль:</span>
-            {% if order.client_car %}{{ order.client_car.make.name }} {{ order.client_car.model.name }}{% if order.client_car.license_plate %} ({{ order.client_car.license_plate }}){% endif %}{% else %}—{% endif %}
-        </div>
-    {% endif %}
+    {% with cs=order.car_snapshot %}
+    <div class="ord-info-row"><span>Клиент:</span>
+        {{ cs.client_fio|default:order.client_fio_static|default:"—" }}
+        {% if cs.client_phone %}<small style="color:#64748b;">{{ cs.client_phone }}</small>{% endif %}
+        {% if car_snap_live %}<small style="color:#f59e0b;" title="Актуальные данные на сегодня">↳ сейчас: {{ car_snap_live.client }}</small>{% endif %}
+    </div>
+    <div class="ord-info-row"><span>Автомобиль:</span>
+        {% if cs %}{{ cs.make }} {{ cs.model }}{% if cs.plate %} ({{ cs.plate }}){% endif %}{% if cs.year %} <small style="color:#64748b;">{{ cs.year }} г.</small>{% endif %}{% else %}{{ order.car_details_static|default:"—" }}{% endif %}
+        {% if car_snap_live %}<small style="color:#f59e0b;" title="Актуальные данные на сегодня">↳ сейчас: {{ car_snap_live.car }}</small>{% endif %}
+    </div>
+    {% endwith %}
     <div class="ord-info-row"><span>Дата заказа:</span> {{ order.order_date }}</div>
     {% if order.completion_date %}<div class="ord-info-row"><span>Дата завершения:</span> {{ order.completion_date }}</div>{% endif %}
+    {% if order.mileage is not None %}<div class="ord-info-row"><span>Пробег:</span> {{ order.mileage }} км{% if order.mileage_prev is not None %} <small style="color:#64748b;">(ранее: {{ order.mileage_prev }} км{% if order.mileage_change_reason %}, причина: {{ order.mileage_change_reason }}{% endif %})</small>{% endif %}</div>{% endif %}
+    {% if order.payment_method %}<div class="ord-info-row"><span>Форма оплаты:</span> {{ order.get_payment_method_display }}</div>{% endif %}
     {% if order.comment %}<div class="ord-info-row"><span>Комментарий:</span> {{ order.comment }}</div>{% endif %}
 </div>
 
@@ -40,11 +40,13 @@
     {% endif %}
     <div class="pdf-dropdown" style="position:relative;display:inline-block;">
         <button type="button" class="btn" onclick="togglePdfDropdown(event)">Печать ▾</button>
-        <div class="pdf-dropdown-menu" id="pdf-dropdown-menu" style="display:none;position:absolute;top:100%;left:0;z-index:100;background:#fff;border:1px solid #ccc;border-radius:4px;min-width:200px;box-shadow:0 2px 8px rgba(0,0,0,.15);">
+        <div class="pdf-dropdown-menu" id="pdf-dropdown-menu" style="display:none;position:absolute;top:100%;left:0;z-index:100;background:#fff;border:1px solid #ccc;border-radius:4px;min-width:220px;box-shadow:0 2px 8px rgba(0,0,0,.15);">
+            {% if order.status != 'Завершён' %}
             <a href="{% url 'order_mechanic_pdf' order.id %}" target="_blank" class="pdf-dropdown-item">Для механика</a>
             {% if wop_list %}<a href="{% url 'picking_list' order.id %}" class="pdf-dropdown-item">Лист отборки</a>{% endif %}
+            {% endif %}
             <a href="{% url 'order_customer_pdf' order.id %}" target="_blank" class="pdf-dropdown-item">
-                Заказ-наряд клиенту{% if order.status == 'Готов' or order.status == 'Завершён' %} (финальный){% else %} (предварительный){% endif %}
+                {% if order.status == 'Готов' or order.status == 'Завершён' %}Финальный заказ-наряд клиенту{% else %}Заказ-наряд клиенту (предварительный){% endif %}
             </a>
         </div>
     </div>
@@ -83,7 +85,7 @@ document.addEventListener('click', function() {
 
 <!-- ── Inline edit form ── -->
 <div id="inline-edit-form" style="display:none;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
-    <h3 style="margin:0 0 14px;font-size:1em;color:#334155;">Статус и комментарий</h3>
+    <h3 style="margin:0 0 14px;font-size:1em;color:#334155;">Статус и параметры заказа</h3>
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
         <div>
             <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">Статус</label>
@@ -93,10 +95,30 @@ document.addEventListener('click', function() {
                 {% endfor %}
             </select>
         </div>
+        {% if order.status == 'Готов' %}
+        <div>
+            <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">Форма оплаты</label>
+            <select id="stage-payment" class="form-control" style="min-width:180px;">
+                <option value="">— не указано —</option>
+                {% for val, label in payment_method_choices %}
+                <option value="{{ val }}" {% if order.payment_method == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        <div>
+            <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">Пробег (км)</label>
+            <input type="number" id="stage-mileage" class="form-control" min="0" style="width:140px;"
+                   value="{{ order.mileage|default:'' }}" placeholder="не указан">
+        </div>
         <div style="flex:1;min-width:220px;">
             <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;">Комментарий</label>
             <textarea id="stage-comment" class="form-control" rows="2" style="width:100%;box-sizing:border-box;">{{ order.comment|default:'' }}</textarea>
         </div>
+    </div>
+    <div id="mileage-reason-block" style="display:none;margin-top:10px;">
+        <label style="display:block;font-size:12px;color:#92400e;margin-bottom:4px;">Причина изменения пробега <span style="color:#dc2626;">*</span></label>
+        <input type="text" id="stage-mileage-reason" class="form-control" placeholder="Укажите причину изменения пробега" style="width:100%;">
     </div>
     <div style="margin-top:12px;display:flex;gap:8px;">
         <button type="button" class="btn btn-primary" id="stage-order-btn">Применить</button>
@@ -114,7 +136,7 @@ document.addEventListener('click', function() {
 <div class="svc-card" data-wos-id="{{ wos.id }}" data-wos-hours="{{ wos.hours_applied|stringformat:'g' }}" data-wos-rate="{{ wos.hourly_rate_snapshot|default:hourly_rate }}">
     <div class="svc-card-head">
         <div>
-            <div class="svc-card-name">{{ wos.service_name_snapshot|default:wos.service.name }}</div>
+            <div class="svc-card-name">{% if wos.service_name_snapshot %}{{ wos.service_name_snapshot }}{% elif wos.service %}{{ wos.service.name }}{% else %}—{% endif %}</div>
             <div class="svc-card-meta" id="svc-meta-{{ wos.id }}">
                 {{ wos.hours_applied }} ч. × {{ wos.complexity_factor }} × {% if wos.hourly_rate_snapshot %}{{ wos.hourly_rate_snapshot }}{% else %}{{ hourly_rate }}{% endif %} р/ч
             </div>
@@ -124,7 +146,7 @@ document.addEventListener('click', function() {
             {% if editable %}
             <button type="button" class="btn btn-sm svc-edit-btn" data-wos-id="{{ wos.id }}" data-hours="{{ wos.hours_applied }}" data-factor="{{ wos.complexity_factor }}">Изм.</button>
             <button type="button" class="btn btn-sm btn-danger svc-del-btn" data-wos-id="{{ wos.id }}">Удал.</button>
-            <button type="button" class="btn btn-sm btn-success open-part-for-svc" data-wos-id="{{ wos.id }}" data-wos-name="{{ wos.service_name_snapshot|default:wos.service.name }}">+ Деталь</button>
+            <button type="button" class="btn btn-sm btn-success open-part-for-svc" data-wos-id="{{ wos.id }}" data-wos-name="{% if wos.service_name_snapshot %}{{ wos.service_name_snapshot }}{% elif wos.service %}{{ wos.service.name }}{% else %}—{% endif %}">+ Деталь</button>
             {% endif %}
         </div>
     </div>
@@ -147,8 +169,8 @@ document.addEventListener('click', function() {
         {% for wop in wos.parts.all %}
         <div data-wop-id="{{ wop.id }}">
             <div class="svc-part-row" style="border-bottom:none;">
-                <span class="svc-part-article">{{ wop.part.article }}</span>
-                <span class="svc-part-name">{{ wop.part.name }}</span>
+                <span class="svc-part-article">{% if wop.part_article_snapshot %}{{ wop.part_article_snapshot }}{% elif wop.part %}{{ wop.part.article }}{% else %}—{% endif %}</span>
+                <span class="svc-part-name">{% if wop.part_name_snapshot %}{{ wop.part_name_snapshot }}{% elif wop.part %}{{ wop.part.name }}{% else %}—{% endif %}</span>
                 <span class="svc-part-qty">× {{ wop.quantity }} шт.</span>
                 <span class="svc-part-price">{% if wop.total_price %}{{ wop.total_price|floatformat:2 }} руб.{% else %}—{% endif %}</span>
                 {% if editable %}
@@ -168,6 +190,7 @@ document.addEventListener('click', function() {
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                     <label>Кол-во:</label>
                     <input type="number" class="wop-qty-inp" min="1" value="{{ wop.quantity }}" style="width:68px;">
+                    <small class="wop-avail-hint" style="color:#888;white-space:nowrap;"></small>
                     <label>Наценка (%):</label>
                     <input type="number" class="wop-markup-inp" min="0" step="1" value="{{ wop.markup|stringformat:'g' }}" style="width:68px;">
                     <span class="wop-price-preview" style="color:#16a34a;font-size:0.9em;white-space:nowrap;"></span>
@@ -188,7 +211,7 @@ document.addEventListener('click', function() {
         <div class="svc-emp-list" id="svc-emp-list-{{ wos.id }}">
             {% for a in wos.assignments.all %}
             <div class="svc-emp-row" data-emp-id="{{ a.employee.id }}" data-salary-coeff="{{ a.salary_coefficient_snapshot|default:a.employee.salary_coefficient }}" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:0.88em;">
-                <span style="min-width:160px;">{{ a.employee.name }}</span>
+                <span style="min-width:160px;">{% if a.employee_name_snapshot %}{{ a.employee_name_snapshot }}{% elif a.employee %}{{ a.employee.name }}{% else %}—{% endif %}</span>
                 {% if a.employee.position %}<span style="color:#6b7280;">{{ a.employee.position }}</span>{% endif %}
                 <span class="emp-hours-display" style="color:#374151;">— {{ a.hours_share|floatformat:2 }} ч. / {{ a.earnings|floatformat:2 }} руб.</span>
                 {% if editable %}
@@ -222,8 +245,8 @@ document.addEventListener('click', function() {
     <div class="svc-card-body" style="padding:10px 16px;">
         <div data-wop-id="{{ wop.id }}">
             <div class="svc-part-row" style="border-bottom:none;">
-                <span class="svc-part-article">{{ wop.part.article }}</span>
-                <span class="svc-part-name">{{ wop.part.name }}</span>
+                <span class="svc-part-article">{% if wop.part_article_snapshot %}{{ wop.part_article_snapshot }}{% elif wop.part %}{{ wop.part.article }}{% else %}—{% endif %}</span>
+                <span class="svc-part-name">{% if wop.part_name_snapshot %}{{ wop.part_name_snapshot }}{% elif wop.part %}{{ wop.part.name }}{% else %}—{% endif %}</span>
                 <span class="svc-part-qty">× {{ wop.quantity }} шт.</span>
                 <span class="svc-part-price">{% if wop.total_price %}{{ wop.total_price|floatformat:2 }} руб.{% else %}—{% endif %}</span>
                 {% if editable %}
@@ -243,6 +266,7 @@ document.addEventListener('click', function() {
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                     <label>Кол-во:</label>
                     <input type="number" class="wop-qty-inp" min="1" value="{{ wop.quantity }}" style="width:68px;">
+                    <small class="wop-avail-hint" style="color:#888;white-space:nowrap;"></small>
                     <label>Наценка (%):</label>
                     <input type="number" class="wop-markup-inp" min="0" step="1" value="{{ wop.markup|stringformat:'g' }}" style="width:68px;">
                     <span class="wop-price-preview" style="color:#16a34a;font-size:0.9em;white-space:nowrap;"></span>
@@ -410,7 +434,7 @@ document.addEventListener('click', function() {
                     <select name="work_order_service" id="part-service-select" style="margin-left:8px;min-width:200px;">
                         <option value="">— без привязки —</option>
                         {% for wos in wos_list %}
-                        <option value="{{ wos.id }}">{{ wos.service_name_snapshot|default:wos.service.name }}</option>
+                        <option value="{{ wos.id }}">{% if wos.service_name_snapshot %}{{ wos.service_name_snapshot }}{% elif wos.service %}{{ wos.service.name }}{% else %}—{% endif %}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -490,10 +514,50 @@ document.getElementById('toggle-edit-form').addEventListener('click', function()
 document.getElementById('cancel-edit-form').addEventListener('click', function() {
     document.getElementById('inline-edit-form').style.display = 'none';
 });
+// show/hide mileage-reason when mileage changes
+(function() {
+    var origMileage = '{{ order.mileage|default:"" }}';
+    var mileageInput = document.getElementById('stage-mileage');
+    var reasonBlock  = document.getElementById('mileage-reason-block');
+    if (mileageInput) {
+        mileageInput.addEventListener('input', function() {
+            var changed = origMileage !== '' && this.value !== '' && this.value !== origMileage;
+            reasonBlock.style.display = changed ? 'block' : 'none';
+        });
+    }
+})();
+
 document.getElementById('stage-order-btn').addEventListener('click', function() {
     var status  = document.getElementById('stage-status').value;
     var comment = document.getElementById('stage-comment').value;
-    draft.orderUpdate = {status: status, comment: comment};
+    var paymentEl = document.getElementById('stage-payment');
+    var payment = paymentEl ? paymentEl.value : null;
+    var mileage = document.getElementById('stage-mileage').value;
+    var mileageReason = document.getElementById('stage-mileage-reason').value;
+    var currentStatus = '{{ order.status }}';
+
+    if (status === 'Завершён' && currentStatus !== 'Готов') {
+        alert('Нельзя завершить заказ: сначала переведите его в статус «Готов» и укажите форму оплаты.');
+        return;
+    }
+    if (status === 'Завершён' && (!payment || payment === '')) {
+        alert('Нельзя завершить заказ: укажите форму оплаты.');
+        return;
+    }
+
+    var origMileage = '{{ order.mileage|default:"" }}';
+    if (origMileage !== '' && mileage !== '' && mileage !== origMileage && !mileageReason.trim()) {
+        alert('Укажите причину изменения пробега.');
+        return;
+    }
+
+    draft.orderUpdate = {
+        status: status,
+        comment: comment,
+        payment_method: payment || null,
+        mileage: mileage !== '' ? parseInt(mileage) : null,
+        mileage_change_reason: mileageReason || null,
+    };
     // update badge visually
     var badge = document.querySelector('.ord-badge');
     if (badge) { badge.className = 'ord-badge ord-' + status; badge.textContent = status; }
@@ -812,7 +876,9 @@ $('#part-table-body').on('click', '.part-avail-row', function() {
     $('#part-hidden-id').val(id);
     $('#part-selected-display').text(article + ' — ' + name);
     $('#part-qty').val(1).attr('max', avail);
-    $('#part-available-hint').text('Доступно: ' + avail + ' шт.' + (avail === 0 ? ' (всё в черновике заказа)' : ''));
+    var draftQty = _draftQtyFor(id);
+    var hintSuffix = (avail === 0 && draftQty > 0) ? ' (всё в черновике заказа)' : '';
+    $('#part-available-hint').text('Доступно: ' + avail + ' шт.' + hintSuffix);
     $('#part-phase-search').hide(); $('#part-phase-confirm').show();
     if (preselectedWosId) $('#part-service-select').val(preselectedWosId);
     updatePartPricePreview();
@@ -938,15 +1004,36 @@ $(document).on('click', '.staged-emp-add-btn', function() {
     loadEmpSearch(''); openModal('emp-modal');
 });
 function loadEmpSearch(q) {
+    // Collect already-assigned employee IDs for current WOS (DOM + draft)
+    var assignedIds = [];
+    if (currentWosId) {
+        var domKey = typeof currentWosId === 'string' && currentWosId.indexOf('temp_') === 0
+            ? null : currentWosId;
+        if (domKey) {
+            $('#svc-emp-list-' + domKey + ' .svc-emp-row[data-emp-id]').each(function() {
+                assignedIds.push(parseInt($(this).data('emp-id')));
+            });
+            draft.assignEmployees.forEach(function(a) {
+                if (a.wosId == domKey) assignedIds.push(parseInt(a.empId));
+            });
+        } else if (typeof currentWosId === 'string') {
+            var tempId = parseInt(currentWosId.replace('temp_', ''));
+            var svc = draft.addServices.find(function(s){return s.tempId===tempId;});
+            if (svc) svc.employees.forEach(function(e){ assignedIds.push(parseInt(e.empId)); });
+        }
+    }
     $.getJSON('{% url "api_employees" %}', {search:q}, function(data) {
         var $ul = $('#emp-modal-list'); $ul.empty();
-        if (!data.employees.length) { $ul.append('<div style="padding:10px;color:#aaa;">Нет результатов</div>'); return; }
+        var shown = 0;
         $.each(data.employees, function(i, e) {
+            if (assignedIds.indexOf(parseInt(e.id)) !== -1) return; // skip already assigned
             var pos = e.position ? ' <span style="color:#6b7280;font-size:0.85em;">— ' + $('<span>').text(e.position).html() + '</span>' : '';
             $ul.append($('<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;" class="emp-pick-row">' +
                 $('<span>').text(e.name).html() + pos + '</div>')
                 .data('emp-id', e.id).data('emp-name', e.name).data('salary-coeff', parseFloat(e.salary_coefficient) || 1));
+            shown++;
         });
+        if (!shown) { $ul.append('<div style="padding:10px;color:#aaa;">Нет результатов</div>'); }
     });
 }
 var _empSearchTimer;
@@ -1086,6 +1173,7 @@ $(document).on('click', '.svc-edit-apply', function() {
 // ── Inline edit: saved part ─────────────────────────────────────────
 var _wopPriceTimers = {};
 var _wopCostCache   = {};  // wopId → total purchase cost (no markup), last fetched
+var _wopAvailCache  = {};  // wopId → max available qty (already-reserved + free stock)
 var _spTimers       = {};
 var _spCostCache    = {};  // tempId → total purchase cost (no markup) for current qty
 
@@ -1117,6 +1205,16 @@ function _updateWopPreview($c) {
     var nm    = parseFloat($c.find('.wop-markup-inp').val()) || 0;
     var q     = parseInt($c.find('.wop-qty-inp').val()) || 1;
 
+    function _setAvailHint($c, wopId, avail, qtyInput) {
+        _wopAvailCache[wopId] = avail;
+        var $h = $c.find('.wop-avail-hint');
+        if (qtyInput > avail) {
+            $h.css('color', '#dc2626').text('Доступно: ' + avail + ' шт.');
+        } else {
+            $h.css('color', '#888').text('Доступно: ' + avail + ' шт.');
+        }
+    }
+
     if (q === origQ) {
         // Only markup changed — pure math, no network call needed
         var old_cost = sp / (1 + om / 100);
@@ -1125,6 +1223,14 @@ function _updateWopPreview($c) {
         _wopCostCache[wopId] = old_cost;
         $c.find('.wop-price-preview').text(
             '→ ' + sale_total.toFixed(2) + ' руб. (' + unit.toFixed(2) + ' × ' + q + ' шт.)');
+        // Fetch available qty if not yet cached (shown as hint, needed for apply guard)
+        if (_wopAvailCache[wopId] == null) {
+            $.getJSON('{% url "api_part_price" %}', {wopId: wopId, qty: origQ}, function(data) {
+                if (data.available_qty != null) _setAvailHint($c, wopId, data.available_qty, q);
+            });
+        } else {
+            _setAvailHint($c, wopId, _wopAvailCache[wopId], q);
+        }
         return;
     }
 
@@ -1136,18 +1242,22 @@ function _updateWopPreview($c) {
             if (data.total_cost == null) { $c.find('.wop-price-preview').text(''); return; }
             _wopCostCache[wopId] = data.total_cost;
             var avail = (data.available_qty != null) ? data.available_qty : q;
+            _setAvailHint($c, wopId, avail, q);
             var priced = Math.min(q, avail);
             var sale_total = data.total_cost * (1 + nm / 100);
             var unit = priced > 0 ? sale_total / priced : sale_total;
             var txt = '→ ' + sale_total.toFixed(2) + ' руб. (' + unit.toFixed(2) + ' × ' + priced + ' шт.)';
-            if (q > avail) txt += ' — доступно ' + avail + ' шт.';
-            $c.find('.wop-price-preview').text(txt);
+            if (q > avail) txt += ' — не хватает на складе';
+            $c.find('.wop-price-preview').css('color', q > avail ? '#dc2626' : '#16a34a').text(txt);
         });
     }, 200);
 }
 
 $(document).on('click', '.wop-edit-cancel', function() {
-    $(this).closest('div[data-wop-id]').find('.wop-edit-form').hide();
+    var $c = $(this).closest('div[data-wop-id]');
+    $c.find('.wop-avail-hint').text('');
+    $c.find('.wop-price-preview').css('color', '#16a34a').text('');
+    $c.find('.wop-edit-form').hide();
 });
 $(document).on('click', '.wop-edit-apply', function() {
     var wopId = parseInt($(this).data('wop-id'));
@@ -1155,6 +1265,11 @@ $(document).on('click', '.wop-edit-apply', function() {
     var newQty    = parseInt($c.find('.wop-qty-inp').val()) || 1;
     var newMarkup = parseFloat($c.find('.wop-markup-inp').val()) || 0;
     if (newQty < 1) { alert('Неверное количество.'); return; }
+    var avail = _wopAvailCache[wopId];
+    if (avail != null && newQty > avail) {
+        $c.find('.wop-avail-hint').css('color', '#dc2626').text('Максимум ' + avail + ' шт.');
+        return;
+    }
     var existing = draft.updateParts.find(function(p){return p.wopId===wopId;});
     if (existing) { existing.qty = newQty; existing.markup = newMarkup; }
     else { draft.updateParts.push({wopId:wopId, qty:newQty, markup:newMarkup}); }
@@ -1180,7 +1295,10 @@ $(document).on('click', '.wop-edit-apply', function() {
             .data('sale-price', parseFloat(newTotal))
             .data('qty', newQty);
         delete _wopCostCache[wopId];
+        delete _wopAvailCache[wopId];
     }
+    $c.find('.wop-avail-hint').text('');
+    $c.find('.wop-price-preview').css('color', '#16a34a').text('');
     $c.find('.wop-edit-form').hide();
     updatePendingBar();
 });
@@ -1333,8 +1451,6 @@ $(document).on('click', '.emp-unassign-btn', function() {
 
 .svc-status-pill { padding:2px 8px; border-radius:10px; font-size:0.75em; font-weight:600; white-space:nowrap; }
 .svc-status-reserved  { background:#fef9c3; color:#854d0e; }
-.svc-status-issued    { background:#dcfce7; color:#166534; }
-.svc-status-installed { background:#dbeafe; color:#1e40af; }
 .svc-status-cancelled { background:#fee2e2; color:#991b1b; }
 
 /* ── Cost card ── */

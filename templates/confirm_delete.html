@@ -40,20 +40,14 @@
             Завершённые заказы останутся, но этот автомобиль в них будет отвязан.
         </p>
     {% elif deleted_object_type == 'ServiceType' %}
-        <p style="color: red; font-weight: bold;">
-            Внимание! При удалении этого типа услуги будут также удалены:
-            <ul>
-                <li>Все услуги, связанные с типом "{{ object }}"</li>
-                <li>Все записи этих услуг из заказов</li>
-            </ul>
+        {% if extra_warning %}
+        <p style="color:#92400e;background:#fffbeb;border:1px solid #fbbf24;border-radius:6px;padding:10px 14px;">
+            ⚠ {{ extra_warning }}
         </p>
+        {% endif %}
     {% elif deleted_object_type == 'Service' %}
-        <p style="color: red; font-weight: bold;">
-            Внимание! При удалении этой услуги будут также удалены:
-            <ul>
-                <li>Все цены на услугу "{{ object }}"</li>
-                <li>Все записи этой услуги из заказов</li>
-            </ul>
+        <p style="color:#64748b;font-size:.9em;">
+            Данные завершённых заказов сохранятся (название услуги зафиксировано в снапшоте).
         </p>
     {% elif deleted_object_type == 'Order' %}
         <p style="color: red; font-weight: bold;">

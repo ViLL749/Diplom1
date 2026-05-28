@@ -1,8 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Удалить сотрудника{% endblock %}
 {% block content %}
-<h1>Удалить сотрудника</h1>
-<p>Вы уверены, что хотите удалить сотрудника <strong>{{ employee.name }}</strong>?</p>
+<h1>Удалить сотрудника?</h1>
+<p>Сотрудник: <strong>{{ employee.name }}</strong></p>
+
+{% if active_orders %}
+<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+    <strong style="color:#991b1b;">Удаление невозможно</strong>
+    <p style="margin:6px 0 0;color:#7f1d1d;">
+        Сотрудник назначен в активных заказах:
+        {% for o in active_orders %}
+            <a href="{% url 'order_detail' o.id %}">№{{ o.id }}</a>{% if not forloop.last %}, {% endif %}
+        {% endfor %}
+        <br>Сначала снимите назначение или завершите эти заказы.
+    </p>
+</div>
+<a href="{% url 'employees_list' %}" class="btn">← Назад</a>
+{% else %}
+<p style="color:#64748b;font-size:.9em;">
+    Данные сотрудника в завершённых заказах сохранятся (ФИО зафиксировано в снапшоте).
+</p>
 <form method="post">
     {% csrf_token %}
     <div style="display:flex;gap:8px;margin-top:16px;">
@@ -10,4 +27,5 @@
         <a href="{% url 'employees_list' %}" class="btn">Отмена</a>
     </div>
 </form>
+{% endif %}
 {% endblock %}

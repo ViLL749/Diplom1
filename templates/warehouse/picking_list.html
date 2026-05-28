@@ -24,12 +24,10 @@
         {% for wop in parts %}
         <tr>
             <td>
-                {% with entry=wop.part.stock_entries.first %}
-                    {% if entry %}{{ entry.location.label }}{% else %}—{% endif %}
-                {% endwith %}
+                {% if wop.part %}{% with entry=wop.part.stock_entries.first %}{% if entry %}{{ entry.location.label }}{% else %}—{% endif %}{% endwith %}{% else %}—{% endif %}
             </td>
-            <td>{{ wop.part.article }}</td>
-            <td>{{ wop.part.name }}</td>
+            <td>{% if wop.part_article_snapshot %}{{ wop.part_article_snapshot }}{% elif wop.part %}{{ wop.part.article }}{% else %}—{% endif %}</td>
+            <td>{% if wop.part_name_snapshot %}{{ wop.part_name_snapshot }}{% elif wop.part %}{{ wop.part.name }}{% else %}—{% endif %}</td>
             <td>{{ wop.quantity }}</td>
             <td>{{ wop.get_status_display }}</td>
         </tr>

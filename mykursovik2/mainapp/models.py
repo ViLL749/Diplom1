@@ -178,6 +178,33 @@ class Order(models.Model):
 
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
 
+    PAYMENT_METHOD_CHOICES = [
+        ('cash', 'Наличные'),
+        ('card', 'Карта'),
+        ('transfer', 'Безналичный перевод'),
+        ('mixed', 'Смешанная'),
+    ]
+
+    payment_method = models.CharField(
+        max_length=20, choices=PAYMENT_METHOD_CHOICES,
+        verbose_name="Форма оплаты", blank=True, null=True
+    )
+    mileage = models.PositiveIntegerField(
+        verbose_name="Пробег (км)", blank=True, null=True
+    )
+    mileage_prev = models.PositiveIntegerField(
+        verbose_name="Пробег до изменения (км)", blank=True, null=True
+    )
+    mileage_change_reason = models.TextField(
+        verbose_name="Причина изменения пробега", blank=True, null=True
+    )
+    org_snapshot = models.JSONField(
+        verbose_name="Снапшот данных организации", blank=True, null=True
+    )
+    car_snapshot = models.JSONField(
+        verbose_name="Снапшот автомобиля и клиента", blank=True, null=True
+    )
+
     client_fio_static = models.CharField(max_length=255, verbose_name="ФИО клиента (статично)", blank=True, null=True)
     car_details_static = models.CharField(max_length=255, verbose_name="Данные автомобиля (статично)", blank=True, null=True)
     services_static = models.TextField(verbose_name="Услуги (статично)", blank=True, null=True)
@@ -189,6 +216,24 @@ class Order(models.Model):
         if self.client_car and not self.car_details_static:
             vin_part = f', VIN: {self.client_car.vin}' if self.client_car.vin else ''
             self.car_details_static = f"{self.client_car.make.name} {self.client_car.model.name} ({self.client_car.license_plate or ''}{vin_part})"
+        if not self.org_snapshot:
+            from warehouse.models import WorkshopSettings
+            ws = WorkshopSettings.objects.first()
+            if ws:
+                self.org_snapshot = ws.as_snapshot()
+
+        if self.client_car and not self.car_snapshot:
+            cc = self.client_car
+            self.car_snapshot = {
+                'make': cc.make.name,
+                'model': cc.model.name,
+                'year': cc.year,
+                'vin': cc.vin or '',
+                'plate': cc.license_plate or '',
+                'color': cc.color or '',
+                'client_fio': cc.client.fio,
+                'client_phone': cc.client.phone or '',
+            }
 
         if self.status == 'Завершён' and not self.completion_date:
             self.completion_date = timezone.now().date()

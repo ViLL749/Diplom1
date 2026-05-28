@@ -4,7 +4,7 @@
 <h1>Изменить услугу в заказ-наряде №{{ wos.work_order.id }}</h1>
 
 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:20px;">
-    <p style="margin:2px 0;"><strong>Услуга:</strong> {{ wos.service_name_snapshot|default:wos.service.name }}</p>
+    <p style="margin:2px 0;"><strong>Услуга:</strong> {% if wos.service_name_snapshot %}{{ wos.service_name_snapshot }}{% elif wos.service %}{{ wos.service.name }}{% else %}—{% endif %}</p>
     {% if wos.hourly_rate_snapshot %}
     <p style="margin:4px 0;color:#64748b;font-size:0.9em;">
         Нормо-час на момент добавления: <strong>{{ wos.hourly_rate_snapshot }} руб.</strong>

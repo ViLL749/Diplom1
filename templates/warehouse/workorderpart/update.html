@@ -4,8 +4,12 @@
 <h1>Изменить деталь в заказ-наряде №{{ wop.work_order.id }}</h1>
 
 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:20px;">
-    <p style="margin:2px 0;"><strong>Деталь:</strong> {{ wop.part.article }} — {{ wop.part.name }}</p>
-    {% if wop.part.brand %}<p style="margin:2px 0;color:#64748b;">Производитель: {{ wop.part.brand }}</p>{% endif %}
+    <p style="margin:2px 0;"><strong>Деталь:</strong>
+        {% if wop.part_article_snapshot %}{{ wop.part_article_snapshot }}{% elif wop.part %}{{ wop.part.article }}{% else %}—{% endif %}
+        —
+        {% if wop.part_name_snapshot %}{{ wop.part_name_snapshot }}{% elif wop.part %}{{ wop.part.name }}{% else %}—{% endif %}
+    </p>
+    {% if wop.part and wop.part.brand %}<p style="margin:2px 0;color:#64748b;">Производитель: {{ wop.part.brand }}</p>{% endif %}
 </div>
 
 <form method="post">

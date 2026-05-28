@@ -8,6 +8,73 @@ from .models import (
 )
 
 
+# ── Validators for Russian registration numbers ──────────────
+
+def _validate_inn_ip(inn: str) -> str | None:
+    """ИНН ИП — 12 цифр, две контрольные цифры."""
+    if not inn.isdigit():
+        return 'ИНН должен содержать только цифры.'
+    if len(inn) != 12:
+        return 'Для ИП ИНН должен содержать ровно 12 цифр.'
+    d = [int(c) for c in inn]
+    c1 = (d[0]*7 + d[1]*2 + d[2]*4 + d[3]*10 + d[4]*3 + d[5]*5 +
+          d[6]*9 + d[7]*4 + d[8]*6 + d[9]*8) % 11 % 10
+    c2 = (d[0]*3 + d[1]*7 + d[2]*2 + d[3]*4 + d[4]*10 + d[5]*3 +
+          d[6]*5 + d[7]*9 + d[8]*4 + d[9]*6 + d[10]*8) % 11 % 10
+    if d[10] != c1 or d[11] != c2:
+        return 'ИНН не прошёл проверку контрольной суммы — возможно, введён с ошибкой.'
+    return None
+
+
+def _validate_inn_org(inn: str) -> str | None:
+    """ИНН организации — 10 цифр, одна контрольная цифра."""
+    if not inn.isdigit():
+        return 'ИНН должен содержать только цифры.'
+    if len(inn) != 10:
+        return 'Для организаций ИНН должен содержать ровно 10 цифр.'
+    d = [int(c) for c in inn]
+    c = (d[0]*2 + d[1]*4 + d[2]*10 + d[3]*3 + d[4]*5 +
+         d[5]*9 + d[6]*4 + d[7]*6 + d[8]*8) % 11 % 10
+    if d[9] != c:
+        return 'ИНН не прошёл проверку контрольной суммы — возможно, введён с ошибкой.'
+    return None
+
+
+def _validate_ogrn(ogrn: str) -> str | None:
+    """ОГРН — 13 цифр, контрольная цифра = остаток от деления первых 12 на 11, взятый mod 10."""
+    if not ogrn.isdigit():
+        return 'ОГРН должен содержать только цифры.'
+    if len(ogrn) != 13:
+        return 'ОГРН должен содержать ровно 13 цифр.'
+    if ogrn[0] not in ('1', '5'):
+        return 'ОГРН должен начинаться с цифры 1 или 5.'
+    if int(ogrn[-1]) != int(ogrn[:-1]) % 11 % 10:
+        return 'ОГРН не прошёл проверку контрольной суммы — возможно, введён с ошибкой.'
+    return None
+
+
+def _validate_ogrnip(ogrnip: str) -> str | None:
+    """ОГРНИП — 15 цифр, контрольная цифра = остаток от деления первых 14 на 13, взятый mod 10."""
+    if not ogrnip.isdigit():
+        return 'ОГРНИП должен содержать только цифры.'
+    if len(ogrnip) != 15:
+        return 'ОГРНИП должен содержать ровно 15 цифр.'
+    if ogrnip[0] != '3':
+        return 'ОГРНИП должен начинаться с цифры 3.'
+    if int(ogrnip[-1]) != int(ogrnip[:-1]) % 13 % 10:
+        return 'ОГРНИП не прошёл проверку контрольной суммы — возможно, введён с ошибкой.'
+    return None
+
+
+def _validate_kpp(kpp: str) -> str | None:
+    """КПП — 9 цифр."""
+    if not kpp.isdigit():
+        return 'КПП должен содержать только цифры.'
+    if len(kpp) != 9:
+        return 'КПП должен содержать ровно 9 цифр.'
+    return None
+
+
 class SupplierForm(forms.ModelForm):
     class Meta:
         model = Supplier
@@ -410,8 +477,120 @@ class WorkOrderServiceUpdateForm(forms.ModelForm):
 class WorkshopSettingsForm(forms.ModelForm):
     class Meta:
         model = WorkshopSettings
-        fields = ['hourly_rate']
-        labels = {'hourly_rate': 'Стоимость нормо-часа (руб.)'}
+        fields = [
+            'hourly_rate',
+            'org_type', 'org_name', 'inn', 'kpp', 'ogrn', 'ogrnip',
+            'org_address', 'org_phone', 'org_email', 'warranty_days',
+        ]
+        labels = {
+            'hourly_rate': 'Стоимость нормо-часа (руб.)',
+            'org_type': 'Форма организации',
+            'org_name': 'Название / ФИО ИП',
+            'inn': 'ИНН',
+            'kpp': 'КПП',
+            'ogrn': 'ОГРН',
+            'ogrnip': 'ОГРНИП',
+            'org_address': 'Адрес',
+            'org_phone': 'Телефон',
+            'org_email': 'Email',
+            'warranty_days': 'Срок гарантии (дней)',
+        }
+        widgets = {
+            'org_address': forms.Textarea(attrs={'rows': 2}),
+        }
+
+    _ORG_TYPES = ('ООО', 'АО', 'ПАО', 'ЗАО')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.warnings = []
+
+    def clean(self):
+        cleaned = super().clean()
+        self.warnings = []
+
+        org_type = cleaned.get('org_type', '')
+        org_name = (cleaned.get('org_name') or '').strip()
+        inn      = (cleaned.get('inn') or '').strip()
+        kpp      = (cleaned.get('kpp') or '').strip()
+        ogrn     = (cleaned.get('ogrn') or '').strip()
+        ogrnip   = (cleaned.get('ogrnip') or '').strip()
+        phone    = (cleaned.get('org_phone') or '').strip()
+        address  = (cleaned.get('org_address') or '').strip()
+        email    = (cleaned.get('org_email') or '').strip()
+
+        is_ip  = (org_type == 'ИП')
+        is_org = (org_type in self._ORG_TYPES)
+
+        # ── ИП ───────────────────────────────────────────────
+        if is_ip:
+            if not org_name:
+                self.add_error('org_name', 'Укажите ФИО индивидуального предпринимателя.')
+
+            # ИНН обязателен, 12 цифр + контрольная сумма
+            if not inn:
+                self.add_error('inn', 'ИНН обязателен для ИП.')
+            else:
+                err = _validate_inn_ip(inn)
+                if err:
+                    self.add_error('inn', err)
+
+            # ОГРНИП обязателен, 15 цифр + контрольная сумма
+            if not ogrnip:
+                self.add_error('ogrnip', 'ОГРНИП обязателен для ИП.')
+            else:
+                err = _validate_ogrnip(ogrnip)
+                if err:
+                    self.add_error('ogrnip', err)
+
+            # Запрещённые поля
+            if kpp:
+                self.add_error('kpp', 'У ИП нет КПП — это реквизит только юридических лиц.')
+            if ogrn:
+                self.add_error('ogrn', 'У ИП нет ОГРН — используйте поле ОГРНИП.')
+
+        # ── ООО / АО / ПАО / ЗАО ─────────────────────────────
+        elif is_org:
+            if not org_name:
+                self.add_error('org_name', 'Укажите полное наименование организации.')
+
+            # ИНН обязателен, 10 цифр + контрольная сумма
+            if not inn:
+                self.add_error('inn', 'ИНН обязателен для организации.')
+            else:
+                err = _validate_inn_org(inn)
+                if err:
+                    self.add_error('inn', err)
+
+            # КПП обязателен, 9 цифр (без контрольной суммы)
+            if not kpp:
+                self.add_error('kpp', 'КПП обязателен для организации.')
+            else:
+                err = _validate_kpp(kpp)
+                if err:
+                    self.add_error('kpp', err)
+
+            # ОГРН обязателен, 13 цифр + контрольная сумма
+            if not ogrn:
+                self.add_error('ogrn', 'ОГРН обязателен для организации.')
+            else:
+                err = _validate_ogrn(ogrn)
+                if err:
+                    self.add_error('ogrn', err)
+
+            # Запрещённое поле
+            if ogrnip:
+                self.add_error('ogrnip', 'У организации нет ОГРНИП — используйте поле ОГРН.')
+
+        # ── Мягкие предупреждения (не блокируют сохранение) ──
+        if org_type and not phone:
+            self.warnings.append('Телефон не указан — он не попадёт в документы для клиентов.')
+        if org_type and not address:
+            self.warnings.append('Адрес не указан — он не попадёт в документы для клиентов.')
+        if org_type and not email:
+            self.warnings.append('Email не указан — он не попадёт в документы для клиентов.')
+
+        return cleaned
 
 
 # ── Write-Off ────────────────────────────────────────────────
