@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Создать заказ поставщику{% endblock %}
+{% block title %}Редактировать заказ поставщику №{{ po.id }}{% endblock %}
 {% block content %}
 {% include "warehouse/_part_search_modal.html" %}
 {% include "warehouse/_supplier_search_modal.html" %}
 
-<h1>Создать заказ поставщику</h1>
+<h1>Редактировать заказ поставщику №{{ po.id }}</h1>
 <form method="post" id="po-form">
     {% csrf_token %}
     <h2>Общие сведения</h2>
@@ -73,8 +73,8 @@
     <button type="button" id="add-po-row" class="btn" style="margin-top:10px;">+ Добавить деталь</button>
 
     <div style="margin-top:20px;">
-        <button type="submit" class="btn">Сохранить заказ</button>
-        <a href="{% url 'purchase_list' %}" class="btn btn-danger">Отмена</a>
+        <button type="submit" class="btn">Сохранить изменения</button>
+        <a href="{% url 'purchase_detail' po.id %}" class="btn btn-danger">Отмена</a>
     </div>
 </form>
 
@@ -98,6 +98,7 @@ function removePORow(btn) {
         var count = parseInt(totalForms.value);
         var template = tbody.querySelector('.po-item-row');
         var newRow = template.cloneNode(true);
+        newRow.style.display = '';
         newRow.innerHTML = newRow.innerHTML.replace(/items-\d+-/g, 'items-' + count + '-');
         newRow.querySelectorAll('input[type=text], input[type=number]').forEach(function(el) { el.value = ''; });
         newRow.querySelectorAll('input[type=hidden]').forEach(function(el) {

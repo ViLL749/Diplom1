@@ -2328,18 +2328,17 @@ def order_mechanic_pdf(request, pk):
     )
     if wos_list:
         story.append(Paragraph('Услуги', H2))
-        # Widths: Услуга(4.4) Часы(1.3) Коэф.(1.1) Нормо-час(2.0) Стоимость(2.3) Исполнители(6.1) = 17.2
-        svc_data = [[ph('Услуга'), ph('Часы'), ph('Коэф.'), ph('Нормо-час'), ph('Стоимость'), ph('Исполнители')]]
+        # Widths: Услуга(4.4) Часы(1.3) Коэф.(1.1) Нормо-час(2.0) Исполнители(8.4) = 17.2
+        svc_data = [[ph('Услуга'), ph('Часы'), ph('Коэф.'), ph('Нормо-час'), ph('Исполнители')]]
         for wos in wos_list:
             name  = wos.service_name_snapshot or (wos.service.name if wos.service else '—')
             rate  = str(wos.hourly_rate_snapshot or '—')
             emps  = ', '.join(a.employee.name for a in wos.assignments.all()) or '—'
-            price = f'{wos.final_price:.2f} руб.' if wos.final_price else '—'
             svc_data.append([
                 p(name), p(wos.hours_applied), p(wos.complexity_factor),
-                p(rate), p(price), p(emps),
+                p(rate), p(emps),
             ])
-        story.append(tbl(svc_data, [4.4*cm, 1.3*cm, 1.1*cm, 2.0*cm, 2.3*cm, 6.1*cm]))
+        story.append(tbl(svc_data, [4.4*cm, 1.3*cm, 1.1*cm, 2.0*cm, 8.4*cm]))
         story.append(Spacer(1, 0.4*cm))
 
     # ── Parts ────────────────────────────────────
@@ -2370,16 +2369,6 @@ def order_mechanic_pdf(request, pk):
             ])
         story.append(tbl(part_data, [2.1*cm, 5.5*cm, 1.3*cm, 2.8*cm, 2.2*cm, 3.3*cm]))
         story.append(Spacer(1, 0.4*cm))
-
-    # ── Total ────────────────────────────────────
-    from decimal import Decimal
-    svc_total  = sum(w.final_price or Decimal('0') for w in wos_list)
-    part_total = sum((w.sale_price or Decimal('0')) for w in wop_list)
-    story.append(HRFlowable(width='100%', thickness=0.5, color=GREY_RULE, spaceAfter=4))
-    story.append(Paragraph(
-        f'Итого услуги: {svc_total:.2f} руб.   |   Запчасти: {part_total:.2f} руб.   |   '
-        f'Всего: {svc_total + part_total:.2f} руб.', NR
-    ))
 
     doc.build(story)
     buf.seek(0)

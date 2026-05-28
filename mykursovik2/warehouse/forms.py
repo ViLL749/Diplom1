@@ -190,6 +190,14 @@ class PurchaseOrderItemForm(forms.ModelForm):
         }
         labels = {'part': 'Деталь', 'quantity': 'Количество'}
 
+    def clean_quantity(self):
+        qty = self.cleaned_data.get('quantity')
+        if qty is None:
+            raise forms.ValidationError('Укажите количество.')
+        if qty < 1:
+            raise forms.ValidationError('Количество должно быть не меньше 1.')
+        return qty
+
 
 PurchaseOrderItemFormSet = forms.inlineformset_factory(
     PurchaseOrder, PurchaseOrderItem,

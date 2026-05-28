@@ -60,6 +60,8 @@ urlpatterns = [
     path('purchase/create/', views.purchase_create, name='purchase_create'),
     path('purchase/<int:pk>/', views.purchase_detail, name='purchase_detail'),
     path('purchase/<int:pk>/update/', views.purchase_update, name='purchase_update'),
+    path('purchase/<int:pk>/edit/', views.purchase_edit, name='purchase_edit'),
+    path('purchase/<int:pk>/delete/', views.purchase_delete, name='purchase_delete'),
 
     # Work Order Parts
     path('orders/<int:order_pk>/parts/add/', views.workorderpart_create, name='workorderpart_create'),

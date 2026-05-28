@@ -11,7 +11,11 @@
 
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
     <a href="{% url 'purchase_list' %}" class="btn">К списку</a>
-    {% if not po.is_final %}
+    {% if po.status == 'draft' %}
+        <a href="{% url 'purchase_edit' po.id %}" class="btn">✏ Редактировать</a>
+        <a href="{% url 'purchase_delete' po.id %}" class="btn btn-danger">Удалить</a>
+    {% endif %}
+    {% if not po.is_final and po.status != 'draft' %}
         <button type="button" class="btn" id="toggle-po-edit">
             {% if po.status == 'partial' %}Отменить оставшееся{% else %}✏ Изменить статус{% endif %}
         </button>
@@ -21,7 +25,7 @@
     {% endif %}
 </div>
 
-{% if not po.is_final %}
+{% if not po.is_final and po.status != 'draft' %}
 <div id="po-edit-form" style="display:none;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:16px 20px;margin-bottom:16px;">
     <h3 style="margin:0 0 12px;font-size:1em;color:#334155;">Изменение статуса заказа</h3>
     <form id="po-status-form" method="post" action="{% url 'purchase_update' po.id %}">

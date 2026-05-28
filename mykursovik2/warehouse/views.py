@@ -7,6 +7,7 @@ from django.db import transaction
 from django.db.models import F, Q
 from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse
 
 from .forms import (
     BrandForm, SupplierForm, PartForm, StorageLocationForm, StockEntryMinQtyForm,
@@ -1050,6 +1051,45 @@ def purchase_update(request, pk):
     else:
         form = PurchaseOrderStatusForm(instance=po)
     return render(request, 'warehouse/purchase/update.html', {'form': form, 'po': po})
+
+
+@login_required
+@transaction.atomic
+def purchase_edit(request, pk):
+    po = get_object_or_404(PurchaseOrder, pk=pk)
+    if po.status != 'draft':
+        messages.error(request, 'Редактировать можно только заказы в статусе «Черновик».')
+        return redirect('purchase_detail', pk=pk)
+    if request.method == 'POST':
+        form = PurchaseOrderForm(request.POST, instance=po)
+        formset = PurchaseOrderItemFormSet(request.POST, instance=po)
+        if form.is_valid() and formset.is_valid():
+            form.save()
+            formset.save()
+            messages.success(request, f'Заказ поставщику №{po.id} обновлён.')
+            return redirect('purchase_detail', pk=po.pk)
+    else:
+        form = PurchaseOrderForm(instance=po)
+        formset = PurchaseOrderItemFormSet(instance=po)
+    return render(request, 'warehouse/purchase/edit.html', {'form': form, 'formset': formset, 'po': po})
+
+
+@login_required
+def purchase_delete(request, pk):
+    po = get_object_or_404(PurchaseOrder, pk=pk)
+    if po.status != 'draft':
+        messages.error(request, 'Удалить можно только заказы в статусе «Черновик».')
+        return redirect('purchase_detail', pk=pk)
+    if request.method == 'POST':
+        po_id = po.id
+        po.delete()
+        messages.success(request, f'Заказ поставщику №{po_id} удалён.')
+        return redirect('purchase_list')
+    return render(request, 'confirm_delete.html', {
+        'object': po,
+        'deleted_object_type': 'PurchaseOrder',
+        'cancel_url': reverse('purchase_detail', kwargs={'pk': pk}),
+    })
 
 
 # ──────────────────────────────────────────────────────────────
