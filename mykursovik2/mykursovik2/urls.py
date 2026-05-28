@@ -26,7 +26,6 @@ urlpatterns = [
     path('clients/<int:pk>/', views.client_detail, name='client_detail'),
     path('clients/<int:pk>/update/', views.client_update, name='client_update'),
     path('clients/<int:pk>/delete/', views.client_delete, name='client_delete'),
-    path('clients/<int:pk>/cars/', views.client_cars_list, name='client_cars_list'),
     path('clients/<int:pk>/cars/create/', views.client_car_create, name='client_car_create'),
     # Оставляем pk для consistency
     path('clients/<int:pk>/cars/<int:car_pk>/', views.client_car_detail, name='client_car_detail'),

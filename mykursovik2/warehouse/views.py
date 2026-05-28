@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import F, Q
 from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
@@ -24,6 +24,13 @@ from .models import (
     WorkOrderPart, WorkOrderService, WorkshopSettings,
     Employee, WorkOrderServiceEmployee, WriteOff, WriteOffItem,
 )
+
+
+def _register_custom_functions():
+    """Регистрирует custom_lower для кириллицы в текущем SQLite-соединении."""
+    with connection.cursor() as _:
+        connection.connection.create_function("custom_lower", 1,
+                                              lambda t: t.lower() if t else None)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -483,28 +490,46 @@ def supplier_delete(request, pk):
 
 @login_required
 def parts_list(request):
+    _register_custom_functions()
     parts = Part.objects.all()
     search = request.GET.get('search', '')
     column = request.GET.get('column', 'article')
+    filter_category = request.GET.get('filter_category', '')
+
     if search:
-        mapping = {
-            'article': 'article__icontains',
-            'name': 'name__icontains',
-            'brand': 'brand__icontains',
-            'category': 'category__icontains',
+        search_lower = search.lower()
+        col_map = {
+            'article': 'article',
+            'name': 'name',
+            'brand': 'brand',
+            'category': 'category',
         }
-        parts = parts.filter(**{mapping.get(column, 'article__icontains'): search})
+        db_col = col_map.get(column, 'article')
+        parts = parts.extra(
+            where=[f'custom_lower({db_col}) LIKE %s'],
+            params=[f'%{search_lower}%'],
+        )
+
+    if filter_category:
+        parts = parts.filter(category=filter_category)
 
     sort = request.GET.get('sort', 'article')
     direction = request.GET.get('direction', 'asc')
     if sort not in ['article', 'name', 'brand', 'category']:
         sort = 'article'
-    parts = parts.order_by(f'-{sort}' if direction == 'desc' else sort)
+    parts = parts.extra(
+        select={'_sort_key': f'custom_lower({sort})'}
+    ).order_by(f'-_sort_key' if direction == 'desc' else '_sort_key')
 
     per_page = _get_per_page(request)
     paginator = Paginator(parts, per_page)
     page_obj = paginator.get_page(request.GET.get('page', 1))
-    return render(request, 'warehouse/parts/list.html', {'page_obj': page_obj, 'per_page': per_page})
+    return render(request, 'warehouse/parts/list.html', {
+        'page_obj': page_obj,
+        'per_page': per_page,
+        'filter_category': filter_category,
+        'category_choices': Part.CATEGORY_CHOICES,
+    })
 
 
 def _save_part_form(form):

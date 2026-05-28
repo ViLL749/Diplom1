@@ -13,15 +13,21 @@
         <option value="category" {% if request.GET.column == 'category' %}selected{% endif %}>Категория</option>
     </select>
     <button type="submit" class="btn">Искать</button>
+    <select name="filter_category" onchange="this.form.submit()" style="margin-left:8px;">
+        <option value="" {% if not filter_category %}selected{% endif %}>Все категории</option>
+        {% for val, label in category_choices %}
+        <option value="{{ val }}" {% if filter_category == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
 </form>
 
 <table id="parts-table">
     <thead>
         <tr>
-            <th><a href="?sort=article&direction={% if request.GET.sort == 'article' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}">Артикул{% if request.GET.sort == 'article' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
-            <th><a href="?sort=name&direction={% if request.GET.sort == 'name' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}">Название{% if request.GET.sort == 'name' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
-            <th><a href="?sort=brand&direction={% if request.GET.sort == 'brand' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}">Производитель{% if request.GET.sort == 'brand' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
-            <th><a href="?sort=category&direction={% if request.GET.sort == 'category' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}">Категория{% if request.GET.sort == 'category' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
+            <th><a href="?sort=article&direction={% if request.GET.sort == 'article' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if filter_category %}&filter_category={{ filter_category }}{% endif %}">Артикул{% if request.GET.sort == 'article' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
+            <th><a href="?sort=name&direction={% if request.GET.sort == 'name' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if filter_category %}&filter_category={{ filter_category }}{% endif %}">Название{% if request.GET.sort == 'name' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
+            <th><a href="?sort=brand&direction={% if request.GET.sort == 'brand' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if filter_category %}&filter_category={{ filter_category }}{% endif %}">Производитель{% if request.GET.sort == 'brand' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
+            <th><a href="?sort=category&direction={% if request.GET.sort == 'category' and request.GET.direction == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if filter_category %}&filter_category={{ filter_category }}{% endif %}">Категория{% if request.GET.sort == 'category' %}<span class="sort-arrow {% if request.GET.direction == 'asc' %}asc{% else %}desc{% endif %}"></span>{% else %}<span class="sort-arrow default"></span>{% endif %}</a></th>
         </tr>
     </thead>
     <tbody>
@@ -43,9 +49,9 @@
 
 {% if page_obj.has_other_pages %}
 <div class="pagination">
-    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn">Предыдущая</a>{% endif %}
-    {% for num in page_obj.paginator.page_range %}{% if num >= page_obj.number|add:-2 and num <= page_obj.number|add:2 %}<a href="?page={{ num }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn {% if page_obj.number == num %}active{% endif %}">{{ num }}</a>{% endif %}{% endfor %}
-    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}" class="btn">Следующая</a>{% endif %}
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if filter_category %}&filter_category={{ filter_category }}{% endif %}" class="btn">Предыдущая</a>{% endif %}
+    {% for num in page_obj.paginator.page_range %}{% if num >= page_obj.number|add:-2 and num <= page_obj.number|add:2 %}<a href="?page={{ num }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if filter_category %}&filter_category={{ filter_category }}{% endif %}" class="btn {% if page_obj.number == num %}active{% endif %}">{{ num }}</a>{% endif %}{% endfor %}
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if request.GET.search %}&search={{ request.GET.search }}&column={{ request.GET.column }}{% endif %}{% if filter_category %}&filter_category={{ filter_category }}{% endif %}" class="btn">Следующая</a>{% endif %}
 </div>
 {% endif %}
 
@@ -58,6 +64,7 @@
         </select>
     </label>
     {% if request.GET.search %}<input type="hidden" name="search" value="{{ request.GET.search }}"><input type="hidden" name="column" value="{{ request.GET.column }}">{% endif %}
+    {% if filter_category %}<input type="hidden" name="filter_category" value="{{ filter_category }}">{% endif %}
 </form>
 
 <div id="part-actions" class="mt-20">

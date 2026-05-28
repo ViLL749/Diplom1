@@ -150,9 +150,11 @@ def client_detail(request, pk):
 
     if search:
         if column == 'make':
-            client_cars = client_cars.filter(make__name__contains=search)
+            client_cars = client_cars.filter(make__name__icontains=search)
         elif column == 'model':
-            client_cars = client_cars.filter(model__name__contains=search)
+            client_cars = client_cars.filter(model__name__icontains=search)
+        elif column == 'client':
+            client_cars = client_cars.filter(client__fio__icontains=search)
         elif column == 'license_plate':
             from django.db.models import Q
             variants = normalize_plate_search(search)
@@ -280,16 +282,6 @@ def client_delete(request, pk):
 
 
 # Просмотр списка автомобилей клиента с пагинацией
-def client_cars_list(request):
-    client_cars = ClientCar.objects.all()
-    paginator = Paginator(client_cars, 5)  # Показывать 5 автомобилей на страницу
-    page_number = request.GET.get('page', 1)
-    try:
-        page_obj = paginator.get_page(page_number)
-    except EmptyPage:
-        page_obj = paginator.page(1)  # Если страница не найдена, показываем первую страницу
-    return render(request, 'clients/client_cars_list.html', {'page_obj': page_obj, 'per_page': 5})
-
 
 # Создание автомобиля для клиента (одна форма с динамическим выбором модели)
 def client_car_create(request, pk):
@@ -895,6 +887,11 @@ def orders_list(request):
 
     orders = Order.objects.all()
 
+    # Фильтр по статусу
+    filter_status = request.GET.get('filter_status', '')
+    if filter_status:
+        orders = orders.filter(status=filter_status)
+
     # Сортировка
     sort = request.GET.get('sort', 'id')
     direction = request.GET.get('direction', 'desc')
@@ -934,6 +931,12 @@ def orders_list(request):
                 where=['custom_lower(car_details_static) LIKE %s'],
                 params=[f'%{search_lower}%']
             )
+        elif column == 'status':
+            orders = orders.extra(
+                select={'status_lower': 'custom_lower(status)'},
+                where=['custom_lower(status) LIKE %s'],
+                params=[f'%{search_lower}%']
+            )
 
     # Пагинация
     per_page = request.GET.get('per_page', 5)
@@ -954,6 +957,8 @@ def orders_list(request):
     return render(request, 'orders/orders_list.html', {
         'page_obj': page_obj,
         'per_page': per_page,
+        'filter_status': filter_status,
+        'status_choices': Order.STATUS_CHOICES,
     })
 
 # ── Order helpers ─────────────────────────────────────────────
@@ -1674,11 +1679,10 @@ def order_update(request, pk):
 @login_required
 def order_delete(request, pk):
     order = get_object_or_404(Order, pk=pk)
-    if order.status in ('Завершён', 'Отменён'):
+    if order.status == 'Завершён':
         messages.error(
             request,
-            f'Нельзя удалить заказ со статусом «{order.status}». '
-            'Завершённые и отменённые заказы хранятся для истории.'
+            'Нельзя удалить завершённый заказ — он хранится для истории.'
         )
         return redirect('order_detail', pk=pk)
     if request.method == 'POST':
