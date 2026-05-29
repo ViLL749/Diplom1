@@ -71,18 +71,22 @@
                     <a href="{% url 'purchase_prices_list' %}" class="{% if request.resolver_match.url_name in 'purchase_prices_list,purchase_prices_detail' %}active{% endif %}">
                         <i class="fas fa-ruble-sign"></i> Цены закупки
                     </a>
+                    {% if user.is_staff %}
                     <a href="{% url 'warehouse_settings' %}" class="{% if request.resolver_match.url_name == 'warehouse_settings' %}active{% endif %}">
                         <i class="fas fa-sliders-h"></i> Настройки
                     </a>
+                    {% endif %}
                 </div>
 
-                <!-- Группа: Персонал -->
+                <!-- Группа: Персонал (только для администраторов) -->
+                {% if user.is_staff %}
                 <div class="menu-group">
                     <h3 class="menu-group-title">Персонал</h3>
                     <a href="{% url 'employees_list' %}" class="{% if request.resolver_match.url_name in 'employees_list,employee_create,employee_update,employee_delete,employee_report,employees_report_all' %}active{% endif %}">
                         <i class="fas fa-users"></i> Сотрудники
                     </a>
                 </div>
+                {% endif %}
 
                 <!-- Группа: Закупки -->
                 <div class="menu-group">

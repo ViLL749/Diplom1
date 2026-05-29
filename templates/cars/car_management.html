@@ -41,6 +41,8 @@
                     <td>{{ car_make.id }}</td>
                     <td>{{ car_make.name }}</td>
                 </tr>
+            {% empty %}
+                <tr><td colspan="2" style="text-align:center;color:#888;padding:20px;">Марки не добавлены.</td></tr>
             {% endfor %}
         </tbody>
     </table>

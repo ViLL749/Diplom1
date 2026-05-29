@@ -26,11 +26,26 @@ from .models import (
 )
 
 
+def staff_required(view_func):
+    """Декоратор: только авторизованные пользователи с is_staff=True."""
+    from functools import wraps
+    from django.contrib.auth.views import redirect_to_login
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect_to_login(request.get_full_path())
+        if not request.user.is_staff:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden('Доступ запрещён.')
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+
 def _register_custom_functions():
     """Регистрирует custom_lower для кириллицы в текущем SQLite-соединении."""
     with connection.cursor() as _:
         connection.connection.create_function("custom_lower", 1,
-                                              lambda t: t.lower() if t else None)
+                                              lambda t: t.lower().replace('ё', 'е') if t else None)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -194,6 +209,7 @@ def api_services(request):
 
 @login_required
 def api_parts(request):
+    _register_custom_functions()
     search = request.GET.get('search', '')
     po_id  = request.GET.get('po_id', '')
     page   = int(request.GET.get('page', 1))
@@ -209,10 +225,12 @@ def api_parts(request):
         parts = parts.filter(id__in=remaining_part_ids)
 
     if search:
-        parts = parts.filter(
-            Q(article__icontains=search) | Q(name__icontains=search) | Q(brand__icontains=search)
+        search_lower = search.lower().replace('ё', 'е')
+        parts = parts.extra(
+            where=['custom_lower(article) LIKE %s OR custom_lower(name) LIKE %s OR custom_lower(brand) LIKE %s'],
+            params=[f'%{search_lower}%', f'%{search_lower}%', f'%{search_lower}%'],
         )
-    parts = parts.order_by('article')
+    parts = parts.extra(select={'_art_lower': 'custom_lower(article)'}).order_by('_art_lower')
     paginator = Paginator(parts, 10)
     page_obj = paginator.get_page(page)
     page_parts = list(page_obj)
@@ -300,10 +318,15 @@ def api_part_price(request):
 
 @login_required
 def api_suppliers(request):
+    _register_custom_functions()
     search = request.GET.get('search', '')
     suppliers = Supplier.objects.all()
     if search:
-        suppliers = suppliers.filter(Q(name__icontains=search) | Q(contact__icontains=search))
+        search_lower = search.lower().replace('ё', 'е')
+        suppliers = suppliers.extra(
+            where=['custom_lower(name) LIKE %s OR custom_lower(contact) LIKE %s'],
+            params=[f'%{search_lower}%', f'%{search_lower}%'],
+        )
     return JsonResponse({
         'suppliers': [
             {'id': s.id, 'name': s.name, 'phone': s.phone, 'contact': s.contact}
@@ -339,10 +362,15 @@ def api_po_items(request):
 
 @login_required
 def api_brands(request):
+    _register_custom_functions()
     search = request.GET.get('search', '')
     brands = Brand.objects.all()
     if search:
-        brands = brands.filter(name__icontains=search)
+        search_lower = search.lower().replace('ё', 'е')
+        brands = brands.extra(
+            where=['custom_lower(name) LIKE %s'],
+            params=[f'%{search_lower}%'],
+        )
     return JsonResponse({
         'brands': [{'id': b.id, 'name': b.name} for b in brands[:50]]
     })
@@ -497,7 +525,7 @@ def parts_list(request):
     filter_category = request.GET.get('filter_category', '')
 
     if search:
-        search_lower = search.lower()
+        search_lower = search.lower().replace('ё', 'е')
         col_map = {
             'article': 'article',
             'name': 'name',
@@ -772,29 +800,57 @@ def stock_update_min(request, pk):
 @login_required
 def purchase_prices_list(request):
     """Parts that have at least one stock entry, with total qty and reserve."""
-    from django.db.models import Sum
+    _register_custom_functions()
     search = request.GET.get('search', '')
-    parts = Part.objects.filter(
-        stock_entries__total_qty__gt=0
-    ).distinct()
+    sort = request.GET.get('sort', 'article')
+    direction = request.GET.get('direction', 'asc')
+
+    parts = Part.objects.filter(stock_entries__total_qty__gt=0).distinct()
+
     if search:
-        parts = parts.filter(
-            Q(article__icontains=search) | Q(name__icontains=search)
+        search_lower = search.lower().replace('ё', 'е')
+        parts = parts.extra(
+            where=['custom_lower(warehouse_part.article) LIKE %s OR custom_lower(warehouse_part.name) LIKE %s'],
+            params=[f'%{search_lower}%', f'%{search_lower}%'],
         )
-    parts = parts.order_by('article')
-    # Annotate totals across all locations
+
+    TEXT_SORTS = {'article', 'name', 'brand'}
+    NUMERIC_SORTS = {'total', 'reserved', 'available'}
+
+    if sort in TEXT_SORTS:
+        parts = parts.extra(
+            select={'_sort_key': f'custom_lower({sort})'}
+        ).order_by('-_sort_key' if direction == 'desc' else '_sort_key')
+    else:
+        parts = parts.extra(
+            select={'_sort_key': 'custom_lower(article)'}
+        ).order_by('_sort_key')
+
     parts_data = []
     for part in parts:
         entries = part.stock_entries.all()
         total = sum(e.total_qty for e in entries)
         reserved = sum(e.reserved_qty for e in entries)
         if total > 0:
-            parts_data.append({'part': part, 'total': total, 'reserved': reserved, 'available': total - reserved})
+            parts_data.append({
+                'part': part,
+                'total': total,
+                'reserved': reserved,
+                'available': total - reserved,
+            })
+
+    if sort in NUMERIC_SORTS:
+        parts_data.sort(key=lambda r: r[sort], reverse=(direction == 'desc'))
+
     per_page = _get_per_page(request)
     paginator = Paginator(parts_data, per_page)
     page_obj = paginator.get_page(request.GET.get('page', 1))
     return render(request, 'warehouse/purchase_prices/list.html', {
-        'page_obj': page_obj, 'per_page': per_page,
+        'page_obj': page_obj,
+        'per_page': per_page,
+        'search': search,
+        'sort': sort,
+        'direction': direction,
     })
 
 
@@ -1526,7 +1582,7 @@ def picking_list(request, order_pk):
 # Settings
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@staff_required
 def settings_view(request):
     settings, _ = WorkshopSettings.objects.get_or_create(pk=1)
     if request.method == 'POST':
@@ -1563,7 +1619,7 @@ def models_remaining_filter():
 # Employees (Mechanics)
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@staff_required
 def employees_list(request):
     employees = Employee.objects.all()
     search = request.GET.get('search', '')
@@ -1574,7 +1630,7 @@ def employees_list(request):
     })
 
 
-@login_required
+@staff_required
 def employee_create(request):
     if request.method == 'POST':
         form = EmployeeForm(request.POST)
@@ -1587,7 +1643,7 @@ def employee_create(request):
     return render(request, 'warehouse/employees/create.html', {'form': form})
 
 
-@login_required
+@staff_required
 def employee_update(request, pk):
     employee = get_object_or_404(Employee, pk=pk)
     if request.method == 'POST':
@@ -1601,7 +1657,7 @@ def employee_update(request, pk):
     return render(request, 'warehouse/employees/update.html', {'form': form, 'employee': employee})
 
 
-@login_required
+@staff_required
 def employee_delete(request, pk):
     employee = get_object_or_404(Employee, pk=pk)
 
@@ -1632,7 +1688,7 @@ def employee_delete(request, pk):
     })
 
 
-@login_required
+@staff_required
 def employee_report(request, pk):
     """Earnings report for a single employee. Only completed orders count."""
     from decimal import Decimal
@@ -1701,7 +1757,7 @@ def employee_report(request, pk):
     })
 
 
-@login_required
+@staff_required
 def employees_report_all(request):
     """Summary earnings for all employees. Only completed orders count."""
     from decimal import Decimal
@@ -1793,10 +1849,15 @@ def api_unassign_employee(request, wos_pk, emp_pk):
 @login_required
 def api_employees(request):
     """AJAX: list active employees for assignment modal."""
+    _register_custom_functions()
     search = request.GET.get('search', '')
     emps = Employee.objects.filter(is_active=True)
     if search:
-        emps = emps.filter(name__icontains=search)
+        search_lower = search.lower().replace('ё', 'е')
+        emps = emps.extra(
+            where=['custom_lower(name) LIKE %s'],
+            params=[f'%{search_lower}%'],
+        )
     return JsonResponse({
         'employees': [{'id': e.id, 'name': e.name, 'position': e.position,
                        'salary_coefficient': str(e.salary_coefficient)} for e in emps[:50]]

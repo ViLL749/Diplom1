@@ -322,7 +322,9 @@ document.addEventListener('click', function() {
                         <table style="width:100%;border-collapse:collapse;">
                             <tbody id="svc-left-body">
                                 {% for type_name, services in grouped_services %}
-                                <tr class="svc-type-hdr"><td colspan="2">{{ type_name }}</td></tr>
+                                <tr class="svc-type-hdr" data-collapsed="false" style="cursor:pointer;user-select:none;" title="Нажмите для сворачивания">
+                                    <td colspan="2"><span class="svc-hdr-arrow" style="margin-right:6px;font-size:0.75em;">▼</span>{{ type_name }}</td>
+                                </tr>
                                 {% for svc in services %}
                                 <tr class="svc-avail-row" data-id="{{ svc.id }}" data-name="{{ svc.name }}" data-hours="{{ svc.base_hours|stringformat:'g' }}">
                                     <td style="padding:6px 8px;">{{ svc.name }}</td>
@@ -667,6 +669,13 @@ $(window).click(function(e) {
 // ── SERVICE MODAL ──────────────────────────────────
 $('#open-svc-modal').click(function() { openModal('svc-modal'); });
 
+$('#svc-left-body').on('click', '.svc-type-hdr', function() {
+    var collapsed = $(this).data('collapsed');
+    $(this).data('collapsed', !collapsed);
+    $(this).find('.svc-hdr-arrow').text(!collapsed ? '▶' : '▼');
+    $(this).nextUntil('.svc-type-hdr').toggle(collapsed);
+});
+
 $('#svc-search').on('input', function() {
     var q = $(this).val().toLowerCase();
     $('#svc-left-body .svc-avail-row').each(function() {
@@ -676,6 +685,10 @@ $('#svc-search').on('input', function() {
         var hasVis = false;
         $(this).nextUntil('.svc-type-hdr').each(function() { if ($(this).is(':visible')) hasVis = true; });
         $(this).toggle(hasVis);
+        if (q && hasVis) {
+            $(this).data('collapsed', false);
+            $(this).find('.svc-hdr-arrow').text('▼');
+        }
     });
 });
 

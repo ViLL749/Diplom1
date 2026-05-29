@@ -10,7 +10,12 @@
     <p><strong>Марка автомобиля:</strong> {{ car_make.name }}</p>
 </div>
 
-<div id="form-errors" class="form-errors" style="display: none;"></div>
+<div id="form-errors" class="form-errors" {% if not form.errors %}style="display: none;"{% endif %}>
+    {% if form.errors %}
+        <p>Пожалуйста, исправьте ошибки:</p>
+        <ul>{% for field, errors in form.errors.items %}{% for e in errors %}<li>{{ e }}</li>{% endfor %}{% endfor %}</ul>
+    {% endif %}
+</div>
 <form method="post" id="car-model-form">
     {% csrf_token %}
 
@@ -18,6 +23,7 @@
     <div>
         {{ form.name.label_tag }}
         {{ form.name }}
+        {% if form.name.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.name.errors|join:", " }}</p>{% endif %}
     </div>
 
     <button type="submit" class="btn">Сохранить</button>

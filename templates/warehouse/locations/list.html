@@ -234,17 +234,10 @@ function showPopup(e, info) {
     } else {
         var rows = info.parts.map(function(p) {
             var pkg = p.pkg || 1;
-            var qtyStr;
-            if (pkg > 1) {
-                var packs = Math.floor(p.qty / pkg);
-                var rem   = p.qty % pkg;
-                qtyStr = packs + ' упак.';
-                if (rem > 0) qtyStr += ' + ' + rem + ' шт.';
-            } else {
-                qtyStr = p.qty + ' шт.';
-            }
+            var qtyStr = p.qty + ' шт.';
+            if (pkg > 1) qtyStr += ' <span style="color:#888;font-weight:normal;">(по ' + pkg + ' в упак.)</span>';
             var res = p.reserved > 0
-                ? ' <span style="color:#1e88e5;">(рез. ' + (pkg > 1 ? Math.ceil(p.reserved/pkg) + ' упак.' : p.reserved + ' шт.') + ')</span>'
+                ? ' <span style="color:#1e88e5;">(рез. ' + p.reserved + ' шт.)</span>'
                 : '';
             return '<tr><td style="padding:2px 8px 2px 0;font-size:0.85em;">' + p.article + '</td>' +
                    '<td style="padding:2px 0;font-size:0.85em;color:#555;">' + p.name + '</td>' +

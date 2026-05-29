@@ -78,24 +78,34 @@ def _validate_kpp(kpp: str) -> str | None:
 class SupplierForm(forms.ModelForm):
     class Meta:
         model = Supplier
-        fields = ['name', 'phone', 'contact', 'notes']
-        widgets = {'notes': forms.Textarea(attrs={'rows': 2})}
+        fields = ['name', 'phone_country', 'phone', 'contact', 'notes']
+        widgets = {
+            'notes': forms.Textarea(attrs={'rows': 2}),
+            'phone_country': forms.Select(attrs={
+                'id': 'id_phone_country',
+                'style': 'width:auto;flex-shrink:0;',
+            }),
+        }
         labels = {
             'name': 'Название',
+            'phone_country': 'Страна',
             'phone': 'Телефон',
             'contact': 'Контактное лицо',
             'notes': 'Примечания',
         }
 
-    def clean_phone(self):
-        import re
-        phone = self.cleaned_data.get('phone', '').strip()
+    def clean(self):
+        cleaned = super().clean()
+        phone = cleaned.get('phone', '').strip()
+        country = cleaned.get('phone_country', 'RU') or 'RU'
         if phone:
-            if not re.match(r'^\+7\s\(\d{3}\)\s\d{3}-\d{2}-\d{2}$', phone):
-                raise forms.ValidationError(
-                    'Введите номер в формате +7 (999) 999-99-99.'
-                )
-        return phone
+            from mainapp.validators import validate_phone
+            ok, result = validate_phone(phone, country)
+            if not ok:
+                self.add_error('phone', result)
+            else:
+                cleaned['phone'] = result
+        return cleaned
 
 
 class PartForm(forms.ModelForm):
@@ -425,12 +435,32 @@ class WorkOrderPartForm(forms.ModelForm):
     class Meta:
         model = WorkOrderPart
         fields = ['part', 'quantity', 'markup']
-        widgets = {'part': forms.HiddenInput()}
+        widgets = {
+            'part': forms.HiddenInput(),
+            'quantity': forms.NumberInput(attrs={'min': '1'}),
+            'markup': forms.NumberInput(attrs={'min': '0', 'step': '1'}),
+        }
         labels = {
             'part': 'Деталь',
             'quantity': 'Количество',
             'markup': 'Наценка (%)',
         }
+
+    def clean_quantity(self):
+        qty = self.cleaned_data.get('quantity')
+        if qty is None:
+            raise forms.ValidationError('Укажите количество.')
+        if qty < 1:
+            raise forms.ValidationError('Количество должно быть не меньше 1.')
+        return qty
+
+    def clean_markup(self):
+        markup = self.cleaned_data.get('markup')
+        if markup is None:
+            raise forms.ValidationError('Укажите наценку.')
+        if markup < 0:
+            raise forms.ValidationError('Наценка не может быть отрицательной.')
+        return markup
 
 
 class WorkOrderPartStatusForm(forms.ModelForm):
@@ -445,6 +475,22 @@ class WorkOrderPartStatusForm(forms.ModelForm):
             'quantity': forms.NumberInput(attrs={'min': '1'}),
             'markup': forms.NumberInput(attrs={'min': '0', 'step': '1'}),
         }
+
+    def clean_quantity(self):
+        qty = self.cleaned_data.get('quantity')
+        if qty is None:
+            raise forms.ValidationError('Укажите количество.')
+        if qty < 1:
+            raise forms.ValidationError('Количество должно быть не меньше 1.')
+        return qty
+
+    def clean_markup(self):
+        markup = self.cleaned_data.get('markup')
+        if markup is None:
+            raise forms.ValidationError('Укажите наценку.')
+        if markup < 0:
+            raise forms.ValidationError('Наценка не может быть отрицательной.')
+        return markup
 
 
 class WorkOrderServiceForm(forms.ModelForm):
@@ -694,6 +740,17 @@ class EmployeeForm(forms.ModelForm):
                 'style': 'width:auto;flex-shrink:0;',
             }),
         }
+
+    def clean_salary_coefficient(self):
+        from decimal import Decimal
+        coeff = self.cleaned_data.get('salary_coefficient')
+        if coeff is None:
+            raise forms.ValidationError('Укажите коэффициент ЗП.')
+        if coeff < Decimal('0.01'):
+            raise forms.ValidationError('Коэффициент ЗП должен быть не менее 0.01.')
+        if coeff > Decimal('9.99'):
+            raise forms.ValidationError('Коэффициент ЗП не может превышать 9.99.')
+        return coeff
 
     def clean(self):
         cleaned = super().clean()

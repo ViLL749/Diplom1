@@ -55,7 +55,7 @@ def clients_list(request):
     column = request.GET.get('column', 'fio')
 
     if search:
-        search_lower = search.lower()
+        search_lower = search.lower().replace('ё', 'е')
         if column == 'id':
             clients = clients.filter(id__contains=search)
         elif column == 'fio':
@@ -116,7 +116,7 @@ logger = logging.getLogger(__name__)
 def custom_lower(text):
     if text is None:
         return None
-    return text.lower()  # Python корректно обрабатывает кириллицу
+    return text.lower().replace('ё', 'е')
 
 
 # Регистрация функции в SQLite
@@ -187,6 +187,7 @@ def client_detail(request, pk):
     })
 
 # Редактирование клиента
+@login_required
 def client_update(request, pk):
     client = get_object_or_404(Client, pk=pk)
     if request.method == 'POST':
@@ -200,6 +201,7 @@ def client_update(request, pk):
     return render(request, 'clients/client_update.html', {'form': form, 'cancel_url': reverse('clients_list')})
 
 
+@login_required
 @require_POST
 def check_vin_uniqueness(request):
     vin = request.POST.get('vin', '').strip().upper()
@@ -207,6 +209,7 @@ def check_vin_uniqueness(request):
     return JsonResponse({'exists': exists})
 
 
+@login_required
 @require_POST
 def check_license_plate_uniqueness(request):
     license_plate = request.POST.get('license_plate', '').strip()
@@ -216,6 +219,7 @@ def check_license_plate_uniqueness(request):
     return JsonResponse({'exists': exists})
 
 
+@login_required
 @require_POST
 def check_service_type_uniqueness(request):
     name = request.POST.get("name", "").strip().lower()
@@ -226,6 +230,7 @@ def check_service_type_uniqueness(request):
     exists = any(st.name.lower() == name for st in queryset)
     return JsonResponse({"exists": exists})
 
+@login_required
 @require_POST
 def check_service_uniqueness(request):
     name = request.POST.get("name", "").strip().lower()
@@ -236,6 +241,7 @@ def check_service_uniqueness(request):
     exists = any(s.name.lower() == name for s in queryset)
     return JsonResponse({"exists": exists})
 
+@login_required
 @require_POST
 def check_car_make_uniqueness(request):
     name = request.POST.get("name", "").strip().lower()
@@ -246,6 +252,7 @@ def check_car_make_uniqueness(request):
     exists = any(cm.name.lower() == name for cm in queryset)
     return JsonResponse({"exists": exists})
 
+@login_required
 @require_POST
 def check_car_model_uniqueness(request):
     name = request.POST.get("name", "").strip().lower()
@@ -257,6 +264,7 @@ def check_car_model_uniqueness(request):
     return JsonResponse({"exists": exists})
 
 
+@login_required
 @require_POST
 def check_client_phone_uniqueness(request):
     phone = request.POST.get("phone", "").strip()
@@ -268,22 +276,31 @@ def check_client_phone_uniqueness(request):
     return JsonResponse({"exists": exists})
 
 # Удаление клиента
+@login_required
 def client_delete(request, pk):
     client = get_object_or_404(Client, pk=pk)
+    client_cars = ClientCar.objects.filter(client=client)
+    active_orders = list(Order.objects.filter(client_car__in=client_cars, status__in=ACTIVE_STATUSES))
     if request.method == 'POST':
+        if active_orders:
+            order_ids = ', '.join(f'№{o.id}' for o in active_orders)
+            messages.error(request, f'Нельзя удалить клиента «{client.fio}»: есть активные заказы {order_ids}.')
+            return redirect('clients_list')
         client.delete()
         messages.success(request, 'Клиент успешно удалён!')
         return redirect('clients_list')
     return render(request, 'confirm_delete.html', {
         'object': client,
         'deleted_object_type': 'Client',
-        'cancel_url': reverse('clients_list')
+        'cancel_url': reverse('clients_list'),
+        'active_orders': active_orders,
     })
 
 
 # Просмотр списка автомобилей клиента с пагинацией
 
 # Создание автомобиля для клиента (одна форма с динамическим выбором модели)
+@login_required
 def client_car_create(request, pk):
     client = get_object_or_404(Client, pk=pk)
     if request.method == 'POST':
@@ -307,6 +324,7 @@ def client_car_create(request, pk):
 
 
 # # # Получение списка моделей по ID марки (AJAX)
+@login_required
 def get_models(request):
     make_id = request.GET.get('make_id')
     if make_id:
@@ -315,6 +333,7 @@ def get_models(request):
     return JsonResponse([], safe=False)
 
 
+@login_required
 def get_all_makes(request):
     page = int(request.GET.get('page', 1))
     per_page = int(request.GET.get('per_page', 10))
@@ -328,6 +347,7 @@ def get_all_makes(request):
     return JsonResponse(data)
 
 
+@login_required
 def get_services(request):
     service_type_id = request.GET.get('service_type_id')
     if service_type_id:
@@ -346,7 +366,7 @@ def get_all_clients(request):
     # Поиск только по fio
     search = request.GET.get('search', '')
     if search:
-        search_lower = search.lower()
+        search_lower = search.lower().replace('ё', 'е')
         clients = clients.extra(
             select={'fio_lower': 'custom_lower(fio)'},
             where=['custom_lower(fio) LIKE %s'],
@@ -368,6 +388,7 @@ def get_all_clients(request):
         'total_pages': total_pages
     }, safe=False)
 
+@login_required
 def get_client_cars(request):
     client_id = request.GET.get('client_id')
     if client_id:
@@ -377,11 +398,13 @@ def get_client_cars(request):
     return JsonResponse([], safe=False)
 
 
+@login_required
 def get_service_types(request):
     types = ServiceType.objects.all().values('id', 'name')
     return JsonResponse(list(types), safe=False)
 
 
+@login_required
 def client_car_detail(request, pk, car_pk):
     client_car = get_object_or_404(ClientCar, pk=car_pk)
     return render(request, 'clients/client_car_detail.html', {
@@ -390,6 +413,7 @@ def client_car_detail(request, pk, car_pk):
     })
 
 
+@login_required
 def client_car_update(request, pk, car_pk):
     client_car = get_object_or_404(ClientCar, pk=car_pk)
     client = client_car.client  # Получаем клиента из объекта автомобиля
@@ -412,18 +436,24 @@ def client_car_update(request, pk, car_pk):
 
 
 # Удаление автомобиля клиента
-
+@login_required
 def client_car_delete(request, pk, car_pk):
     client_car = get_object_or_404(ClientCar, pk=car_pk)
     client_pk = client_car.client.pk
+    active_orders = list(Order.objects.filter(client_car=client_car, status__in=ACTIVE_STATUSES))
     if request.method == 'POST':
+        if active_orders:
+            order_ids = ', '.join(f'№{o.id}' for o in active_orders)
+            messages.error(request, f'Нельзя удалить автомобиль: есть активные заказы {order_ids}.')
+            return redirect('client_detail', pk=client_pk)
         client_car.delete()
         messages.success(request, 'Автомобиль клиента успешно удалён!')
         return redirect('client_detail', pk=client_pk)
     return render(request, 'confirm_delete.html', {
         'object': client_car,
         'deleted_object_type': 'ClientCar',
-        'cancel_url': reverse('client_detail', kwargs={'pk': client_pk})
+        'cancel_url': reverse('client_detail', kwargs={'pk': client_pk}),
+        'active_orders': active_orders,
     })
 
 @login_required
@@ -450,7 +480,7 @@ def car_management(request):
         if column == 'id':
             car_makes = car_makes.filter(id__contains=search)
         elif column == 'name':
-            search_lower = search.lower()
+            search_lower = search.lower().replace('ё', 'е')
             car_makes = car_makes.extra(
                 select={'name_lower': 'custom_lower(name)'},
                 where=['custom_lower(name) LIKE %s'],
@@ -480,6 +510,7 @@ def car_management(request):
 
 
 # Создание марки автомобиля
+@login_required
 def car_make_create(request):
     if request.method == 'POST':
         form = CarMakeForm(request.POST)
@@ -516,7 +547,7 @@ def car_make_detail(request, pk):
         if column == 'id':
             models = models.filter(id__contains=search)
         elif column == 'name':
-            search_lower = search.lower()
+            search_lower = search.lower().replace('ё', 'е')
             models = models.extra(
                 select={'name_lower': 'custom_lower(name)'},
                 where=['custom_lower(name) LIKE %s'],
@@ -547,6 +578,7 @@ def car_make_detail(request, pk):
     })
 
 # Редактирование марки автомобиля
+@login_required
 def car_make_update(request, pk):
     car_make = get_object_or_404(CarMake, pk=pk)
     if request.method == 'POST':
@@ -562,22 +594,31 @@ def car_make_update(request, pk):
 
 
 # Удаление марки автомобиля
+ACTIVE_STATUSES = ('Первичный осмотр', 'Диагностика', 'В работе', 'Готов')
 
-
+@login_required
 def car_make_delete(request, pk):
     car_make = get_object_or_404(CarMake, pk=pk)
+    client_cars = ClientCar.objects.filter(make=car_make)
+    active_orders = list(Order.objects.filter(client_car__in=client_cars, status__in=ACTIVE_STATUSES))
     if request.method == 'POST':
+        if active_orders:
+            order_ids = ', '.join(f'№{o.id}' for o in active_orders)
+            messages.error(request, f'Нельзя удалить марку «{car_make.name}»: есть активные заказы {order_ids}.')
+            return redirect('car_management')
         car_make.delete()
         messages.success(request, 'Марка автомобиля успешно удалена!')
         return redirect('car_management')
     return render(request, 'confirm_delete.html', {
         'object': car_make,
         'deleted_object_type': 'CarMake',
-        'cancel_url': reverse('car_management')
+        'cancel_url': reverse('car_management'),
+        'active_orders': active_orders,
     })
 
 
 # Создание модели автомобиля для конкретной марки (без выпадающего списка марок)
+@login_required
 def car_model_create(request, make_pk):
     car_make = get_object_or_404(CarMake, pk=make_pk)
     if request.method == 'POST':
@@ -598,6 +639,7 @@ def car_model_create(request, make_pk):
 
 
 # Просмотр деталей модели автомобиля
+@login_required
 def car_model_detail(request, pk):
     car_model = get_object_or_404(CarModel, pk=pk)
     return render(request, 'cars/car_model_detail.html',
@@ -605,6 +647,7 @@ def car_model_detail(request, pk):
 
 
 # Редактирование модели автомобиля
+@login_required
 def car_model_update(request, pk):
     car_model = get_object_or_404(CarModel, pk=pk)
     if request.method == 'POST':
@@ -623,19 +666,25 @@ def car_model_update(request, pk):
 
 
 # Удаление модели автомобиля
-
-
+@login_required
 def car_model_delete(request, pk):
     car_model = get_object_or_404(CarModel, pk=pk)
     make_pk = car_model.make.pk
+    client_cars = ClientCar.objects.filter(model=car_model)
+    active_orders = list(Order.objects.filter(client_car__in=client_cars, status__in=ACTIVE_STATUSES))
     if request.method == 'POST':
+        if active_orders:
+            order_ids = ', '.join(f'№{o.id}' for o in active_orders)
+            messages.error(request, f'Нельзя удалить модель «{car_model.name}»: есть активные заказы {order_ids}.')
+            return redirect('car_make_detail', pk=make_pk)
         car_model.delete()
         messages.success(request, 'Модель автомобиля успешно удалена!')
         return redirect('car_make_detail', pk=make_pk)
     return render(request, 'confirm_delete.html', {
         'object': car_model,
         'deleted_object_type': 'CarModel',
-        'cancel_url': reverse('car_make_detail', kwargs={'pk': make_pk})
+        'cancel_url': reverse('car_make_detail', kwargs={'pk': make_pk}),
+        'active_orders': active_orders,
     })
 
 
@@ -663,7 +712,7 @@ def service_management(request):
         if column == 'id':
             service_types = service_types.filter(id__contains=search)
         elif column == 'name':
-            search_lower = search.lower()
+            search_lower = search.lower().replace('ё', 'е')
             service_types = service_types.extra(
                 select={'name_lower': 'custom_lower(name)'},
                 where=['custom_lower(name) LIKE %s'],
@@ -693,6 +742,7 @@ def service_management(request):
 
 
 # Создание типа услуги
+@login_required
 def service_type_create(request):
     if request.method == 'POST':
         form = ServiceTypeForm(request.POST)
@@ -732,7 +782,7 @@ def service_type_detail(request, pk):
         if column == 'id':
             services = services.filter(id__contains=search)
         elif column == 'name':
-            search_lower = search.lower()
+            search_lower = search.lower().replace('ё', 'е')
             services = services.extra(
                 select={'name_lower': 'custom_lower(name)'},
                 where=['custom_lower(name) LIKE %s'],
@@ -762,6 +812,7 @@ def service_type_detail(request, pk):
         'cancel_url': reverse('service_management')
     })
 # Редактирование типа услуги
+@login_required
 def service_type_update(request, pk):
     service_type = get_object_or_404(ServiceType, pk=pk)
     if request.method == 'POST':
@@ -779,7 +830,7 @@ def service_type_update(request, pk):
 # Удаление типа услуги
 from .models import ServiceType
 
-
+@login_required
 def service_type_delete(request, pk):
     from warehouse.models import WorkOrderService
     service_type = get_object_or_404(ServiceType, pk=pk)
@@ -807,6 +858,7 @@ def service_type_delete(request, pk):
         'object': service_type,
         'deleted_object_type': 'ServiceType',
         'cancel_url': reverse('service_management'),
+        'active_orders': active_orders,
         'extra_warning': (
             f'Будут удалены все услуги этого типа ({service_type.service_set.count()} шт.). '
             'Данные завершённых заказов сохранятся (названия зафиксированы в снапшоте).'
@@ -815,6 +867,7 @@ def service_type_delete(request, pk):
 
 
 # Создание конкретной услуги для типа услуги
+@login_required
 def service_create(request, pk):  # Изменил type_pk на pk
     service_type = get_object_or_404(ServiceType, pk=pk)
     if request.method == 'POST':
@@ -835,6 +888,7 @@ def service_create(request, pk):  # Изменил type_pk на pk
 
 
 # Просмотр деталей услуги
+@login_required
 def service_detail(request, pk, service_pk):  # Изменил type_pk на pk для соответствия маршруту
     service = get_object_or_404(Service, pk=service_pk)  # Используем service_pk для получения услуги
     return render(request, 'services/service_detail.html',
@@ -842,21 +896,33 @@ def service_detail(request, pk, service_pk):  # Изменил type_pk на pk �
 
 
 # Удаление услуги
-
+@login_required
 def service_delete(request, pk, service_pk):
     service = get_object_or_404(Service, pk=service_pk)
+    active_orders = list(
+        Order.objects.filter(
+            work_order_services__service=service,
+            status__in=ACTIVE_STATUSES,
+        ).distinct()
+    )
     if request.method == 'POST':
+        if active_orders:
+            order_ids = ', '.join(f'№{o.id}' for o in active_orders)
+            messages.error(request, f'Нельзя удалить услугу «{service.name}»: есть активные заказы {order_ids}.')
+            return redirect('service_type_detail', pk=pk)
         service.delete()
         messages.success(request, 'Услуга успешно удалена!')
         return redirect('service_type_detail', pk=pk)
     return render(request, 'confirm_delete.html', {
         'object': service,
         'deleted_object_type': 'Service',
-        'cancel_url': reverse('service_type_detail', kwargs={'pk': pk})
+        'cancel_url': reverse('service_type_detail', kwargs={'pk': pk}),
+        'active_orders': active_orders,
     })
 
 
 # Редактирование услуги
+@login_required
 def service_update(request, pk, service_pk):  # Изменил на pk (ID типа услуги) и service_pk (ID услуги)
     service = get_object_or_404(Service, pk=service_pk)  # Используем service_pk для получения услуги
     if request.method == 'POST':
@@ -916,7 +982,7 @@ def orders_list(request):
     column = request.GET.get('column', 'client')
 
     if search:
-        search_lower = search.lower()
+        search_lower = search.lower().replace('ё', 'е')
         if column == 'id':
             orders = orders.filter(id__contains=search)
         elif column == 'client':
@@ -1699,6 +1765,7 @@ def order_delete(request, pk):
 
 from django.shortcuts import render
 
+@login_required
 def help_page(request):
     return render(request, 'help/help.html')
 

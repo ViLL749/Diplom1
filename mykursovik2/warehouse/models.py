@@ -16,6 +16,15 @@ class Brand(models.Model):
 
 class Supplier(models.Model):
     name = models.CharField(max_length=255, verbose_name="Название", unique=True)
+    phone_country = models.CharField(
+        max_length=2, verbose_name="Страна телефона", default='RU',
+        choices=[
+            ('RU', 'Россия'), ('BY', 'Беларусь'), ('KZ', 'Казахстан'),
+            ('UA', 'Украина'), ('UZ', 'Узбекистан'), ('MD', 'Молдова'),
+            ('AM', 'Армения'), ('AZ', 'Азербайджан'), ('KG', 'Кыргызстан'),
+            ('TJ', 'Таджикистан'), ('TM', 'Туркменистан'),
+        ]
+    )
     phone = models.CharField(max_length=30, verbose_name="Телефон", blank=True)
     contact = models.CharField(max_length=255, verbose_name="Контактное лицо", blank=True)
     notes = models.TextField(verbose_name="Примечания", blank=True)

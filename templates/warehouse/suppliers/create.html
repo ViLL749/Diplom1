@@ -6,56 +6,111 @@
 
 <h1>Добавить поставщика</h1>
 
-<div id="form-errors" class="form-errors" style="display:none;"></div>
+<div id="form-errors" class="form-errors" {% if not form.errors %}style="display:none;"{% endif %}>
+    {% if form.errors %}
+    <p>Пожалуйста, исправьте ошибки:</p>
+    <ul>
+        {% for field, errors in form.errors.items %}
+            {% for error in errors %}
+                <li>{{ error }}</li>
+            {% endfor %}
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
 
 <form method="post" id="supplier-form">
     {% csrf_token %}
-    {% for field in form %}
-    <div>
-        <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
-        {{ field }}
+
+    <div style="margin-bottom:12px;">
+        <label for="id_name" style="display:block;margin-bottom:4px;font-weight:500;">Название:</label>
+        {{ form.name }}
+        {% if form.name.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.name.errors|join:", " }}</p>{% endif %}
     </div>
-    {% endfor %}
-    <button type="submit" class="btn">Сохранить</button>
-    <a href="{% url 'suppliers_list' %}" class="btn btn-danger">Отмена</a>
+
+    <div style="margin-bottom:12px;">
+        <label for="id_phone" style="display:block;margin-bottom:4px;font-weight:500;">Телефон:</label>
+        <div style="display:flex;gap:6px;align-items:center;">
+            {{ form.phone_country }}
+            {{ form.phone }}
+        </div>
+        <small id="phone-hint" style="font-size:12px;color:#64748b;display:block;margin-top:3px;"></small>
+        {% if form.phone.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.phone.errors|join:", " }}</p>{% endif %}
+    </div>
+
+    <div style="margin-bottom:12px;">
+        <label for="id_contact" style="display:block;margin-bottom:4px;font-weight:500;">Контактное лицо:</label>
+        {{ form.contact }}
+        {% if form.contact.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.contact.errors|join:", " }}</p>{% endif %}
+    </div>
+
+    <div style="margin-bottom:12px;">
+        <label for="id_notes" style="display:block;margin-bottom:4px;font-weight:500;">Примечания:</label>
+        {{ form.notes }}
+        {% if form.notes.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.notes.errors|join:", " }}</p>{% endif %}
+    </div>
+
+    <div style="display:flex;gap:8px;">
+        <button type="submit" class="btn">Сохранить</button>
+        <a href="{% url 'suppliers_list' %}" class="btn btn-danger">Отмена</a>
+    </div>
 </form>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    var formErrors = document.getElementById('form-errors');
-    var phoneInput = document.getElementById('id_phone');
+const PHONE_MASKS = {
+    RU: '+7 (000) 000-00-00', KZ: '+7 (000) 000-00-00',
+    BY: '+375 (00) 000-00-00', UA: '+380 (00) 000-00-00',
+    UZ: '+998 (00) 000-00-00', MD: '+373 (00) 000-000',
+    AM: '+374 (00) 000-000',  AZ: '+994 (00) 000-00-00',
+    KG: '+996 (000) 000-000', TJ: '+992 (00) 000-0000',
+    TM: '+993 (00) 000-00-00',
+};
+const PHONE_CC_DIGITS = { RU:1, KZ:1, BY:3, UA:3, UZ:3, MD:3, AM:3, AZ:3, KG:3, TJ:3, TM:3 };
 
-    if (phoneInput && typeof IMask !== 'undefined') {
-        IMask(phoneInput, { mask: '+7 (000) 000-00-00', lazy: false });
-    }
+document.addEventListener("DOMContentLoaded", function () {
+    const form          = document.getElementById("supplier-form");
+    const phoneInput    = document.getElementById("id_phone");
+    const countrySelect = document.getElementById("id_phone_country");
+    const phoneHint     = document.getElementById("phone-hint");
+    const formErrors    = document.getElementById("form-errors");
 
-    // Show server-side errors on page load
-    var serverErrors = [
-        {% for field in form %}{% if field.errors %}{% for e in field.errors %}"{{ field.label }}: {{ e }}",{% endfor %}{% endif %}{% endfor %}
-        {% for e in form.non_field_errors %}"{{ e }}",{% endfor %}
-    ].filter(Boolean);
-    if (serverErrors.length) {
-        formErrors.innerHTML = '<p>Пожалуйста, исправьте ошибки:</p><ul>' +
-            serverErrors.map(function(e) { return '<li>' + e + '</li>'; }).join('') + '</ul>';
-        formErrors.style.display = 'block';
-    }
+    let phoneMaskInst = null;
 
-    document.getElementById('supplier-form').addEventListener('submit', function(e) {
-        var errors = [];
-        var phone = phoneInput ? phoneInput.value.trim() : '';
-        if (phone && phone !== '+7 (___) ___-__-__') {
-            var phonePattern = /^\+7\s\(\d{3}\)\s\d{3}-\d{2}-\d{2}$/;
-            if (!phonePattern.test(phone)) {
-                errors.push('Телефон: введите номер в формате +7 (999) 999-99-99.');
-            }
+    function applyMask(country) {
+        const maskStr = PHONE_MASKS[country] || '+0 (000) 000-00-00';
+        if (phoneMaskInst) { phoneMaskInst.destroy(); phoneMaskInst = null; }
+        phoneInput.value = '';
+        if (typeof IMask !== "undefined") {
+            phoneMaskInst = new IMask(phoneInput, { mask: maskStr, lazy: false });
         }
-        if (errors.length) {
+        phoneHint.textContent = maskStr.replace(/0/g, 'X');
+    }
+
+    countrySelect.addEventListener("change", function () { applyMask(this.value); });
+
+    const initCountry  = countrySelect.value || 'RU';
+    const preFilledVal = phoneInput.value;
+    applyMask(initCountry);
+    if (preFilledVal && phoneMaskInst) {
+        const digits = preFilledVal.replace(/\D/g, '');
+        const ccLen  = PHONE_CC_DIGITS[initCountry] || 1;
+        phoneMaskInst.unmaskedValue = digits.slice(ccLen);
+    }
+
+    function validatePhone() {
+        const v = phoneInput.value.trim();
+        if (v && v.includes('_')) return "Введите номер телефона полностью.";
+        return null;
+    }
+
+    form.addEventListener("submit", function (e) {
+        const phoneError = validatePhone();
+        if (phoneError) {
             e.preventDefault();
-            formErrors.innerHTML = '<p>Пожалуйста, исправьте ошибки:</p><ul>' +
-                errors.map(function(err) { return '<li>' + err + '</li>'; }).join('') + '</ul>';
-            formErrors.style.display = 'block';
+            formErrors.innerHTML = "<p>Пожалуйста, исправьте ошибки:</p><ul><li>" + phoneError + "</li></ul>";
+            formErrors.style.display = "block";
         } else {
-            formErrors.style.display = 'none';
+            formErrors.style.display = "none";
         }
     });
 });

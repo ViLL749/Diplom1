@@ -4,11 +4,18 @@
 <h1>Изменить минимальный остаток</h1>
 <p><strong>Деталь:</strong> {{ entry.part.article }} — {{ entry.part.name }}</p>
 <p><strong>Место:</strong> {{ entry.location.label }}</p>
+{% if form.errors %}
+<div class="form-errors">
+    <p>Пожалуйста, исправьте ошибки:</p>
+    <ul>{% for field, errors in form.errors.items %}{% for e in errors %}<li>{{ e }}</li>{% endfor %}{% endfor %}</ul>
+</div>
+{% endif %}
 <form method="post">
     {% csrf_token %}
     <div>
         <label for="{{ form.min_qty.id_for_label }}">{{ form.min_qty.label }}:</label>
         {{ form.min_qty }}
+        {% if form.min_qty.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.min_qty.errors|join:", " }}</p>{% endif %}
     </div>
     <button type="submit" class="btn">Сохранить</button>
     <a href="{% url 'stock_list' %}" class="btn btn-danger">Отмена</a>

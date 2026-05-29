@@ -6,7 +6,12 @@
 <script src="{% static 'js/imask.js' %}"></script>
 
     <h1>Изменение автомобиля клиента</h1>
-<div id="form-errors" class="form-errors" style="display: none;"></div>
+<div id="form-errors" class="form-errors" {% if not form.errors %}style="display: none;"{% endif %}>
+    {% if form.errors %}
+        <p>Пожалуйста, исправьте ошибки:</p>
+        <ul>{% for field, errors in form.errors.items %}{% for e in errors %}<li>{{ e }}</li>{% endfor %}{% endfor %}</ul>
+    {% endif %}
+</div>
 <form method="post" id="client-car-form" action="{% url 'client_car_update' pk=client.pk car_pk=form.instance.pk %}">
     {% csrf_token %}
     {{ form.client.as_hidden }}
@@ -21,10 +26,12 @@
     <div>
         <label for="id_vin">VIN-номер: <small style="color:#64748b;font-weight:normal;">(необязательно)</small></label>
         {{ form.vin }}
+        {% if form.vin.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.vin.errors|join:", " }}</p>{% endif %}
     </div>
     <div>
         <label for="id_year">Год выпуска:</label>
         {{ form.year }}
+        {% if form.year.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.year.errors|join:", " }}</p>{% endif %}
     </div>
     <div>
         <label for="id_license_plate">Госномер:</label>
@@ -33,10 +40,12 @@
             {{ form.license_plate }}
         </div>
         <small id="plate-hint" style="font-size:12px;color:#64748b;display:block;margin-top:4px;"></small>
+        {% if form.license_plate.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.license_plate.errors|join:", " }}</p>{% endif %}
     </div>
     <div>
         <label for="id_color">Цвет:</label>
         {{ form.color }}
+        {% if form.color.errors %}<p style="color:#dc2626;font-size:0.85em;margin-top:4px;">{{ form.color.errors|join:", " }}</p>{% endif %}
     </div>
     <div style="margin-top: 20px;">
         <button type="submit" class="btn">Сохранить</button>

@@ -149,6 +149,14 @@ class ServiceForm(forms.ModelForm):
         else:
             self.fields['service_type'].widget = forms.HiddenInput()
 
+    def clean_base_hours(self):
+        hours = self.cleaned_data.get('base_hours')
+        if hours is None:
+            raise forms.ValidationError('Укажите нормо-часы.')
+        if hours < 0:
+            raise forms.ValidationError('Нормо-часы не могут быть отрицательными.')
+        return hours
+
 
 class CarMakeSelectionForm(forms.Form):
     make = forms.ModelChoiceField(queryset=CarMake.objects.all(), label="Выберите марку автомобиля")

@@ -57,6 +57,9 @@ function searchParts(page) {
         success: function(data) {
             var tbody = $('#part-modal-list');
             tbody.empty();
+            if (data.parts.length === 0) {
+                tbody.append('<tr><td colspan="5" style="color:#888;text-align:center;padding:12px;">Детали не найдены.</td></tr>');
+            }
             data.parts.forEach(function(p) {
                 var pkg = p.package_qty || 1;
                 var pkgCell = pkg > 1
