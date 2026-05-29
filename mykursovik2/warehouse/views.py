@@ -376,29 +376,6 @@ def api_brands(request):
     })
 
 
-@login_required
-def api_work_orders(request):
-    from mainapp.models import Order
-    search = request.GET.get('search', '')
-    orders = Order.objects.exclude(status='Завершён').order_by('-id')
-    if search:
-        orders = orders.filter(
-            Q(id__icontains=search) |
-            Q(client__fio__icontains=search) |
-            Q(car_details_static__icontains=search)
-        )
-    return JsonResponse({
-        'orders': [
-            {
-                'id': o.id,
-                'client': o.client_fio_static or '—',
-                'car': o.car_details_static or '—',
-                'status': o.status,
-            }
-            for o in orders[:30]
-        ]
-    })
-
 
 # ──────────────────────────────────────────────────────────────
 # Brands
@@ -409,7 +386,9 @@ def brands_list(request):
     brands = Brand.objects.all()
     search = request.GET.get('search', '')
     if search:
-        brands = brands.filter(name__icontains=search)
+        _register_custom_functions()
+        sl = search.lower().replace('ё', 'е')
+        brands = brands.extra(where=["custom_lower(warehouse_brand.name) LIKE %s"], params=[f'%{sl}%'])
     per_page = _get_per_page(request)
     paginator = Paginator(brands, per_page)
     page_obj = paginator.get_page(request.GET.get('page', 1))
@@ -464,8 +443,11 @@ def suppliers_list(request):
     suppliers = Supplier.objects.all()
     search = request.GET.get('search', '')
     if search:
-        suppliers = suppliers.filter(
-            Q(name__icontains=search) | Q(contact__icontains=search)
+        _register_custom_functions()
+        sl = search.lower().replace('ё', 'е')
+        suppliers = suppliers.extra(
+            where=["(custom_lower(warehouse_supplier.name) LIKE %s OR custom_lower(warehouse_supplier.contact) LIKE %s)"],
+            params=[f'%{sl}%', f'%{sl}%']
         )
     per_page = _get_per_page(request)
     paginator = Paginator(suppliers, per_page)
@@ -760,10 +742,13 @@ def stock_list(request):
     search = request.GET.get('search', '')
     column = request.GET.get('column', 'article')
     if search:
+        _register_custom_functions()
+        sl = search.lower().replace('ё', 'е')
         if column == 'article':
             entries = entries.filter(part__article__icontains=search)
         elif column == 'name':
-            entries = entries.filter(part__name__icontains=search)
+            part_ids = list(Part.objects.extra(where=["custom_lower(warehouse_part.name) LIKE %s"], params=[f'%{sl}%']).values_list('id', flat=True))
+            entries = entries.filter(part_id__in=part_ids)
         elif column == 'location':
             entries = entries.filter(location__label__icontains=search)
 
@@ -901,7 +886,10 @@ def supply_list(request):
     docs = SupplyDocument.objects.select_related('supplier', 'purchase_order').all()
     search = request.GET.get('search', '')
     if search:
-        docs = docs.filter(supplier__name__icontains=search)
+        _register_custom_functions()
+        sl = search.lower().replace('ё', 'е')
+        supplier_ids = list(Supplier.objects.extra(where=["custom_lower(warehouse_supplier.name) LIKE %s"], params=[f'%{sl}%']).values_list('id', flat=True))
+        docs = docs.filter(supplier_id__in=supplier_ids)
     per_page = _get_per_page(request)
     paginator = Paginator(docs, per_page)
     page_obj = paginator.get_page(request.GET.get('page', 1))
@@ -1078,10 +1066,14 @@ def purchase_list(request):
     orders = PurchaseOrder.objects.select_related('supplier').all()
     search = request.GET.get('search', '')
     if search:
+        _register_custom_functions()
+        sl = search.lower().replace('ё', 'е')
+        supplier_ids = list(Supplier.objects.extra(where=["custom_lower(warehouse_supplier.name) LIKE %s"], params=[f'%{sl}%']).values_list('id', flat=True))
+        part_ids = list(Part.objects.extra(where=["custom_lower(warehouse_part.name) LIKE %s"], params=[f'%{sl}%']).values_list('id', flat=True))
         orders = orders.filter(
-            Q(supplier__name__icontains=search) |
+            Q(supplier_id__in=supplier_ids) |
             Q(items__part__article__icontains=search) |
-            Q(items__part__name__icontains=search)
+            Q(items__part_id__in=part_ids)
         ).distinct()
 
     sort = request.GET.get('sort', 'created_at')
@@ -1251,12 +1243,7 @@ def workorderpart_create(request, order_pk):
                 messages.success(request, 'Деталь добавлена и зарезервирована.')
             _recalculate_order_cost(order)
             return redirect('order_detail', pk=order_pk)
-    else:
-        form = WorkOrderPartForm()
-    wos_list = WorkOrderService.objects.filter(work_order=order).select_related('service')
-    return render(request, 'warehouse/workorderpart/create.html', {
-        'form': form, 'order': order, 'wos_list': wos_list,
-    })
+    return redirect('order_detail', pk=order_pk)
 
 
 @login_required
@@ -1624,7 +1611,9 @@ def employees_list(request):
     employees = Employee.objects.all()
     search = request.GET.get('search', '')
     if search:
-        employees = employees.filter(name__icontains=search)
+        _register_custom_functions()
+        sl = search.lower().replace('ё', 'е')
+        employees = employees.extra(where=["custom_lower(warehouse_employee.name) LIKE %s"], params=[f'%{sl}%'])
     return render(request, 'warehouse/employees/list.html', {
         'employees': employees, 'search': search,
     })

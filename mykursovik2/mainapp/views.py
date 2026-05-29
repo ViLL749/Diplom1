@@ -149,12 +149,17 @@ def client_detail(request, pk):
     column = request.GET.get('column', 'model')
 
     if search:
+        register_custom_functions()
+        sl = search.lower().replace('ё', 'е')
         if column == 'make':
-            client_cars = client_cars.filter(make__name__icontains=search)
+            make_ids = list(CarMake.objects.extra(where=["custom_lower(mainapp_carmake.name) LIKE %s"], params=[f'%{sl}%']).values_list('id', flat=True))
+            client_cars = client_cars.filter(make_id__in=make_ids)
         elif column == 'model':
-            client_cars = client_cars.filter(model__name__icontains=search)
+            model_ids = list(CarModel.objects.extra(where=["custom_lower(mainapp_carmodel.name) LIKE %s"], params=[f'%{sl}%']).values_list('id', flat=True))
+            client_cars = client_cars.filter(model_id__in=model_ids)
         elif column == 'client':
-            client_cars = client_cars.filter(client__fio__icontains=search)
+            client_ids = list(Client.objects.extra(where=["custom_lower(mainapp_client.fio) LIKE %s"], params=[f'%{sl}%']).values_list('id', flat=True))
+            client_cars = client_cars.filter(client_id__in=client_ids)
         elif column == 'license_plate':
             from django.db.models import Q
             variants = normalize_plate_search(search)
