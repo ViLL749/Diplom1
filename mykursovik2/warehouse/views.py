@@ -848,17 +848,30 @@ def purchase_prices_detail(request, part_pk):
     reserved_qty = sum(e.reserved_qty for e in entries)
 
     in_stock = _in_stock_batches(part, available_only=False)
-    in_stock_avail = _in_stock_batches(part, available_only=True)
 
-    # Map (doc_id, location_id) → available remaining (may differ from total remaining)
-    avail_map = {(b['doc_id'], b['location'].id): b['remaining'] for b in in_stock_avail}
+    # Distribute reserved units cheapest-first with FIFO tiebreaker —
+    # identical to _reserve_cheapest_first so display matches pricing logic.
+    from collections import defaultdict
+    location_reserved = {e.location_id: e.reserved_qty for e in entries}
+    loc_batches = defaultdict(list)
     for b in in_stock:
-        b['avail_remaining'] = avail_map.get((b['doc_id'], b['location'].id), 0)
+        loc_batches[b['location'].id].append(b)
+
+    avail_map = {}
+    for loc_id, batches in loc_batches.items():
+        reserved_left = location_reserved.get(loc_id, 0)
+        for b in sorted(batches, key=lambda x: (x['price_per_unit'], x['date'], x['doc_id'])):
+            take = min(b['remaining'], reserved_left)
+            avail_map[(b['doc_id'], loc_id)] = b['remaining'] - take
+            reserved_left -= take
+
+    for b in in_stock:
+        b['avail_remaining'] = avail_map.get((b['doc_id'], b['location'].id), b['remaining'])
 
     min_price = min((b['price_per_unit'] for b in in_stock), default=None)
     min_price_available = min(
-        (b['price_per_unit'] for b in in_stock_avail), default=None
-    ) if in_stock_avail else None
+        (b['price_per_unit'] for b in in_stock if b['avail_remaining'] > 0), default=None
+    )
     price_diff = (
         (min_price_available - min_price).quantize(Decimal('0.01'))
         if min_price and min_price_available and min_price_available != min_price
