@@ -1151,7 +1151,7 @@ def _unreserve_single_wop(wop):
     _release_wop_reservation(wop)
 
 
-@role_required(MANAGER)
+@role_required(MANAGER, MECHANIC)
 def order_commit(request, pk):
     """Batch-save all staged changes from the order detail page in one atomic operation."""
     import json as _json_mod

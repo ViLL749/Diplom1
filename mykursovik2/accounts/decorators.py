@@ -1,8 +1,9 @@
 from functools import wraps
 
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
-from django.shortcuts import render, redirect
+from django.shortcuts import redirect
 
 MECHANIC    = 'mechanic'
 MANAGER     = 'manager'
@@ -39,7 +40,7 @@ def _is_ajax(request):
 def _forbidden(request):
     if _is_ajax(request):
         return JsonResponse({'error': 'Нет доступа'}, status=403)
-    return render(request, '403.html', status=403)
+    raise PermissionDenied
 
 
 def role_required(*roles):

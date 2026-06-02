@@ -462,4 +462,70 @@ class StockTests(TestCase):
             quantity=8, pkg_qty=4, purchase_price=Decimal('400.00'),
         )
         # 400 / 4 = 100
+
         self.assertEqual(si.price_per_unit, Decimal('100.00'))
+
+
+# ─── 10. Ролевой доступ — регрессионные тесты на конкретные фиксы ─────────────
+
+class RoleAccessRegressionTests(TestCase):
+    """Smoke-test the three fixes from the code review."""
+
+    def _login_as(self, role, elevated=False):
+        import uuid
+        username = f'role_{role}_{uuid.uuid4().hex[:6]}'
+        user = User.objects.create_user(username=username, password='pw')
+        UserProfile.objects.create(user=user, role=role, elevated_access=elevated)
+        tc = TestClient()
+        tc.login(username=username, password='pw')
+        return tc
+
+    def _make_order(self):
+        make  = CarMake.objects.create(name='Fix_Make')
+        model = CarModel.objects.create(make=make, name='Fix_Model')
+        client = Client.objects.create(fio='Fix Client', phone='+7 900 000-00-99')
+        car    = ClientCar.objects.create(
+            client=client, make=make, model=model,
+            license_plate='Ф999ФФ77', year=2022, color='Серый',
+        )
+        from django.utils import timezone
+        return Order.objects.create(client_car=car, status='В работе',
+                                    order_date=timezone.now().date())
+
+    # Fix 1: mechanic can call order_commit (was MANAGER-only, now MECHANIC+MANAGER)
+    def test_order_commit_accessible_to_mechanic(self):
+        import json
+        tc    = self._login_as('mechanic')
+        order = self._make_order()
+        resp  = tc.post(
+            reverse('order_commit', args=[order.pk]),
+            data=json.dumps({'services': [], 'parts': [], 'removedServices': [], 'removedParts': []}),
+            content_type='application/json',
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertNotEqual(resp.status_code, 403, 'mechanic must not get 403 on order_commit')
+
+    def test_order_commit_still_forbidden_for_storekeeper(self):
+        import json
+        tc    = self._login_as('storekeeper')
+        order = self._make_order()
+        resp  = tc.post(
+            reverse('order_commit', args=[order.pk]),
+            data=json.dumps({'services': [], 'parts': [], 'removedServices': [], 'removedParts': []}),
+            content_type='application/json',
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    # Fix 2: 403 response renders correctly (PermissionDenied path)
+    def test_forbidden_returns_403_status(self):
+        tc   = self._login_as('mechanic')
+        resp = tc.get(reverse('client_create'))
+        self.assertEqual(resp.status_code, 403)
+
+    # Fix 3: accountant cannot access picking_list
+    def test_picking_list_forbidden_for_accountant(self):
+        tc    = self._login_as('accountant')
+        order = self._make_order()
+        resp  = tc.get(reverse('picking_list', args=[order.pk]))
+        self.assertEqual(resp.status_code, 403)

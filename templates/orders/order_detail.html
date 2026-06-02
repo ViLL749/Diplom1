@@ -43,7 +43,7 @@
         <div class="pdf-dropdown-menu" id="pdf-dropdown-menu" style="display:none;position:absolute;top:100%;left:0;z-index:100;background:#fff;border:1px solid #ccc;border-radius:4px;min-width:220px;box-shadow:0 2px 8px rgba(0,0,0,.15);">
             {% if order.status != 'Завершён' %}
             <a href="{% url 'order_mechanic_pdf' order.id %}" target="_blank" class="pdf-dropdown-item">Для механика</a>
-            {% if wop_list %}<a href="{% url 'picking_list' order.id %}" target="_blank" class="pdf-dropdown-item">Лист отборки</a>{% endif %}
+            {% if wop_list and not is_accountant %}<a href="{% url 'picking_list' order.id %}" target="_blank" class="pdf-dropdown-item">Лист отборки</a>{% endif %}
             {% endif %}
             <a href="{% url 'order_customer_pdf' order.id %}" target="_blank" class="pdf-dropdown-item">
                 {% if order.status == 'Готов' or order.status == 'Завершён' %}Финальный заказ-наряд клиенту{% else %}Заказ-наряд клиенту (предварительный){% endif %}
