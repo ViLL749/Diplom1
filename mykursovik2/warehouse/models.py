@@ -298,7 +298,8 @@ class WorkOrderPart(models.Model):
         return self.sale_price or None
 
     def __str__(self):
-        return f"{self.part.article} x{self.quantity} для заказа №{self.work_order.id}"
+        part_str = self.part.article if self.part else '—'
+        return f"{part_str} x{self.quantity} для заказа №{self.work_order.id}"
 
     class Meta:
         verbose_name = "Деталь в заказ-наряде"
@@ -353,7 +354,8 @@ class WorkOrderService(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.service.name} для заказа №{self.work_order.id}"
+        service_name = self.service.name if self.service else '—'
+        return f"{service_name} для заказа №{self.work_order.id}"
 
     class Meta:
         verbose_name = "Услуга в заказ-наряде (нормо-часы)"
