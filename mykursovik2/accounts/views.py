@@ -38,3 +38,7 @@ def logout_view(request):
 # Страница ошибки CSRF
 def csrf_failure(request, reason=""):
     return render(request, "accounts/csrf_failure.html", {"reason": reason})
+
+
+def custom_403(request, exception=None):
+    return render(request, '403.html', status=403)

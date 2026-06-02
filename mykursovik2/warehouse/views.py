@@ -1,7 +1,10 @@
 from decimal import Decimal
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from accounts.decorators import (
+    role_required, elevated_or_storekeeper_required,
+    ALL_ROLES, MANAGER, STOREKEEPER, MECHANIC, ACCOUNTANT,
+)
 from django.core.paginator import Paginator
 from django.db import connection, transaction
 from django.db.models import F, Q
@@ -192,7 +195,7 @@ def _recalculate_order_cost(order):
     order.save(update_fields=['cost'])
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def api_services(request):
     """Return all services grouped by type for the order detail service modal."""
     from mainapp.models import Service, ServiceType
@@ -207,7 +210,7 @@ def api_services(request):
     return JsonResponse({'groups': result})
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def api_parts(request):
     _register_custom_functions()
     search = request.GET.get('search', '')
@@ -264,7 +267,7 @@ def api_parts(request):
     })
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def api_part_price(request):
     """Return exact total purchase cost for a given part + quantity (uses actual stock batches).
 
@@ -316,7 +319,7 @@ def api_part_price(request):
     })
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def api_suppliers(request):
     _register_custom_functions()
     search = request.GET.get('search', '')
@@ -335,7 +338,7 @@ def api_suppliers(request):
     })
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def api_po_items(request):
     """Return remaining (not fully received) items for a PurchaseOrder."""
     po_id = request.GET.get('po_id')
@@ -360,7 +363,7 @@ def api_po_items(request):
     return JsonResponse({'items': result})
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def api_brands(request):
     _register_custom_functions()
     search = request.GET.get('search', '')
@@ -381,7 +384,7 @@ def api_brands(request):
 # Brands
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def brands_list(request):
     brands = Brand.objects.all()
     search = request.GET.get('search', '')
@@ -397,7 +400,7 @@ def brands_list(request):
     })
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def brand_create(request):
     if request.method == 'POST':
         form = BrandForm(request.POST)
@@ -410,7 +413,7 @@ def brand_create(request):
     return render(request, 'warehouse/brands/create.html', {'form': form})
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def brand_update(request, pk):
     brand = get_object_or_404(Brand, pk=pk)
     if request.method == 'POST':
@@ -424,7 +427,7 @@ def brand_update(request, pk):
     return render(request, 'warehouse/brands/update.html', {'form': form, 'brand': brand})
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def brand_delete(request, pk):
     brand = get_object_or_404(Brand, pk=pk)
     if request.method == 'POST':
@@ -438,7 +441,7 @@ def brand_delete(request, pk):
 # Suppliers
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def suppliers_list(request):
     suppliers = Supplier.objects.all()
     search = request.GET.get('search', '')
@@ -457,7 +460,7 @@ def suppliers_list(request):
     })
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def supplier_create(request):
     if request.method == 'POST':
         form = SupplierForm(request.POST)
@@ -470,7 +473,7 @@ def supplier_create(request):
     return render(request, 'warehouse/suppliers/create.html', {'form': form})
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def supplier_update(request, pk):
     supplier = get_object_or_404(Supplier, pk=pk)
     if request.method == 'POST':
@@ -484,7 +487,7 @@ def supplier_update(request, pk):
     return render(request, 'warehouse/suppliers/update.html', {'form': form, 'supplier': supplier})
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def supplier_delete(request, pk):
     supplier = get_object_or_404(Supplier, pk=pk)
     if request.method == 'POST':
@@ -498,7 +501,7 @@ def supplier_delete(request, pk):
 # Parts
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def parts_list(request):
     _register_custom_functions()
     parts = Part.objects.all()
@@ -551,7 +554,7 @@ def _save_part_form(form):
     return part
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def part_create(request):
     if request.method == 'POST':
         form = PartForm(request.POST)
@@ -564,14 +567,14 @@ def part_create(request):
     return render(request, 'warehouse/parts/create.html', {'form': form})
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def part_detail(request, pk):
     part = get_object_or_404(Part, pk=pk)
     stock_entries = part.stock_entries.select_related('location').all()
     return render(request, 'warehouse/parts/detail.html', {'part': part, 'stock_entries': stock_entries})
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def part_update(request, pk):
     part = get_object_or_404(Part, pk=pk)
     if request.method == 'POST':
@@ -585,7 +588,7 @@ def part_update(request, pk):
     return render(request, 'warehouse/parts/update.html', {'form': form, 'part': part})
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def part_delete(request, pk):
     part = get_object_or_404(Part, pk=pk)
 
@@ -619,7 +622,7 @@ def part_delete(request, pk):
 # Storage Locations
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def locations_list(request):
     import json as _json
     locations = StorageLocation.objects.all()
@@ -665,7 +668,7 @@ def locations_list(request):
     })
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def location_create(request):
     if request.method == 'POST':
         form = StorageLocationForm(request.POST)
@@ -678,14 +681,14 @@ def location_create(request):
     return render(request, 'warehouse/locations/create.html', {'form': form})
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def location_detail(request, pk):
     location = get_object_or_404(StorageLocation, pk=pk)
     stock_entries = location.stock_entries.select_related('part').all()
     return render(request, 'warehouse/locations/detail.html', {'location': location, 'stock_entries': stock_entries})
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def location_update(request, pk):
     location = get_object_or_404(StorageLocation, pk=pk)
     if request.method == 'POST':
@@ -699,7 +702,7 @@ def location_update(request, pk):
     return render(request, 'warehouse/locations/update.html', {'form': form, 'location': location})
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def location_delete(request, pk):
     location = get_object_or_404(StorageLocation, pk=pk)
 
@@ -736,7 +739,7 @@ def location_delete(request, pk):
 # Stock
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def stock_list(request):
     entries = StockEntry.objects.select_related('part', 'location').all()
     search = request.GET.get('search', '')
@@ -764,7 +767,7 @@ def stock_list(request):
     return render(request, 'warehouse/stock/list.html', {'page_obj': page_obj, 'per_page': per_page})
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def stock_update_min(request, pk):
     entry = get_object_or_404(StockEntry, pk=pk)
     if request.method == 'POST':
@@ -782,7 +785,7 @@ def stock_update_min(request, pk):
 # Purchase Prices (cost by part)
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def purchase_prices_list(request):
     """Parts that have at least one stock entry, with total qty and reserve."""
     _register_custom_functions()
@@ -839,7 +842,7 @@ def purchase_prices_list(request):
     })
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def purchase_prices_detail(request, part_pk):
     """Show only batches currently in stock with per-unit prices."""
     part = get_object_or_404(Part, pk=part_pk)
@@ -894,7 +897,7 @@ def purchase_prices_detail(request, part_pk):
 # Supply Documents
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@elevated_or_storekeeper_required
 def supply_list(request):
     docs = SupplyDocument.objects.select_related('supplier', 'purchase_order').all()
     search = request.GET.get('search', '')
@@ -909,7 +912,7 @@ def supply_list(request):
     return render(request, 'warehouse/supply/list.html', {'page_obj': page_obj, 'per_page': per_page})
 
 
-@login_required
+@elevated_or_storekeeper_required
 @transaction.atomic
 def supply_create(request):
     # Pre-select PO if passed in GET
@@ -1053,7 +1056,7 @@ def supply_create(request):
     })
 
 
-@login_required
+@elevated_or_storekeeper_required
 def supply_detail(request, pk):
     from decimal import Decimal
     doc = get_object_or_404(SupplyDocument, pk=pk)
@@ -1074,7 +1077,7 @@ def supply_detail(request, pk):
 # Purchase Orders
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@elevated_or_storekeeper_required
 def purchase_list(request):
     orders = PurchaseOrder.objects.select_related('supplier').all()
     search = request.GET.get('search', '')
@@ -1101,7 +1104,7 @@ def purchase_list(request):
     return render(request, 'warehouse/purchase/list.html', {'page_obj': page_obj, 'per_page': per_page})
 
 
-@login_required
+@elevated_or_storekeeper_required
 @transaction.atomic
 def purchase_create(request):
     if request.method == 'POST':
@@ -1121,7 +1124,7 @@ def purchase_create(request):
     return render(request, 'warehouse/purchase/create.html', {'form': form, 'formset': formset})
 
 
-@login_required
+@elevated_or_storekeeper_required
 def purchase_detail(request, pk):
     po = get_object_or_404(PurchaseOrder, pk=pk)
     items = po.items.select_related('part').all()
@@ -1138,7 +1141,7 @@ def purchase_detail(request, pk):
     })
 
 
-@login_required
+@elevated_or_storekeeper_required
 def purchase_update(request, pk):
     from django.http import JsonResponse as _JR
     po = get_object_or_404(PurchaseOrder, pk=pk)
@@ -1182,7 +1185,7 @@ def purchase_update(request, pk):
     return render(request, 'warehouse/purchase/update.html', {'form': form, 'po': po})
 
 
-@login_required
+@elevated_or_storekeeper_required
 @transaction.atomic
 def purchase_edit(request, pk):
     po = get_object_or_404(PurchaseOrder, pk=pk)
@@ -1203,7 +1206,7 @@ def purchase_edit(request, pk):
     return render(request, 'warehouse/purchase/edit.html', {'form': form, 'formset': formset, 'po': po})
 
 
-@login_required
+@elevated_or_storekeeper_required
 def purchase_delete(request, pk):
     po = get_object_or_404(PurchaseOrder, pk=pk)
     if po.status != 'draft':
@@ -1225,7 +1228,7 @@ def purchase_delete(request, pk):
 # Work Order Parts
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@role_required(MECHANIC, MANAGER)
 def workorderpart_create(request, order_pk):
     from mainapp.models import Order
     order = get_object_or_404(Order, pk=order_pk)
@@ -1259,7 +1262,7 @@ def workorderpart_create(request, order_pk):
     return redirect('order_detail', pk=order_pk)
 
 
-@login_required
+@role_required(MECHANIC, MANAGER)
 def workorderpart_update(request, pk):
     wop = get_object_or_404(WorkOrderPart, pk=pk)
     order_pk = wop.work_order.pk
@@ -1351,7 +1354,7 @@ def workorderpart_update(request, pk):
     })
 
 
-@login_required
+@role_required(MECHANIC, MANAGER)
 def workorderpart_delete(request, pk):
     wop = get_object_or_404(WorkOrderPart, pk=pk)
     order_pk = wop.work_order.pk
@@ -1390,7 +1393,7 @@ def workorderpart_delete(request, pk):
 # Work Order Services
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@role_required(MECHANIC, MANAGER)
 def workorderservice_create_bulk(request, order_pk):
     from mainapp.models import Order, Service
     order = get_object_or_404(Order, pk=order_pk)
@@ -1421,7 +1424,7 @@ def workorderservice_create_bulk(request, order_pk):
     return redirect('order_detail', pk=order_pk)
 
 
-@login_required
+@role_required(MECHANIC, MANAGER)
 def workorderservice_create(request, order_pk):
     from mainapp.models import Order
     order = get_object_or_404(Order, pk=order_pk)
@@ -1450,7 +1453,7 @@ def workorderservice_create(request, order_pk):
     })
 
 
-@login_required
+@role_required(MECHANIC, MANAGER)
 def workorderservice_update(request, pk):
     wos = get_object_or_404(WorkOrderService, pk=pk)
     order_pk = wos.work_order.pk
@@ -1469,7 +1472,7 @@ def workorderservice_update(request, pk):
     })
 
 
-@login_required
+@role_required(MECHANIC, MANAGER)
 def workorderservice_delete(request, pk):
     from mainapp.views import _release_wop_reservation
     wos = get_object_or_404(WorkOrderService, pk=pk)
@@ -1491,7 +1494,7 @@ def workorderservice_delete(request, pk):
 # Picking List
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@role_required(MECHANIC, MANAGER, STOREKEEPER)
 def picking_list(request, order_pk):
     from mainapp.models import Order
     from reportlab.lib.pagesizes import A4
@@ -1582,7 +1585,7 @@ def picking_list(request, order_pk):
 # Settings
 # ──────────────────────────────────────────────────────────────
 
-@staff_required
+@role_required()
 def settings_view(request):
     settings, _ = WorkshopSettings.objects.get_or_create(pk=1)
     if request.method == 'POST':
@@ -1619,7 +1622,7 @@ def models_remaining_filter():
 # Employees (Mechanics)
 # ──────────────────────────────────────────────────────────────
 
-@staff_required
+@role_required(MANAGER)
 def employees_list(request):
     employees = Employee.objects.all()
     search = request.GET.get('search', '')
@@ -1632,7 +1635,7 @@ def employees_list(request):
     })
 
 
-@staff_required
+@role_required(MANAGER)
 def employee_create(request):
     if request.method == 'POST':
         form = EmployeeForm(request.POST)
@@ -1645,7 +1648,7 @@ def employee_create(request):
     return render(request, 'warehouse/employees/create.html', {'form': form})
 
 
-@staff_required
+@role_required(MANAGER)
 def employee_update(request, pk):
     employee = get_object_or_404(Employee, pk=pk)
     if request.method == 'POST':
@@ -1659,7 +1662,7 @@ def employee_update(request, pk):
     return render(request, 'warehouse/employees/update.html', {'form': form, 'employee': employee})
 
 
-@staff_required
+@role_required(MANAGER)
 def employee_delete(request, pk):
     employee = get_object_or_404(Employee, pk=pk)
 
@@ -1690,7 +1693,7 @@ def employee_delete(request, pk):
     })
 
 
-@staff_required
+@role_required(MANAGER, ACCOUNTANT)
 def employee_report(request, pk):
     """Earnings report for a single employee. Only completed orders count."""
     from decimal import Decimal
@@ -1759,7 +1762,7 @@ def employee_report(request, pk):
     })
 
 
-@staff_required
+@role_required(MANAGER, ACCOUNTANT)
 def employees_report_all(request):
     """Summary earnings for all employees. Only completed orders count."""
     from decimal import Decimal
@@ -1791,7 +1794,7 @@ def employees_report_all(request):
 
 
 # DEAD CODE — не используется в шаблонах. Назначение сотрудников идёт через order_commit.
-@login_required
+@role_required(MECHANIC, MANAGER)
 def api_assign_employee(request, wos_pk):
     """AJAX: assign an employee to a WorkOrderService."""
     if request.method != 'POST':
@@ -1824,7 +1827,7 @@ def api_assign_employee(request, wos_pk):
 
 
 # DEAD CODE — не используется в шаблонах. Снятие сотрудников идёт через order_commit.
-@login_required
+@role_required(MECHANIC, MANAGER)
 def api_unassign_employee(request, wos_pk, emp_pk):
     """AJAX: remove an employee from a WorkOrderService."""
     if request.method != 'POST':
@@ -1848,7 +1851,7 @@ def api_unassign_employee(request, wos_pk, emp_pk):
     return JsonResponse({'assignments': assignments})
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def api_employees(request):
     """AJAX: list active employees for assignment modal."""
     _register_custom_functions()
@@ -1894,7 +1897,7 @@ def _check_po_overrun(valid_items):
 # Write-Off (Списание)
 # ──────────────────────────────────────────────────────────────
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def write_off_list(request):
     from django.utils import timezone as tz
     qs = WriteOff.objects.prefetch_related('items__part')
@@ -1907,7 +1910,7 @@ def write_off_list(request):
     })
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def write_off_create(request):
     from django.utils import timezone as tz
     if request.method == 'POST':
@@ -1988,7 +1991,7 @@ def write_off_create(request):
     })
 
 
-@login_required
+@role_required(STOREKEEPER, MANAGER)
 def write_off_detail(request, pk):
     wo = get_object_or_404(
         WriteOff.objects.prefetch_related('items__part', 'items__location'),
@@ -1997,7 +2000,7 @@ def write_off_detail(request, pk):
     return render(request, 'warehouse/writeoff/detail.html', {'wo': wo})
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def api_part_stock(request):
     """AJAX: return available_qty for a given part+location combination."""
     part_id = request.GET.get('part')
@@ -2011,7 +2014,7 @@ def api_part_stock(request):
         return JsonResponse({'available_qty': 0, 'total_qty': 0})
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def api_part_locations(request):
     """AJAX: return locations where the given part has available stock."""
     part_id = request.GET.get('part')

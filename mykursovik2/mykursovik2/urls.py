@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django.urls import path, include
-from mainapp import views  # Импортируем views из приложения mainapp
+from mainapp import views
+
+handler403 = 'accounts.views.custom_403'
 
 urlpatterns = [
     # Админка

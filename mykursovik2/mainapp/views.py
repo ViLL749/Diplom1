@@ -7,7 +7,10 @@ from io import StringIO
 
 from django.apps import apps
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from accounts.decorators import (
+    role_required, elevated_or_storekeeper_required,
+    ALL_ROLES, MANAGER, STOREKEEPER, MECHANIC, ACCOUNTANT,
+)
 from django.core.files.uploadedfile import UploadedFile
 from django.core.management import call_command
 from django.core.paginator import Paginator, EmptyPage
@@ -26,7 +29,7 @@ from .forms import (
 )
 from .validators import normalize_plate, normalize_plate_search
 
-@login_required
+@role_required(*ALL_ROLES)
 def clients_list(request):
     # Регистрируем кастомную SQL-функцию
     register_custom_functions()
@@ -94,7 +97,7 @@ def clients_list(request):
 
 
 # Создание клиента
-@login_required
+@role_required(MANAGER)
 def client_create(request):
     if request.method == 'POST':
         form = ClientForm(request.POST)
@@ -126,7 +129,7 @@ def register_custom_functions():
         logger.debug("Custom lower function registered in SQLite")
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def client_detail(request, pk):
     # Регистрируем функцию при каждом запросе
     register_custom_functions()
@@ -192,7 +195,7 @@ def client_detail(request, pk):
     })
 
 # Редактирование клиента
-@login_required
+@role_required(MANAGER)
 def client_update(request, pk):
     client = get_object_or_404(Client, pk=pk)
     if request.method == 'POST':
@@ -206,7 +209,7 @@ def client_update(request, pk):
     return render(request, 'clients/client_update.html', {'form': form, 'cancel_url': reverse('clients_list')})
 
 
-@login_required
+@role_required(MANAGER)
 @require_POST
 def check_vin_uniqueness(request):
     vin = request.POST.get('vin', '').strip().upper()
@@ -214,7 +217,7 @@ def check_vin_uniqueness(request):
     return JsonResponse({'exists': exists})
 
 
-@login_required
+@role_required(MANAGER)
 @require_POST
 def check_license_plate_uniqueness(request):
     license_plate = request.POST.get('license_plate', '').strip()
@@ -224,7 +227,7 @@ def check_license_plate_uniqueness(request):
     return JsonResponse({'exists': exists})
 
 
-@login_required
+@role_required(MANAGER)
 @require_POST
 def check_service_type_uniqueness(request):
     name = request.POST.get("name", "").strip().lower()
@@ -235,7 +238,7 @@ def check_service_type_uniqueness(request):
     exists = any(st.name.lower() == name for st in queryset)
     return JsonResponse({"exists": exists})
 
-@login_required
+@role_required(MANAGER)
 @require_POST
 def check_service_uniqueness(request):
     name = request.POST.get("name", "").strip().lower()
@@ -246,7 +249,7 @@ def check_service_uniqueness(request):
     exists = any(s.name.lower() == name for s in queryset)
     return JsonResponse({"exists": exists})
 
-@login_required
+@role_required(MANAGER)
 @require_POST
 def check_car_make_uniqueness(request):
     name = request.POST.get("name", "").strip().lower()
@@ -257,7 +260,7 @@ def check_car_make_uniqueness(request):
     exists = any(cm.name.lower() == name for cm in queryset)
     return JsonResponse({"exists": exists})
 
-@login_required
+@role_required(MANAGER)
 @require_POST
 def check_car_model_uniqueness(request):
     name = request.POST.get("name", "").strip().lower()
@@ -269,7 +272,7 @@ def check_car_model_uniqueness(request):
     return JsonResponse({"exists": exists})
 
 
-@login_required
+@role_required(MANAGER)
 @require_POST
 def check_client_phone_uniqueness(request):
     phone = request.POST.get("phone", "").strip()
@@ -281,7 +284,7 @@ def check_client_phone_uniqueness(request):
     return JsonResponse({"exists": exists})
 
 # Удаление клиента
-@login_required
+@role_required(MANAGER)
 def client_delete(request, pk):
     client = get_object_or_404(Client, pk=pk)
     client_cars = ClientCar.objects.filter(client=client)
@@ -305,7 +308,7 @@ def client_delete(request, pk):
 # Просмотр списка автомобилей клиента с пагинацией
 
 # Создание автомобиля для клиента (одна форма с динамическим выбором модели)
-@login_required
+@role_required(MANAGER)
 def client_car_create(request, pk):
     client = get_object_or_404(Client, pk=pk)
     if request.method == 'POST':
@@ -329,7 +332,7 @@ def client_car_create(request, pk):
 
 
 # # # Получение списка моделей по ID марки (AJAX)
-@login_required
+@role_required(*ALL_ROLES)
 def get_models(request):
     make_id = request.GET.get('make_id')
     if make_id:
@@ -338,7 +341,7 @@ def get_models(request):
     return JsonResponse([], safe=False)
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def get_all_makes(request):
     page = int(request.GET.get('page', 1))
     per_page = int(request.GET.get('per_page', 10))
@@ -352,7 +355,7 @@ def get_all_makes(request):
     return JsonResponse(data)
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def get_services(request):
     service_type_id = request.GET.get('service_type_id')
     if service_type_id:
@@ -361,7 +364,7 @@ def get_services(request):
     return JsonResponse([], safe=False)
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def get_all_clients(request):
     # Регистрируем кастомную функцию
     register_custom_functions()
@@ -393,7 +396,7 @@ def get_all_clients(request):
         'total_pages': total_pages
     }, safe=False)
 
-@login_required
+@role_required(*ALL_ROLES)
 def get_client_cars(request):
     client_id = request.GET.get('client_id')
     if client_id:
@@ -403,13 +406,13 @@ def get_client_cars(request):
     return JsonResponse([], safe=False)
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def get_service_types(request):
     types = ServiceType.objects.all().values('id', 'name')
     return JsonResponse(list(types), safe=False)
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def client_car_detail(request, pk, car_pk):
     client_car = get_object_or_404(ClientCar, pk=car_pk)
     return render(request, 'clients/client_car_detail.html', {
@@ -418,7 +421,7 @@ def client_car_detail(request, pk, car_pk):
     })
 
 
-@login_required
+@role_required(MANAGER)
 def client_car_update(request, pk, car_pk):
     client_car = get_object_or_404(ClientCar, pk=car_pk)
     client = client_car.client  # Получаем клиента из объекта автомобиля
@@ -441,7 +444,7 @@ def client_car_update(request, pk, car_pk):
 
 
 # Удаление автомобиля клиента
-@login_required
+@role_required(MANAGER)
 def client_car_delete(request, pk, car_pk):
     client_car = get_object_or_404(ClientCar, pk=car_pk)
     client_pk = client_car.client.pk
@@ -461,7 +464,7 @@ def client_car_delete(request, pk, car_pk):
         'active_orders': active_orders,
     })
 
-@login_required
+@role_required(MANAGER)
 def car_management(request):
     # Регистрируем функцию один раз для соединения
     register_custom_functions()
@@ -515,7 +518,7 @@ def car_management(request):
 
 
 # Создание марки автомобиля
-@login_required
+@role_required(MANAGER)
 def car_make_create(request):
     if request.method == 'POST':
         form = CarMakeForm(request.POST)
@@ -528,7 +531,7 @@ def car_make_create(request):
     return render(request, 'cars/car_make_create.html', {'form': form, 'cancel_url': reverse('car_management')})
 
 
-@login_required
+@role_required(MANAGER)
 def car_make_detail(request, pk):
     register_custom_functions()
 
@@ -583,7 +586,7 @@ def car_make_detail(request, pk):
     })
 
 # Редактирование марки автомобиля
-@login_required
+@role_required(MANAGER)
 def car_make_update(request, pk):
     car_make = get_object_or_404(CarMake, pk=pk)
     if request.method == 'POST':
@@ -601,7 +604,7 @@ def car_make_update(request, pk):
 # Удаление марки автомобиля
 ACTIVE_STATUSES = ('Первичный осмотр', 'Диагностика', 'В работе', 'Готов')
 
-@login_required
+@role_required(MANAGER)
 def car_make_delete(request, pk):
     car_make = get_object_or_404(CarMake, pk=pk)
     client_cars = ClientCar.objects.filter(make=car_make)
@@ -623,7 +626,7 @@ def car_make_delete(request, pk):
 
 
 # Создание модели автомобиля для конкретной марки (без выпадающего списка марок)
-@login_required
+@role_required(MANAGER)
 def car_model_create(request, make_pk):
     car_make = get_object_or_404(CarMake, pk=make_pk)
     if request.method == 'POST':
@@ -644,7 +647,7 @@ def car_model_create(request, make_pk):
 
 
 # Просмотр деталей модели автомобиля
-@login_required
+@role_required(MANAGER)
 def car_model_detail(request, pk):
     car_model = get_object_or_404(CarModel, pk=pk)
     return render(request, 'cars/car_model_detail.html',
@@ -652,7 +655,7 @@ def car_model_detail(request, pk):
 
 
 # Редактирование модели автомобиля
-@login_required
+@role_required(MANAGER)
 def car_model_update(request, pk):
     car_model = get_object_or_404(CarModel, pk=pk)
     if request.method == 'POST':
@@ -671,7 +674,7 @@ def car_model_update(request, pk):
 
 
 # Удаление модели автомобиля
-@login_required
+@role_required(MANAGER)
 def car_model_delete(request, pk):
     car_model = get_object_or_404(CarModel, pk=pk)
     make_pk = car_model.make.pk
@@ -694,7 +697,7 @@ def car_model_delete(request, pk):
 
 
 
-@login_required
+@role_required(MANAGER)
 def service_management(request):
     # Регистрируем кастомную функцию для регистронезависимого поиска
     register_custom_functions()
@@ -747,7 +750,7 @@ def service_management(request):
 
 
 # Создание типа услуги
-@login_required
+@role_required(MANAGER)
 def service_type_create(request):
     if request.method == 'POST':
         form = ServiceTypeForm(request.POST)
@@ -762,7 +765,7 @@ def service_type_create(request):
 
 
 # Просмотр деталей типа услуги (с таблицей услуг и пагинацией)
-@login_required
+@role_required(MANAGER)
 def service_type_detail(request, pk):
     # Регистрируем функцию один раз для соединения
     register_custom_functions()
@@ -817,7 +820,7 @@ def service_type_detail(request, pk):
         'cancel_url': reverse('service_management')
     })
 # Редактирование типа услуги
-@login_required
+@role_required(MANAGER)
 def service_type_update(request, pk):
     service_type = get_object_or_404(ServiceType, pk=pk)
     if request.method == 'POST':
@@ -835,7 +838,7 @@ def service_type_update(request, pk):
 # Удаление типа услуги
 from .models import ServiceType
 
-@login_required
+@role_required(MANAGER)
 def service_type_delete(request, pk):
     from warehouse.models import WorkOrderService
     service_type = get_object_or_404(ServiceType, pk=pk)
@@ -872,7 +875,7 @@ def service_type_delete(request, pk):
 
 
 # Создание конкретной услуги для типа услуги
-@login_required
+@role_required(MANAGER)
 def service_create(request, pk):  # Изменил type_pk на pk
     service_type = get_object_or_404(ServiceType, pk=pk)
     if request.method == 'POST':
@@ -893,7 +896,7 @@ def service_create(request, pk):  # Изменил type_pk на pk
 
 
 # Просмотр деталей услуги
-@login_required
+@role_required(MANAGER)
 def service_detail(request, pk, service_pk):  # Изменил type_pk на pk для соответствия маршруту
     service = get_object_or_404(Service, pk=service_pk)  # Используем service_pk для получения услуги
     return render(request, 'services/service_detail.html',
@@ -901,7 +904,7 @@ def service_detail(request, pk, service_pk):  # Изменил type_pk на pk �
 
 
 # Удаление услуги
-@login_required
+@role_required(MANAGER)
 def service_delete(request, pk, service_pk):
     service = get_object_or_404(Service, pk=service_pk)
     active_orders = list(
@@ -927,7 +930,7 @@ def service_delete(request, pk, service_pk):
 
 
 # Редактирование услуги
-@login_required
+@role_required(MANAGER)
 def service_update(request, pk, service_pk):  # Изменил на pk (ID типа услуги) и service_pk (ID услуги)
     service = get_object_or_404(Service, pk=service_pk)  # Используем service_pk для получения услуги
     if request.method == 'POST':
@@ -951,7 +954,7 @@ def service_update(request, pk, service_pk):  # Изменил на pk (ID ти�
 
 from .models import Order
 
-@login_required
+@role_required(*ALL_ROLES)
 def orders_list(request):
     # Регистрируем функцию для регистронезависимого поиска
     register_custom_functions()
@@ -1148,7 +1151,7 @@ def _unreserve_single_wop(wop):
     _release_wop_reservation(wop)
 
 
-@login_required
+@role_required(MANAGER)
 def order_commit(request, pk):
     """Batch-save all staged changes from the order detail page in one atomic operation."""
     import json as _json_mod
@@ -1587,7 +1590,7 @@ def _json_response(data, status=200):
 
 # ── Order CRUD ────────────────────────────────────────────────
 
-@login_required
+@role_required(MANAGER)
 def order_create(request):
     from warehouse.models import WorkshopSettings
     if request.method == 'POST':
@@ -1612,7 +1615,7 @@ def order_create(request):
     })
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def order_detail(request, pk):
     from warehouse.models import WorkOrderService, WorkOrderPart, WorkshopSettings
     from mainapp.models import ServiceType, Service as _Service
@@ -1684,7 +1687,7 @@ def order_detail(request, pk):
     })
 
 
-@login_required
+@role_required(MANAGER)
 def order_update(request, pk):
     order = get_object_or_404(Order, pk=pk)
 
@@ -1747,7 +1750,7 @@ def order_update(request, pk):
     })
 
 
-@login_required
+@role_required(MANAGER)
 def order_delete(request, pk):
     order = get_object_or_404(Order, pk=pk)
     if order.status == 'Завершён':
@@ -1770,7 +1773,7 @@ def order_delete(request, pk):
 
 from django.shortcuts import render
 
-@login_required
+@role_required(*ALL_ROLES)
 def help_page(request):
     return render(request, 'help/help.html')
 
@@ -1784,8 +1787,7 @@ def staff_required(view_func):
         return view_func(request, *args, **kwargs)
     return wrapper
 
-@login_required
-@staff_required
+@role_required(MANAGER, ACCOUNTANT)
 def accounting_export(request):
     import openpyxl
     from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
@@ -2344,8 +2346,7 @@ def accounting_export(request):
     return resp
 
 
-@login_required  # Требует авторизацию
-@staff_required
+@role_required()
 def export_db(request):
     buffer = StringIO()
     call_command('dumpdata', stdout=buffer, natural_foreign=True, natural_primary=True)
@@ -2356,8 +2357,7 @@ def export_db(request):
     return response
 
 
-@login_required
-@staff_required
+@role_required()
 def import_db(request):
     if request.method == 'POST':
         if 'db_file' in request.FILES:
@@ -2413,7 +2413,7 @@ def import_db(request):
 
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def order_mechanic_pdf(request, pk):
     """Generate a detailed PDF work order for the mechanic."""
     from reportlab.lib.pagesizes import A4
@@ -2975,7 +2975,7 @@ def _make_customer_pdf(order, is_final: bool):
     return buf
 
 
-@login_required
+@role_required(*ALL_ROLES)
 def order_customer_pdf(request, pk):
     """Customer-facing work order PDF — preliminary or final based on order status."""
     order = get_object_or_404(Order, pk=pk)
