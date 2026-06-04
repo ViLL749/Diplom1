@@ -16,6 +16,7 @@ from .forms import (
     WorkOrderPartForm, WorkOrderPartStatusForm,
     WorkOrderServiceForm, WorkOrderServiceUpdateForm, WorkshopSettingsForm,
     EmployeeForm, WriteOffForm, WriteOffItemFormSet,
+    StockMoveForm,
 )
 from .models import (
     Brand, Supplier, Part, StorageLocation, StockEntry,
@@ -738,7 +739,7 @@ def location_delete(request, pk):
 
 @login_required
 def stock_list(request):
-    entries = StockEntry.objects.select_related('part', 'location').all()
+    entries = StockEntry.objects.select_related('part', 'location').filter(total_qty__gt=0)
     search = request.GET.get('search', '')
     column = request.GET.get('column', 'article')
     if search:
@@ -776,6 +777,189 @@ def stock_update_min(request, pk):
     else:
         form = StockEntryMinQtyForm(instance=entry)
     return render(request, 'warehouse/stock/update_min.html', {'form': form, 'entry': entry})
+
+
+# ──────────────────────────────────────────────────────────────
+# Stock Movement
+# ──────────────────────────────────────────────────────────────
+
+def _fifo_batches_for_move(part, location, quantity):
+    """Return list of batch dicts that make up `quantity` units at location (oldest first).
+
+    Each dict: {document, purchase_price, pkg_qty, quantity}.
+    Raises ValueError if supply items cannot cover the requested quantity.
+    """
+    supply_items = list(
+        SupplyItem.objects.filter(part=part, location=location)
+        .select_related('document')
+        .order_by('document__created_at', 'id')
+    )
+    if not supply_items:
+        raise ValueError('Нет данных о партиях для этого места хранения.')
+
+    entry = StockEntry.objects.get(part=part, location=location)
+    total_received = sum(si.quantity for si in supply_items)
+    consumed = max(0, total_received - entry.total_qty)
+
+    remaining = quantity
+    consumed_skipped = 0
+    batches = []
+
+    for si in supply_items:
+        if remaining <= 0:
+            break
+        if consumed_skipped + si.quantity <= consumed:
+            consumed_skipped += si.quantity
+            continue
+        already_consumed = max(0, consumed - consumed_skipped)
+        physical_in_si = si.quantity - already_consumed
+        consumed_skipped = consumed
+        if physical_in_si <= 0:
+            continue
+        take = min(physical_in_si, remaining)
+        batches.append({
+            'document':       si.document,
+            'purchase_price': si.purchase_price,
+            'pkg_qty':        si.pkg_qty,
+            'quantity':       take,
+        })
+        remaining -= take
+
+    if remaining > 0:
+        raise ValueError(f'Ошибка FIFO: не найдено {remaining} ед. в партиях.')
+
+    return batches
+
+
+def _move_stock_fifo(part, from_location, to_location, quantity):
+    """Move `quantity` unreserved units from from_location to to_location.
+
+    - Validates available_qty >= quantity (never touches reserved units).
+    - Replicates FIFO batches at destination with correct prices.
+    - Updates both StockEntry records atomically.
+
+    Returns list of moved batch dicts.
+    Must be called inside a transaction.atomic() block.
+    """
+    if from_location == to_location:
+        raise ValueError('Место назначения совпадает с источником.')
+    if quantity <= 0:
+        raise ValueError('Количество должно быть положительным.')
+
+    try:
+        source = StockEntry.objects.select_for_update().get(
+            part=part, location=from_location
+        )
+    except StockEntry.DoesNotExist:
+        raise ValueError('Деталь не найдена на указанном месте хранения.')
+
+    if source.reserved_qty > 0:
+        raise ValueError(
+            f'Нельзя переместить: {source.reserved_qty} шт. зарезервировано '
+            f'под активные заказы. Завершите или отмените связанные заказы, '
+            f'затем попробуйте снова.'
+        )
+
+    if source.available_qty < quantity:
+        raise ValueError(
+            f'Недостаточно свободных единиц: '
+            f'доступно {source.available_qty}, запрошено {quantity}.'
+        )
+
+    # Determine which FIFO batches to create at destination
+    batches = _fifo_batches_for_move(part, from_location, quantity)
+
+    # Create SupplyItems at destination (price history follows the units)
+    for b in batches:
+        SupplyItem.objects.create(
+            document=b['document'],
+            part=part,
+            location=to_location,
+            quantity=b['quantity'],
+            pkg_qty=b['pkg_qty'],
+            purchase_price=b['purchase_price'],
+        )
+
+    # Update source (decrease; keep entry even if it reaches 0 — see design note)
+    source.total_qty -= quantity
+    source.save()
+
+    # Update or create destination
+    dest, _ = StockEntry.objects.select_for_update().get_or_create(
+        part=part,
+        location=to_location,
+        defaults={'total_qty': 0, 'reserved_qty': 0},
+    )
+    dest.total_qty += quantity
+    dest.save()
+
+    return batches
+
+
+@login_required
+def api_part_move_info(request):
+    """AJAX: return locations where a part has stock, with qty breakdown."""
+    part_pk = request.GET.get('part_pk')
+    if not part_pk:
+        return JsonResponse({'error': 'part_pk required'}, status=400)
+
+    entries = (
+        StockEntry.objects
+        .filter(part_id=part_pk)
+        .select_related('location')
+        .order_by('location__rack', 'location__shelf', 'location__cell')
+    )
+    locations = [
+        {
+            'id':            e.location.id,
+            'label':         e.location.label,
+            'total_qty':     e.total_qty,
+            'reserved_qty':  e.reserved_qty,
+            'available_qty': e.available_qty,
+        }
+        for e in entries
+        if e.total_qty > 0
+    ]
+    return JsonResponse({'locations': locations})
+
+
+@login_required
+def stock_move(request):
+    if request.method == 'POST':
+        form = StockMoveForm(request.POST)
+        if form.is_valid():
+            part      = form.cleaned_data['part']
+            from_loc  = form.cleaned_data['from_location']
+            to_loc    = form.cleaned_data['to_location']
+            qty       = form.cleaned_data['quantity']
+            if from_loc == to_loc:
+                form.add_error('to_location', 'Место назначения совпадает с источником.')
+            else:
+                try:
+                    with transaction.atomic():
+                        batches = _move_stock_fifo(part, from_loc, to_loc, qty)
+                    moved_str = ', '.join(
+                        f"{b['quantity']} шт. × {b['purchase_price']} ₽"
+                        for b in batches
+                    )
+                    messages.success(
+                        request,
+                        f'Перемещено {qty} шт. «{part}» '
+                        f'из {from_loc.label} → {to_loc.label}. '
+                        f'Партии: {moved_str}.',
+                    )
+                    return redirect('stock_move')
+                except ValueError as exc:
+                    messages.error(request, str(exc))
+    else:
+        initial = {}
+        if request.GET.get('part_pk'):
+            initial['part'] = request.GET['part_pk']
+        if request.GET.get('location_pk'):
+            initial['from_location'] = request.GET['location_pk']
+        form = StockMoveForm(initial=initial)
+
+    return render(request, 'warehouse/stock/move.html', {'form': form})
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1249,7 +1433,9 @@ def workorderpart_create(request, order_pk):
                 wop.work_order_service = wos
             wop.save()
             # Reserve from cheapest batches first (matches _min_stock_price ordering)
-            shortage = _reserve_cheapest_first(wop.part, wop.quantity)
+            shortage, res_entries = _reserve_cheapest_first(wop.part, wop.quantity)
+            wop.reserved_entries = res_entries
+            wop.save(update_fields=['reserved_entries'])
             if shortage > 0:
                 messages.warning(request, f'Частичный резерв: не хватает {shortage} шт.')
             else:

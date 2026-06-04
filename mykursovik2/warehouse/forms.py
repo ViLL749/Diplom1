@@ -764,3 +764,38 @@ class EmployeeForm(forms.ModelForm):
             else:
                 cleaned['phone'] = result
         return cleaned
+
+
+# ── Перемещение запасов ───────────────────────────────────────
+
+class StockMoveForm(forms.Form):
+    part = forms.ModelChoiceField(
+        queryset=Part.objects.none(),
+        label='Деталь',
+        empty_label='— выберите деталь —',
+    )
+    from_location = forms.ModelChoiceField(
+        queryset=StorageLocation.objects.order_by('rack', 'shelf', 'cell'),
+        label='Откуда',
+        empty_label='— выберите место —',
+    )
+    to_location = forms.ModelChoiceField(
+        queryset=StorageLocation.objects.order_by('rack', 'shelf', 'cell'),
+        label='Куда',
+        empty_label='— выберите место —',
+    )
+    quantity = forms.IntegerField(
+        min_value=1,
+        label='Количество',
+        widget=forms.NumberInput(attrs={'min': '1'}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Только детали с реальным остатком
+        self.fields['part'].queryset = (
+            Part.objects
+            .filter(stock_entries__total_qty__gt=0)
+            .distinct()
+            .order_by('article')
+        )

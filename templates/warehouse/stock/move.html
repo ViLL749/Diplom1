@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Перемещение деталей{% endblock %}
+{% block content %}
+<h1>Перемещение деталей на складе</h1>
+
+{% if form.errors %}
+<div class="form-errors">
+    <p>Пожалуйста, исправьте ошибки:</p>
+    <ul>
+        {% for field in form %}{% for e in field.errors %}<li>{{ field.label }}: {{ e }}</li>{% endfor %}{% endfor %}
+        {% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<form method="post" id="move-form">
+    {% csrf_token %}
+
+    <div class="form-field">
+        <label for="{{ form.part.id_for_label }}">{{ form.part.label }}:</label>
+        {{ form.part }}
+        {% if form.part.errors %}<p class="field-error">{{ form.part.errors|join:", " }}</p>{% endif %}
+    </div>
+
+    <div class="form-field" id="from-location-wrapper">
+        <label for="{{ form.from_location.id_for_label }}">{{ form.from_location.label }}:</label>
+        {{ form.from_location }}
+        <span id="available-hint" style="font-size:0.85em;color:#6b7280;margin-left:8px;"></span>
+        {% if form.from_location.errors %}<p class="field-error">{{ form.from_location.errors|join:", " }}</p>{% endif %}
+    </div>
+
+    <div class="form-field">
+        <label for="{{ form.to_location.id_for_label }}">{{ form.to_location.label }}:</label>
+        {{ form.to_location }}
+        {% if form.to_location.errors %}<p class="field-error">{{ form.to_location.errors|join:", " }}</p>{% endif %}
+    </div>
+
+    <div class="form-field">
+        <label for="{{ form.quantity.id_for_label }}">{{ form.quantity.label }}:</label>
+        {{ form.quantity }}
+        {% if form.quantity.errors %}<p class="field-error">{{ form.quantity.errors|join:", " }}</p>{% endif %}
+    </div>
+
+    <div style="margin-top:1rem;">
+        <button type="submit" class="btn">Переместить</button>
+        <a href="{% url 'stock_list' %}" class="btn btn-secondary">Отмена</a>
+    </div>
+</form>
+
+<script>
+(function () {
+    const partSelect   = document.getElementById('{{ form.part.id_for_label }}');
+    const fromSelect   = document.getElementById('{{ form.from_location.id_for_label }}');
+    const qtyInput     = document.getElementById('{{ form.quantity.id_for_label }}');
+    const hint         = document.getElementById('available-hint');
+    const API_URL      = '{% url "api_part_move_info" %}';
+
+    // Map location_id → available_qty (populated on part change)
+    let locationInfo = {};
+
+    function updateHint() {
+        const locId = fromSelect.value;
+        const info  = locationInfo[locId];
+        if (info) {
+            hint.textContent =
+                `доступно: ${info.available_qty} шт.` +
+                (info.reserved_qty > 0 ? ` (зарезервировано: ${info.reserved_qty})` : '');
+            qtyInput.max = info.available_qty;
+        } else {
+            hint.textContent = '';
+            qtyInput.removeAttribute('max');
+        }
+    }
+
+    function loadLocations(partId) {
+        if (!partId) { locationInfo = {}; updateHint(); return; }
+        fetch(`${API_URL}?part_pk=${partId}`)
+            .then(r => r.json())
+            .then(data => {
+                locationInfo = {};
+                (data.locations || []).forEach(l => { locationInfo[l.id] = l; });
+                updateHint();
+            });
+    }
+
+    partSelect.addEventListener('change', () => loadLocations(partSelect.value));
+    fromSelect.addEventListener('change', updateHint);
+
+    // On page load (e.g. form re-render after error)
+    if (partSelect.value) loadLocations(partSelect.value);
+})();
+</script>
+{% endblock %}

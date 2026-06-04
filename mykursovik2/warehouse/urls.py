@@ -14,6 +14,9 @@ urlpatterns = [
     path('api/services/', views.api_services, name='api_services'),
     path('api/part-stock/', views.api_part_stock, name='api_part_stock'),
     path('api/part-locations/', views.api_part_locations, name='api_part_locations'),
+    path('api/part-move-info/', views.api_part_move_info, name='api_part_move_info'),
+
+    path('stock/move/', views.stock_move, name='stock_move'),
 
     # Brands
     path('brands/', views.brands_list, name='brands_list'),

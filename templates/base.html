@@ -71,6 +71,9 @@
                     <a href="{% url 'purchase_prices_list' %}" class="{% if request.resolver_match.url_name in 'purchase_prices_list,purchase_prices_detail' %}active{% endif %}">
                         <i class="fas fa-ruble-sign"></i> Цены закупки
                     </a>
+                    <a href="{% url 'stock_move' %}" class="{% if request.resolver_match.url_name == 'stock_move' %}active{% endif %}">
+                        <i class="fas fa-exchange-alt"></i> Перемещение
+                    </a>
                     {% if user.is_staff %}
                     <a href="{% url 'warehouse_settings' %}" class="{% if request.resolver_match.url_name == 'warehouse_settings' %}active{% endif %}">
                         <i class="fas fa-sliders-h"></i> Настройки
