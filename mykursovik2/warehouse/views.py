@@ -1054,6 +1054,128 @@ def supply_create(request):
 
 
 @login_required
+def supply_placement_pdf(request, pk):
+    """PDF-лист размещения: куда класть каждую позицию прихода."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    import io, os
+    from itertools import groupby
+
+    doc_obj = get_object_or_404(SupplyDocument, pk=pk)
+    items = list(
+        doc_obj.items.select_related('part', 'location')
+        .order_by('location__rack', 'location__shelf', 'location__cell', 'part__article')
+    )
+
+    # Шрифт с поддержкой кириллицы
+    _font_paths = [
+        '/Library/Fonts/Arial Unicode.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    ]
+    fn = 'Helvetica'
+    for _fp in _font_paths:
+        if os.path.exists(_fp):
+            try:
+                pdfmetrics.registerFont(TTFont('_PlaceFont', _fp))
+                fn = '_PlaceFont'
+            except Exception:
+                pass
+            break
+
+    buf = io.BytesIO()
+    pdf = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+
+    BLUE   = colors.HexColor('#1e40af')
+    LBLUE  = colors.HexColor('#dbeafe')
+    GREY   = colors.HexColor('#f8fafc')
+    DARK   = colors.HexColor('#1e293b')
+
+    title_s  = ParagraphStyle('T', fontName=fn, fontSize=14, leading=18, textColor=DARK, spaceAfter=4)
+    meta_s   = ParagraphStyle('M', fontName=fn, fontSize=9,  leading=12, textColor=colors.HexColor('#64748b'))
+    loc_s    = ParagraphStyle('L', fontName=fn, fontSize=11, leading=14, textColor=BLUE, spaceBefore=10, spaceAfter=2)
+    cell_s   = ParagraphStyle('C', fontName=fn, fontSize=9,  leading=11)
+    hdr_s    = ParagraphStyle('H', fontName=fn, fontSize=9,  leading=11, textColor=colors.white)
+
+    supplier_name = str(doc_obj.supplier) if doc_obj.supplier else '—'
+    date_str = doc_obj.created_at.strftime('%d.%m.%Y %H:%M')
+
+    story = [
+        Paragraph('Лист размещения товара на складе', title_s),
+        Paragraph(
+            f'Приход №{doc_obj.id} &nbsp;|&nbsp; {date_str} &nbsp;|&nbsp; '
+            f'Поставщик: {supplier_name}',
+            meta_s,
+        ),
+        Spacer(1, 0.4*cm),
+    ]
+
+    # Группируем по месту хранения
+    def loc_key(item):
+        return (item.location.rack, item.location.shelf, item.location.cell)
+
+    W = pdf.width  # ширина контента
+
+    for (rack, shelf, cell), group in groupby(items, key=loc_key):
+        group_items = list(group)
+        label = group_items[0].location.label
+
+        story.append(Paragraph(f'Место: {label}', loc_s))
+
+        # Таблица строк прихода для этого места
+        tbl_data = [[
+            Paragraph('Артикул', hdr_s),
+            Paragraph('Название', hdr_s),
+            Paragraph('Кол-во, шт.', hdr_s),
+        ]]
+        for i, item in enumerate(group_items):
+            bg = GREY if i % 2 == 0 else colors.white
+            tbl_data.append([
+                Paragraph(item.part.article or '—', cell_s),
+                Paragraph(item.part.name or '—', cell_s),
+                Paragraph(str(item.quantity), cell_s),
+            ])
+
+        col_w = [4*cm, W - 4*cm - 3*cm, 3*cm]
+        t = Table(tbl_data, colWidths=col_w, repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND',  (0, 0), (-1, 0), BLUE),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [GREY, colors.white]),
+            ('FONTNAME',    (0, 0), (-1, -1), fn),
+            ('FONTSIZE',    (0, 0), (-1, -1), 9),
+            ('TOPPADDING',  (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('GRID',        (0, 0), (-1, -1), 0.3, colors.HexColor('#e2e8f0')),
+            ('ALIGN',       (2, 0), (2, -1), 'CENTER'),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 0.2*cm))
+
+    # Итого строк
+    story.append(Spacer(1, 0.3*cm))
+    total_items = len(items)
+    total_qty = sum(i.quantity for i in items)
+    story.append(Paragraph(
+        f'Итого позиций: {total_items} &nbsp;|&nbsp; Итого единиц: {total_qty}',
+        meta_s,
+    ))
+
+    pdf.build(story)
+    buf.seek(0)
+    from django.http import HttpResponse
+    response = HttpResponse(buf.read(), content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="placement_{doc_obj.id}.pdf"'
+    return response
+
+
+@login_required
 def supply_detail(request, pk):
     from decimal import Decimal
     doc = get_object_or_404(SupplyDocument, pk=pk)

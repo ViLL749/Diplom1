@@ -19,11 +19,16 @@ class ClientSelectionForm(forms.Form):
 class OrderForm(forms.ModelForm):
     class Meta:
         model = Order
-        fields = ['client_car', 'order_date', 'status', 'comment']
+        fields = ['client_car', 'order_date', 'status', 'comment', 'mileage']
         widgets = {
             'order_date': forms.DateInput(attrs={'type': 'date'}),
-            'comment': forms.Textarea(attrs={'rows': 4}),
+            'comment':    forms.Textarea(attrs={'rows': 4}),
+            'mileage':    forms.NumberInput(attrs={
+                'min': '0', 'placeholder': 'Пробег при приёмке',
+                'style': 'width:180px;',
+            }),
         }
+        labels = {'mileage': 'Пробег, км'}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

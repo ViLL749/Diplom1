@@ -20,6 +20,12 @@
 
     <p>{{ order_form.order_date.label_tag }} {{ order_form.order_date }}</p>
     <p><label>Статус:</label> <span style="color:#64748b;">Первичный осмотр</span></p>
+    <p>
+        {{ order_form.mileage.label_tag }}
+        {{ order_form.mileage }}
+        <span style="font-size:0.85em;color:#94a3b8;margin-left:6px;">необязательно</span>
+        {% if order_form.mileage.errors %}<span style="color:#dc2626;margin-left:6px;">{{ order_form.mileage.errors|join:", " }}</span>{% endif %}
+    </p>
     <p>{{ order_form.comment.label_tag }} {{ order_form.comment }}</p>
 
     <div style="margin-top:16px;">
@@ -82,6 +88,9 @@ $(document).ready(function() {
         openModal('client-modal');
         loadClients(1);
     });
+    // Mileage field: disabled until car selected
+    $('#id_mileage').prop('disabled', true);
+
     $('#change-selection-btn').click(function() {
         selectedClientId = null;
         searchQuery = '';
@@ -92,6 +101,8 @@ $(document).ready(function() {
         $('#select-client-btn').show();
         $('#change-selection-btn').hide();
         $('#client-cars-list').empty();
+        // Clear and re-disable mileage on car change
+        $('#id_mileage').val('').prop('disabled', true);
         openModal('client-modal');
         loadClients(1);
     });
@@ -141,11 +152,15 @@ $(document).ready(function() {
         $('#selected-client-info').text(clientName + ' — ' + carInfo);
         $('#select-client-btn').hide();
         $('#change-selection-btn').show();
+        // Enable mileage only after car selected
+        $('#id_mileage').prop('disabled', false).focus();
         closeModal('client-modal');
     });
 
     // Form validation
     $('#order-form').on('submit', function(e) {
+        // Re-enable mileage so disabled field is submitted
+        $('#id_mileage').prop('disabled', false);
         var errors = [];
         if (!$('#id_client_car').val()) errors.push('Необходимо выбрать клиента и автомобиль.');
         if (!$('#id_order_date').val()) errors.push('Укажите дату заказа.');

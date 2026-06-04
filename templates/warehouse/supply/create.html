@@ -79,15 +79,18 @@
             <tr class="supply-row">
                 {% with prefix=item_form.prefix %}
                 <td>
-                    <input type="text"
-                           id="{{ prefix }}-part_display"
-                           name="{{ prefix }}-part_display"
-                           value="{{ item_form.part_display.value|default:'' }}"
-                           readonly placeholder="Нажмите «Выбрать»" style="width:200px;">
-                    <button type="button" class="btn"
-                            onclick="openPartModal('id_{{ prefix }}-part', '{{ prefix }}-part_display', '{{ prefix }}-package_qty')">
-                        Выбрать
-                    </button>
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="text"
+                               id="{{ prefix }}-part_display"
+                               name="{{ prefix }}-part_display"
+                               value="{{ item_form.part_display.value|default:'' }}"
+                               readonly placeholder="Деталь не выбрана" style="width:180px;">
+                        <button type="button" class="btn btn-xs"
+                                title="Выбрать деталь"
+                                onclick="openPartModal('id_{{ prefix }}-part', '{{ prefix }}-part_display', '{{ prefix }}-package_qty')">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
                     {{ item_form.part }}
                     {{ item_form.po_item }}
                     {% if item_form.part.errors %}<p class="error">{{ item_form.part.errors|join:", " }}</p>{% endif %}

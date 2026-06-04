@@ -8,6 +8,9 @@
 {% if doc.comment %}<p><strong>Примечание:</strong> {{ doc.comment }}</p>{% endif %}
 
 <a href="{% url 'supply_list' %}" class="btn" style="margin-bottom:16px;display:inline-block;">К списку</a>
+<a href="{% url 'supply_placement_pdf' doc.id %}" target="_blank" class="btn" style="margin-bottom:16px;display:inline-block;">
+    <i class="fas fa-print"></i> Лист размещения (PDF)
+</a>
 
 <h2 class="top-title-margin">Строки прихода</h2>
 <table>

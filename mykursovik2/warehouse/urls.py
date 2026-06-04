@@ -53,6 +53,7 @@ urlpatterns = [
     path('supply/', views.supply_list, name='supply_list'),
     path('supply/create/', views.supply_create, name='supply_create'),
     path('supply/<int:pk>/', views.supply_detail, name='supply_detail'),
+    path('supply/<int:pk>/placement-pdf/', views.supply_placement_pdf, name='supply_placement_pdf'),
 
     # Purchase Orders
     path('purchase/', views.purchase_list, name='purchase_list'),
