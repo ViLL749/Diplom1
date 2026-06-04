@@ -81,14 +81,21 @@ class ClientTests(TestCase):
         self.assertEqual(self.client_obj.fio, 'Изменённый Клиент')
 
     # T-05
-    def test_client_delete_removes_active_orders_preserves_completed(self):
-        o_active    = Order.objects.create(client_car=self.car, status='В работе',  order_date=timezone.now().date())
-        o_completed = Order.objects.create(client_car=self.car, status='Завершён',  order_date=timezone.now().date())
+    def test_client_delete_blocked_when_active_orders(self):
+        """View blocks deletion when the client has active orders."""
+        Order.objects.create(client_car=self.car, status='В работе', order_date=timezone.now().date())
+
+        resp = self.tc.post(reverse('client_delete', args=[self.client_obj.pk]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(Client.objects.filter(pk=self.client_obj.pk).exists())
+
+    def test_client_delete_nullifies_completed_orders(self):
+        """Deleting a client with only completed orders NULLs client_car on those orders."""
+        o_completed = Order.objects.create(client_car=self.car, status='Завершён', order_date=timezone.now().date())
 
         resp = self.tc.post(reverse('client_delete', args=[self.client_obj.pk]))
         self.assertEqual(resp.status_code, 302)
         self.assertFalse(Client.objects.filter(pk=self.client_obj.pk).exists())
-        self.assertFalse(Order.objects.filter(pk=o_active.pk).exists())
         self.assertTrue(Order.objects.filter(pk=o_completed.pk).exists())
         self.assertIsNone(Order.objects.get(pk=o_completed.pk).client_car)
 

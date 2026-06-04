@@ -1249,7 +1249,9 @@ def workorderpart_create(request, order_pk):
                 wop.work_order_service = wos
             wop.save()
             # Reserve from cheapest batches first (matches _min_stock_price ordering)
-            shortage = _reserve_cheapest_first(wop.part, wop.quantity)
+            shortage, res_entries = _reserve_cheapest_first(wop.part, wop.quantity)
+            wop.reserved_entries = res_entries
+            wop.save(update_fields=['reserved_entries'])
             if shortage > 0:
                 messages.warning(request, f'Частичный резерв: не хватает {shortage} шт.')
             else:
