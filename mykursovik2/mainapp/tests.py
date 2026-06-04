@@ -184,6 +184,7 @@ class OrderTests(TestCase):
             'status':     'Первичный осмотр',
             'order_date': str(timezone.now().date()),
             'comment':    'Тестовый заказ',
+            'mileage':    42000,
         })
         self.assertEqual(resp.status_code, 302)
         self.assertTrue(Order.objects.filter(comment='Тестовый заказ').exists())

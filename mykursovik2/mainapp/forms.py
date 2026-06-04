@@ -26,6 +26,7 @@ class OrderForm(forms.ModelForm):
             'mileage':    forms.NumberInput(attrs={
                 'min': '0', 'placeholder': 'Пробег при приёмке',
                 'style': 'width:180px;',
+                'required': True,
             }),
         }
         labels = {'mileage': 'Пробег, км'}
@@ -43,6 +44,7 @@ class OrderForm(forms.ModelForm):
             self.fields['client_car'].queryset = ClientCar.objects.all()
             self.initial['order_date'] = timezone.now().date().strftime('%Y-%m-%d')
             del self.fields['status']
+            self.fields['mileage'].required = True
 
     def clean_client_car(self):
         client_car = self.cleaned_data.get('client_car')

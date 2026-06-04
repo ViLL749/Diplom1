@@ -23,7 +23,6 @@
     <p>
         {{ order_form.mileage.label_tag }}
         {{ order_form.mileage }}
-        <span style="font-size:0.85em;color:#94a3b8;margin-left:6px;">необязательно</span>
         {% if order_form.mileage.errors %}<span style="color:#dc2626;margin-left:6px;">{{ order_form.mileage.errors|join:", " }}</span>{% endif %}
     </p>
     <p>{{ order_form.comment.label_tag }} {{ order_form.comment }}</p>
@@ -164,6 +163,7 @@ $(document).ready(function() {
         var errors = [];
         if (!$('#id_client_car').val()) errors.push('Необходимо выбрать клиента и автомобиль.');
         if (!$('#id_order_date').val()) errors.push('Укажите дату заказа.');
+        if (!$('#id_mileage').val()) errors.push('Укажите пробег автомобиля.');
         if (errors.length) {
             e.preventDefault();
             var html = '<p>Исправьте ошибки:</p><ul>' + errors.map(function(x) { return '<li>' + x + '</li>'; }).join('') + '</ul>';
