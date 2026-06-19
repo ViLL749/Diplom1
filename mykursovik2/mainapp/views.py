@@ -11,6 +11,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.files.uploadedfile import UploadedFile
 from django.core.management import call_command
 from django.core.paginator import Paginator, EmptyPage
+from django.conf import settings
 from django.db import transaction, connection
 from django.utils import timezone
 from django.http import HttpResponse, JsonResponse
