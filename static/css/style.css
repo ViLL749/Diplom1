@@ -202,6 +202,13 @@ p { margin-bottom: 10px; }
   text-decoration: none;
 }
 .logout-btn:hover { background: var(--danger); color: #fff; }
+.copyright-notice {
+  margin-top: 10px;
+  font-size: .72em;
+  color: rgba(255,255,255,.45);
+  text-align: center;
+  line-height: 1.5;
+}
 
 /* ─── Main content ──────────────────────────────────────────── */
 .content {
