@@ -1,3 +1,5 @@
+from decimal import Decimal, ROUND_HALF_UP
+
 from django.db import models
 from django.utils import timezone
 
@@ -347,7 +349,9 @@ class WorkOrderService(models.Model):
         else:
             settings = WorkshopSettings.objects.first()
             rate = settings.hourly_rate if settings else 0
-        return self.hours_applied * rate * self.complexity_factor
+        return (self.hours_applied * rate * self.complexity_factor).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
 
     def save(self, *args, **kwargs):
         self.final_price = self.calculate_price()

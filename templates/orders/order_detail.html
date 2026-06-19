@@ -133,7 +133,7 @@ document.addEventListener('click', function() {
 <h2 style="margin-bottom:12px;">Услуги</h2>
 <div id="svc-cards-container">
 {% for wos in wos_list %}
-<div class="svc-card" data-wos-id="{{ wos.id }}" data-wos-hours="{{ wos.hours_applied|stringformat:'g' }}" data-wos-rate="{{ wos.hourly_rate_snapshot|default:hourly_rate }}">
+<div class="svc-card" data-wos-id="{{ wos.id }}" data-wos-hours="{{ wos.hours_applied|stringformat:'g' }}" data-wos-rate="{{ wos.hourly_rate_snapshot|default:hourly_rate|stringformat:'.2f' }}">
     <div class="svc-card-head">
         <div>
             <div class="svc-card-name">{% if wos.service_name_snapshot %}{{ wos.service_name_snapshot }}{% elif wos.service %}{{ wos.service.name }}{% else %}—{% endif %}</div>
@@ -469,7 +469,7 @@ document.addEventListener('click', function() {
 
 <script>
 var SERVICE_HOURS = {{ service_hours_json|safe }};
-var HOURLY_RATE = parseFloat('{{ hourly_rate }}') || 0;
+var HOURLY_RATE = parseFloat('{{ hourly_rate|stringformat:".2f" }}') || 0;
 var selectedSvcs = [];
 var partPage = 1, partTotalPages = 1, preselectedWosId = null, partUnitPrice = null;
 var currentWosId = null;
@@ -731,9 +731,10 @@ function updateSvcRowPrice(id) {
     $('#svc-right-body tr[data-id="' + id + '"] .svc-row-price').text(calcPrice(svc.hours, svc.factor) + ' р.');
     updateSvcTotal();
 }
-function calcPrice(h, f) { return (h * HOURLY_RATE * f).toFixed(2); }
+function roundPrice(x) { return Math.round(x * 100) / 100; }
+function calcPrice(h, f) { return roundPrice(h * HOURLY_RATE * f).toFixed(2); }
 function updateSvcTotal() {
-    $('#svc-modal-total').text(selectedSvcs.reduce(function(s,v){return s+v.hours*HOURLY_RATE*v.factor;},0).toFixed(2) + ' руб.');
+    $('#svc-modal-total').text(roundPrice(selectedSvcs.reduce(function(s,v){return s+v.hours*HOURLY_RATE*v.factor;},0)).toFixed(2) + ' руб.');
 }
 function updateSvcSubmit() {
     var n = selectedSvcs.length;
@@ -1149,7 +1150,7 @@ $(document).on('click', '.svc-edit-btn', function() {
         var rate = parseFloat($card.data('wos-rate')) || HOURLY_RATE;
         var h = parseFloat($form.find('.svc-edit-hours').val()) || 0;
         var f = parseFloat($form.find('.svc-edit-factor').val()) || 0;
-        $form.find('.svc-edit-preview').text('→ ' + (h * f * rate).toFixed(2) + ' руб.');
+        $form.find('.svc-edit-preview').text('→ ' + roundPrice(h * f * rate).toFixed(2) + ' руб.');
     }
 });
 $(document).on('input', '.svc-inline-edit .svc-edit-hours, .svc-inline-edit .svc-edit-factor', function() {
@@ -1158,7 +1159,7 @@ $(document).on('input', '.svc-inline-edit .svc-edit-hours, .svc-inline-edit .svc
     var rate = parseFloat($card.data('wos-rate')) || HOURLY_RATE;
     var h = parseFloat($form.find('.svc-edit-hours').val()) || 0;
     var f = parseFloat($form.find('.svc-edit-factor').val()) || 0;
-    $form.find('.svc-edit-preview').text('→ ' + (h * f * rate).toFixed(2) + ' руб.');
+    $form.find('.svc-edit-preview').text('→ ' + roundPrice(h * f * rate).toFixed(2) + ' руб.');
 });
 $(document).on('click', '.svc-edit-cancel', function() {
     $('#svc-inline-edit-' + $(this).data('wos-id')).hide();
@@ -1171,7 +1172,7 @@ $(document).on('click', '.svc-edit-apply', function() {
     if (newHours <= 0 || newFactor <= 0) { alert('Укажите корректные значения.'); return; }
     var $card = $('[data-wos-id="' + wosId + '"]');
     var rate = parseFloat($card.data('wos-rate')) || HOURLY_RATE;
-    var newPrice = (newHours * newFactor * rate).toFixed(2);
+    var newPrice = roundPrice(newHours * newFactor * rate).toFixed(2);
     var existing = draft.updateServices.find(function(s){return s.wosId===wosId;});
     if (existing) { existing.hours = newHours; existing.factor = newFactor; }
     else { draft.updateServices.push({wosId:wosId, hours:newHours, factor:newFactor}); }
