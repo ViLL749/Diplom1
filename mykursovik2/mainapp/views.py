@@ -2435,6 +2435,7 @@ def order_mechanic_pdf(request, pk):
 
     # Register Cyrillic font
     _fonts = [
+        str(settings.BASE_DIR / 'static' / 'fonts' / 'DejaVuSans.ttf'),
         '/Library/Fonts/Arial Unicode.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
@@ -2602,6 +2603,7 @@ def _make_customer_pdf(order, is_final: bool):
     from warehouse.models import WorkOrderService, WorkOrderPart
 
     _fonts = [
+        str(settings.BASE_DIR / 'static' / 'fonts' / 'DejaVuSans.ttf'),
         '/Library/Fonts/Arial Unicode.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',

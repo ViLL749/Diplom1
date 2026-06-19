@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -1074,6 +1075,7 @@ def supply_placement_pdf(request, pk):
 
     # Шрифт с поддержкой кириллицы
     _font_paths = [
+        str(settings.BASE_DIR / 'static' / 'fonts' / 'DejaVuSans.ttf'),
         '/Library/Fonts/Arial Unicode.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
@@ -1635,6 +1637,7 @@ def picking_list(request, order_pk):
 
     # Register Cyrillic-capable font
     _font_candidates = [
+        str(settings.BASE_DIR / 'static' / 'fonts' / 'DejaVuSans.ttf'),
         '/Library/Fonts/Arial Unicode.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
