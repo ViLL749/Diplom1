@@ -48,6 +48,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'mainapp.middleware.RequestMiddleware',
+    'mainapp.middleware.TimezoneMiddleware',
 ]
 
 ROOT_URLCONF = 'mykursovik2.urls'

@@ -1,5 +1,4 @@
 import os
-import shutil
 from datetime import timedelta
 
 from django.conf import settings
@@ -204,21 +203,32 @@ class ActionLogAdmin(admin.ModelAdmin):
 
 
 def _do_backup():
-    """Копирует db.sqlite3 в backups/ и создаёт BackupLog."""
+    """Экспортирует все данные через dumpdata в JSON и создаёт BackupLog."""
+    from io import StringIO
+    from django.core.management import call_command
+
     backup_dir = settings.BASE_DIR / 'backups'
     backup_dir.mkdir(exist_ok=True)
-    db_path = settings.DATABASES['default']['NAME']
     ts = timezone.now().strftime('%Y%m%d_%H%M%S')
-    file_name = f'backup_{ts}.sqlite3'
+    file_name = f'backup_{ts}.json'
     dest = backup_dir / file_name
-    shutil.copy2(db_path, dest)
+
+    out = StringIO()
+    call_command(
+        'dumpdata',
+        '--natural-foreign', '--natural-primary',
+        '--exclude=contenttypes', '--exclude=auth.permission',
+        '--indent=2',
+        stdout=out,
+    )
+    dest.write_text(out.getvalue(), encoding='utf-8')
     size_kb = max(1, os.path.getsize(dest) // 1024)
     return BackupLog.objects.create(file_name=file_name, size_kb=size_kb)
 
 
 @admin.register(BackupSettings)
 class BackupSettingsAdmin(admin.ModelAdmin):
-    fields = ('interval_days',)
+    fields = ('timezone', 'interval_days')
 
     def has_add_permission(self, request):
         return not BackupSettings.objects.exists()
@@ -278,4 +288,5 @@ class BackupLogAdmin(admin.ModelAdmin):
         extra_context['backup_interval'] = cfg.interval_days
         extra_context['last_backup'] = last
         extra_context['auto_backup_created'] = auto_created
+        extra_context['backup_dir'] = str(settings.BASE_DIR / 'backups')
         return super().changelist_view(request, extra_context=extra_context)

@@ -277,14 +277,34 @@ class ActionLog(models.Model):
 
 
 class BackupSettings(models.Model):
+    TIMEZONE_CHOICES = [
+        ('Europe/Kaliningrad', 'Калининград (UTC+2)'),
+        ('Europe/Moscow',      'Москва, Санкт-Петербург (UTC+3)'),
+        ('Europe/Samara',      'Самара, Удмуртия (UTC+4)'),
+        ('Asia/Yekaterinburg', 'Екатеринбург (UTC+5)'),
+        ('Asia/Omsk',          'Омск (UTC+6)'),
+        ('Asia/Krasnoyarsk',   'Красноярск (UTC+7)'),
+        ('Asia/Irkutsk',       'Иркутск (UTC+8)'),
+        ('Asia/Yakutsk',       'Якутск (UTC+9)'),
+        ('Asia/Vladivostok',   'Владивосток (UTC+10)'),
+        ('Asia/Magadan',       'Магадан (UTC+11)'),
+        ('Asia/Kamchatka',     'Камчатка (UTC+12)'),
+    ]
+
+    timezone = models.CharField(
+        max_length=50,
+        choices=TIMEZONE_CHOICES,
+        default='Europe/Moscow',
+        verbose_name='Часовой пояс',
+    )
     interval_days = models.PositiveIntegerField(
         default=7,
         verbose_name='Интервал автокопирования (дней)',
     )
 
     class Meta:
-        verbose_name = 'Настройки резервного копирования'
-        verbose_name_plural = 'Настройки резервного копирования'
+        verbose_name = 'Настройки системы'
+        verbose_name_plural = 'Настройки системы'
 
     def save(self, *args, **kwargs):
         self.pk = 1
@@ -292,7 +312,10 @@ class BackupSettings(models.Model):
 
     @classmethod
     def load(cls):
-        obj, _ = cls.objects.get_or_create(pk=1, defaults={'interval_days': 7})
+        obj, _ = cls.objects.get_or_create(
+            pk=1,
+            defaults={'interval_days': 7, 'timezone': 'Europe/Moscow'},
+        )
         return obj
 
 

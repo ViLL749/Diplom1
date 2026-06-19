@@ -17,15 +17,20 @@
     Автоматическая резервная копия создана: <strong>{{ auto_backup_created }}</strong>
 </p>
 {% endif %}
-<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:12px 16px;margin-bottom:16px;font-size:13px;">
+<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:12px 16px;margin-bottom:16px;font-size:13px;line-height:1.8;">
     <strong>Интервал автокопирования:</strong> каждые {{ backup_interval }} дн.
+    &nbsp;|&nbsp;
+    <a href="{% url 'admin:mainapp_backupsettings_changelist' %}">Настройки системы</a>
+    <br>
     {% if last_backup %}
-    &nbsp;|&nbsp; <strong>Последняя копия:</strong> {{ last_backup.created_at|date:"d.m.Y H:i" }}
+    <strong>Последняя копия:</strong> {{ last_backup.created_at|date:"d.m.Y H:i" }}
     &nbsp;({{ last_backup.file_name }}, {{ last_backup.size_kb }} КБ)
     {% else %}
-    &nbsp;|&nbsp; <span style="color:#dc2626;">Резервных копий ещё нет</span>
+    <span style="color:#dc2626;">Резервных копий ещё нет</span>
     {% endif %}
-    &nbsp;|&nbsp; <a href="{% url 'admin:mainapp_backupsettings_change' 1 %}">Изменить интервал</a>
+    <br>
+    <strong>Папка с копиями:</strong>
+    <code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;font-size:12px;">{{ backup_dir }}</code>
 </div>
 {{ block.super }}
 {% endblock %}

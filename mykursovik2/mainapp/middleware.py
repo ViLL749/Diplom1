@@ -1,5 +1,7 @@
 import threading
 
+from django.utils import timezone
+
 _thread_locals = threading.local()
 
 
@@ -17,3 +19,19 @@ class RequestMiddleware:
             return self.get_response(request)
         finally:
             _thread_locals.request = None
+
+
+class TimezoneMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        try:
+            from mainapp.models import BackupSettings
+            tzname = BackupSettings.load().timezone
+            timezone.activate(tzname)
+        except Exception:
+            timezone.deactivate()
+        response = self.get_response(request)
+        timezone.deactivate()
+        return response
