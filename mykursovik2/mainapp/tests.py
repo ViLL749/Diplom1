@@ -179,10 +179,8 @@ class OrderTests(TestCase):
     # T-11
     def test_order_create_success(self):
         resp = self.tc.post(reverse('order_create'), {
-            'client':     self.client_obj.pk,  # ClientSelectionForm
+            'client':     self.client_obj.pk,
             'client_car': self.car.pk,
-            'status':     'Первичный осмотр',
-            'order_date': str(timezone.now().date()),
             'comment':    'Тестовый заказ',
             'mileage':    42000,
         })

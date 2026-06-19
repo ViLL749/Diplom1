@@ -18,7 +18,7 @@
         <span id="selected-client-info" style="margin-left:10px;font-weight:600;"></span>
     </div>
 
-    <p>{{ order_form.order_date.label_tag }} {{ order_form.order_date }}</p>
+    <p><label>Дата заказа:</label> <span style="color:#64748b;">{% now "d.m.Y" %}</span></p>
     <p><label>Статус:</label> <span style="color:#64748b;">Первичный осмотр</span></p>
     <p>
         {{ order_form.mileage.label_tag }}
@@ -162,7 +162,6 @@ $(document).ready(function() {
         $('#id_mileage').prop('disabled', false);
         var errors = [];
         if (!$('#id_client_car').val()) errors.push('Необходимо выбрать клиента и автомобиль.');
-        if (!$('#id_order_date').val()) errors.push('Укажите дату заказа.');
         if (!$('#id_mileage').val()) errors.push('Укажите пробег автомобиля.');
         if (errors.length) {
             e.preventDefault();

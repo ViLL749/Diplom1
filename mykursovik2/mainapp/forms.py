@@ -40,18 +40,11 @@ class OrderForm(forms.ModelForm):
             if self.instance.order_date:
                 self.initial['order_date'] = self.instance.order_date.strftime('%Y-%m-%d')
         else:
-            # При создании статус всегда «Первичный осмотр» — поле не показываем
+            # При создании: статус и дата ставятся программно, поля скрываем
             self.fields['client_car'].queryset = ClientCar.objects.all()
-            self.initial['order_date'] = timezone.now().date().strftime('%Y-%m-%d')
             del self.fields['status']
+            del self.fields['order_date']
             self.fields['mileage'].required = True
-
-    def clean_order_date(self):
-        date = self.cleaned_data.get('order_date')
-        if date and not self.instance.pk:
-            if date < timezone.now().date():
-                raise forms.ValidationError('Нельзя создать заказ задним числом.')
-        return date
 
     def clean_client_car(self):
         client_car = self.cleaned_data.get('client_car')

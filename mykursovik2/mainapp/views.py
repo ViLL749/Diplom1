@@ -12,6 +12,7 @@ from django.core.files.uploadedfile import UploadedFile
 from django.core.management import call_command
 from django.core.paginator import Paginator, EmptyPage
 from django.db import transaction, connection
+from django.utils import timezone
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
@@ -1596,6 +1597,7 @@ def order_create(request):
         if client_form.is_valid() and order_form.is_valid():
             order = order_form.save(commit=False)
             order.status = 'Первичный осмотр'
+            order.order_date = timezone.localdate()
             ws = WorkshopSettings.objects.first()
             if ws:
                 order.org_snapshot = ws.as_snapshot()
