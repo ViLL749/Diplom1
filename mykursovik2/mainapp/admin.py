@@ -1,5 +1,14 @@
-from django.contrib import admin
-from .models import ActionLog
+import os
+import shutil
+from datetime import timedelta
+
+from django.conf import settings
+from django.contrib import admin, messages
+from django.http import HttpResponseRedirect
+from django.urls import path, reverse
+from django.utils import timezone
+
+from .models import ActionLog, BackupLog, BackupSettings
 
 
 @admin.register(ActionLog)
@@ -192,3 +201,81 @@ class ActionLogAdmin(admin.ModelAdmin):
     @admin.display(description='Модель')
     def model_verbose(self, obj):
         return self.MODEL_VERBOSE.get(obj.model_name, obj.model_name)
+
+
+def _do_backup():
+    """Копирует db.sqlite3 в backups/ и создаёт BackupLog."""
+    backup_dir = settings.BASE_DIR / 'backups'
+    backup_dir.mkdir(exist_ok=True)
+    db_path = settings.DATABASES['default']['NAME']
+    ts = timezone.now().strftime('%Y%m%d_%H%M%S')
+    file_name = f'backup_{ts}.sqlite3'
+    dest = backup_dir / file_name
+    shutil.copy2(db_path, dest)
+    size_kb = max(1, os.path.getsize(dest) // 1024)
+    return BackupLog.objects.create(file_name=file_name, size_kb=size_kb)
+
+
+@admin.register(BackupSettings)
+class BackupSettingsAdmin(admin.ModelAdmin):
+    fields = ('interval_days',)
+
+    def has_add_permission(self, request):
+        return not BackupSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        obj = BackupSettings.load()
+        return HttpResponseRedirect(
+            reverse('admin:mainapp_backupsettings_change', args=[obj.pk])
+        )
+
+
+@admin.register(BackupLog)
+class BackupLogAdmin(admin.ModelAdmin):
+    list_display = ('created_at', 'file_name', 'size_kb')
+    readonly_fields = ('created_at', 'file_name', 'size_kb')
+    change_list_template = 'admin/mainapp/backuplog/change_list.html'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def get_urls(self):
+        urls = super().get_urls()
+        extra = [
+            path(
+                'create-now/',
+                self.admin_site.admin_view(self.create_now_view),
+                name='mainapp_backuplog_create_now',
+            ),
+        ]
+        return extra + urls
+
+    def create_now_view(self, request):
+        log = _do_backup()
+        self.message_user(request, f'Резервная копия создана: {log.file_name} ({log.size_kb} КБ).', messages.SUCCESS)
+        return HttpResponseRedirect(reverse('admin:mainapp_backuplog_changelist'))
+
+    def changelist_view(self, request, extra_context=None):
+        cfg = BackupSettings.load()
+        last = BackupLog.objects.first()
+        auto_created = None
+
+        if last is None or (timezone.now() - last.created_at) >= timedelta(days=cfg.interval_days):
+            log = _do_backup()
+            auto_created = log.file_name
+            last = log
+
+        extra_context = extra_context or {}
+        extra_context['backup_interval'] = cfg.interval_days
+        extra_context['last_backup'] = last
+        extra_context['auto_backup_created'] = auto_created
+        return super().changelist_view(request, extra_context=extra_context)

@@ -274,3 +274,37 @@ class ActionLog(models.Model):
         verbose_name = 'Запись лога'
         verbose_name_plural = 'Лог действий'
         ordering = ['-timestamp']
+
+
+class BackupSettings(models.Model):
+    interval_days = models.PositiveIntegerField(
+        default=7,
+        verbose_name='Интервал автокопирования (дней)',
+    )
+
+    class Meta:
+        verbose_name = 'Настройки резервного копирования'
+        verbose_name_plural = 'Настройки резервного копирования'
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1, defaults={'interval_days': 7})
+        return obj
+
+
+class BackupLog(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
+    file_name = models.CharField(max_length=255, verbose_name='Имя файла')
+    size_kb = models.PositiveIntegerField(verbose_name='Размер, КБ')
+
+    class Meta:
+        verbose_name = 'Резервная копия'
+        verbose_name_plural = 'Резервные копии'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.file_name} ({self.size_kb} КБ)'

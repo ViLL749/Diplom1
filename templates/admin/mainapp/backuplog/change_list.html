@@ -1,0 +1,31 @@
+{% extends "admin/change_list.html" %}
+
+{% block object-tools-items %}
+<li>
+    <a href="{% url 'admin:mainapp_backuplog_create_now' %}"
+       class="addlink"
+       onclick="return confirm('Создать резервную копию сейчас?');">
+        Создать резервную копию
+    </a>
+</li>
+{{ block.super }}
+{% endblock %}
+
+{% block content %}
+{% if auto_backup_created %}
+<p class="success" style="background:#d1fae5;padding:8px 12px;border-radius:4px;margin-bottom:12px;">
+    Автоматическая резервная копия создана: <strong>{{ auto_backup_created }}</strong>
+</p>
+{% endif %}
+<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:12px 16px;margin-bottom:16px;font-size:13px;">
+    <strong>Интервал автокопирования:</strong> каждые {{ backup_interval }} дн.
+    {% if last_backup %}
+    &nbsp;|&nbsp; <strong>Последняя копия:</strong> {{ last_backup.created_at|date:"d.m.Y H:i" }}
+    &nbsp;({{ last_backup.file_name }}, {{ last_backup.size_kb }} КБ)
+    {% else %}
+    &nbsp;|&nbsp; <span style="color:#dc2626;">Резервных копий ещё нет</span>
+    {% endif %}
+    &nbsp;|&nbsp; <a href="{% url 'admin:mainapp_backupsettings_change' 1 %}">Изменить интервал</a>
+</div>
+{{ block.super }}
+{% endblock %}

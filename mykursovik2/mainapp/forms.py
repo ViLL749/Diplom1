@@ -46,6 +46,13 @@ class OrderForm(forms.ModelForm):
             del self.fields['status']
             self.fields['mileage'].required = True
 
+    def clean_order_date(self):
+        date = self.cleaned_data.get('order_date')
+        if date and not self.instance.pk:
+            if date < timezone.now().date():
+                raise forms.ValidationError('Нельзя создать заказ задним числом.')
+        return date
+
     def clean_client_car(self):
         client_car = self.cleaned_data.get('client_car')
         if not self.instance.pk and not client_car:
