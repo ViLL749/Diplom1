@@ -1,12 +1,13 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User, Group
+from .models import UserProxy
 
 admin.site.unregister(User)
 admin.site.unregister(Group)
 
 
-@admin.register(User)
+@admin.register(UserProxy)
 class RestrictedUserAdmin(UserAdmin):
     filter_horizontal = ()
     fieldsets = (
