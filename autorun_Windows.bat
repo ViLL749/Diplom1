@@ -1,76 +1,92 @@
 @echo off
 chcp 65001 >nul
-title APM Avtosservis
+title АРМ Автосервис
 
 REM -----------------------------------------------------------------------
-REM  Proverka Python
+REM  Проверка Python
 REM -----------------------------------------------------------------------
 where py >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [Oshibka] Python ne nayden. Ustanovite Python 3.10+ s https://python.org
+    echo [Ошибка] Python не найден. Установите Python 3.10+ с https://python.org
     pause
     exit /b 1
 )
 
 REM -----------------------------------------------------------------------
-REM  Virtualnoe okruzhenie
+REM  Виртуальное окружение
 REM -----------------------------------------------------------------------
 if not exist env (
-    echo Sozdayu virtualnoe okruzhenie... Podozhdite.
+    echo Создаю виртуальное окружение... Подождите.
     py -m venv env
     if %errorlevel% neq 0 (
-        echo [Oshibka] Ne udalos sozdat virtualnoe okruzhenie.
+        echo [Ошибка] Не удалось создать виртуальное окружение.
         pause
         exit /b 1
     )
 )
 
-echo Aktivatsiya virtualnogo okruzheniya...
+echo Активация виртуального окружения...
 call env\Scripts\activate
 if %errorlevel% neq 0 (
-    echo [Oshibka] Ne udalos aktivirovat virtualnoe okruzhenie.
+    echo [Ошибка] Не удалось активировать виртуальное окружение.
     pause
     exit /b 1
 )
 
 REM -----------------------------------------------------------------------
-REM  Zavisimosti
+REM  Зависимости (сначала из локальной папки, потом из интернета)
 REM -----------------------------------------------------------------------
-if exist requirements.txt (
-    echo Ustanovka zavisimostey... Podozhdite.
+if not exist requirements.txt (
+    echo [Внимание] Файл requirements.txt не найден.
+    goto :migrate
+)
+
+if exist packages\ (
+    echo Установка зависимостей из локальной папки packages\...
+    pip install -r requirements.txt --no-index --find-links packages\ -q
+    if %errorlevel% neq 0 (
+        echo [Внимание] Локальная установка не удалась, пробую через интернет...
+        pip install -r requirements.txt -q
+        if %errorlevel% neq 0 (
+            echo [Ошибка] Не удалось установить зависимости.
+            pause
+            exit /b 1
+        )
+    )
+) else (
+    echo Установка зависимостей из интернета...
     pip install -r requirements.txt -q
     if %errorlevel% neq 0 (
-        echo [Oshibka] Ne udalos ustanovit zavisimosti.
+        echo [Ошибка] Не удалось установить зависимости.
         pause
         exit /b 1
     )
-) else (
-    echo [Vnimanie] Fayl requirements.txt ne nayden.
 )
 
 REM -----------------------------------------------------------------------
-REM  Migratsii
+REM  Миграции
 REM -----------------------------------------------------------------------
-echo Primeneniye migratsiy bazy dannykh...
+:migrate
+echo Применение миграций базы данных...
 py mykursovik2\manage.py migrate --run-syncdb -v 0
 if %errorlevel% neq 0 (
-    echo [Oshibka] Ne udalos primenit migratsii.
+    echo [Ошибка] Не удалось применить миграции.
     pause
     exit /b 1
 )
 
 REM -----------------------------------------------------------------------
-REM  Otkryt brauzer cherez 2 sekundy
+REM  Открыть браузер через 2 секунды
 REM -----------------------------------------------------------------------
-echo Zapusk veb-prilozheniya...
+echo Запуск веб-приложения...
 start "" cmd /c "timeout /t 2 >nul && start http://127.0.0.1:8000"
 
 REM -----------------------------------------------------------------------
-REM  Zapusk servera
+REM  Запуск сервера
 REM -----------------------------------------------------------------------
 py mykursovik2\manage.py runserver
 if %errorlevel% neq 0 (
-    echo [Oshibka] Ne udalos zapustit server Django.
+    echo [Ошибка] Не удалось запустить сервер Django.
     pause
     exit /b 1
 )

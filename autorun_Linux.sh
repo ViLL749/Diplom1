@@ -28,14 +28,28 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# ── Зависимости ────────────────────────────────────────────────────────────────
+# ── Зависимости (сначала из локальной папки, потом из интернета) ───────────────
 if [ -f "requirements.txt" ]; then
-    echo "Установка зависимостей... [Ожидайте]"
-    pip install -r requirements.txt -q
-    if [ $? -ne 0 ]; then
-        echo "[Ошибка] Не удалось установить зависимости."
-        deactivate
-        exit 1
+    if [ -d "packages" ]; then
+        echo "Установка зависимостей из локальной папки packages/..."
+        pip install -r requirements.txt --no-index --find-links packages/ -q
+        if [ $? -ne 0 ]; then
+            echo "[Внимание] Локальная установка не удалась, пробую через интернет..."
+            pip install -r requirements.txt -q
+            if [ $? -ne 0 ]; then
+                echo "[Ошибка] Не удалось установить зависимости."
+                deactivate
+                exit 1
+            fi
+        fi
+    else
+        echo "Установка зависимостей из интернета..."
+        pip install -r requirements.txt -q
+        if [ $? -ne 0 ]; then
+            echo "[Ошибка] Не удалось установить зависимости."
+            deactivate
+            exit 1
+        fi
     fi
 else
     echo "[Внимание] Файл requirements.txt не найден."
