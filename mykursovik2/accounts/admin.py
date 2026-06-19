@@ -8,6 +8,7 @@ admin.site.unregister(Group)
 
 @admin.register(User)
 class RestrictedUserAdmin(UserAdmin):
+    filter_horizontal = ()
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
         ('Персональные данные', {'fields': ('first_name', 'last_name', 'email')}),
