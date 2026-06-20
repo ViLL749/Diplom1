@@ -5,7 +5,6 @@
 
 {% block content %}
 <style>
-  /* ── Help page ─────────────────────────────────────────────── */
   .help-page { max-width: 900px; }
 
   .help-tabs {
@@ -13,7 +12,6 @@
     gap: 4px;
     margin-bottom: 24px;
     border-bottom: 2px solid var(--border);
-    padding-bottom: 0;
   }
   .help-tab-btn {
     padding: 10px 22px;
@@ -33,7 +31,6 @@
   .help-tab-pane { display: none; }
   .help-tab-pane.active { display: block; }
 
-  /* accordion section */
   .help-section {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -63,47 +60,30 @@
     flex-shrink: 0;
   }
   .help-section-head h3 {
-    flex: 1;
-    margin: 0;
-    font-size: 1em;
-    font-weight: 600;
-    color: var(--txt);
+    flex: 1; margin: 0;
+    font-size: 1em; font-weight: 600; color: var(--txt);
   }
-  .help-chevron {
-    color: var(--txt-muted);
-    font-size: .8em;
-    transition: transform .2s;
-  }
+  .help-chevron { color: var(--txt-muted); font-size: .8em; transition: transform .2s; }
   .help-section.open .help-chevron { transform: rotate(180deg); }
   .help-section-body {
     display: none;
-    padding: 4px 18px 18px 18px;
+    padding: 4px 18px 18px;
     border-top: 1px solid var(--border);
     animation: fadeIn .15s ease;
   }
   .help-section.open .help-section-body { display: block; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
 
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-
-  /* subsection */
   .help-sub { margin-top: 18px; }
   .help-sub h4 {
-    font-size: .92em;
-    font-weight: 700;
-    color: var(--primary);
-    margin: 0 0 8px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid #e0eaff;
+    font-size: .92em; font-weight: 700; color: var(--primary);
+    margin: 0 0 8px; padding-bottom: 4px; border-bottom: 1px solid #e0eaff;
   }
   .help-section-body p { margin: 8px 0; line-height: 1.65; color: var(--txt); font-size: .9em; }
   .help-section-body ul { padding-left: 20px; margin: 8px 0; }
   .help-section-body li { margin-bottom: 4px; font-size: .9em; line-height: 1.6; color: var(--txt); }
 
-  /* figure */
-  .help-figure {
-    margin: 14px 0 6px;
-    text-align: center;
-  }
+  .help-figure { margin: 14px 0 6px; text-align: center; }
   .help-figure img {
     max-width: 100%;
     border: 1px solid var(--border);
@@ -111,59 +91,33 @@
     box-shadow: 0 2px 8px rgba(0,0,0,.08);
   }
   .help-figure figcaption {
-    margin-top: 6px;
-    font-size: .8em;
-    color: var(--txt-muted);
-    font-style: italic;
+    margin-top: 6px; font-size: .8em;
+    color: var(--txt-muted); font-style: italic;
   }
 
-  /* tip box */
   .help-tip {
-    background: #eff6ff;
-    border-left: 4px solid var(--primary);
-    border-radius: 0 8px 8px 0;
-    padding: 10px 14px;
-    margin: 12px 0;
-    font-size: .88em;
-    color: #1e40af;
+    background: #eff6ff; border-left: 4px solid var(--primary);
+    border-radius: 0 8px 8px 0; padding: 10px 14px;
+    margin: 12px 0; font-size: .88em; color: #1e40af;
   }
   .help-tip i { margin-right: 6px; }
-
-  /* warning box */
   .help-warn {
-    background: #fff7ed;
-    border-left: 4px solid #f59e0b;
-    border-radius: 0 8px 8px 0;
-    padding: 10px 14px;
-    margin: 12px 0;
-    font-size: .88em;
-    color: #92400e;
+    background: #fff7ed; border-left: 4px solid #f59e0b;
+    border-radius: 0 8px 8px 0; padding: 10px 14px;
+    margin: 12px 0; font-size: .88em; color: #92400e;
   }
   .help-warn i { margin-right: 6px; }
 
-  /* admin badge */
   .admin-badge {
-    display: inline-block;
-    background: #7c3aed;
-    color: #fff;
-    font-size: .7em;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 20px;
-    margin-left: 8px;
-    vertical-align: middle;
-    letter-spacing: .03em;
+    display: inline-block; background: #7c3aed; color: #fff;
+    font-size: .7em; font-weight: 700; padding: 2px 8px;
+    border-radius: 20px; margin-left: 8px; vertical-align: middle;
   }
 
   .help-page h2.section-title {
-    font-size: 1.05em;
-    font-weight: 700;
-    color: var(--txt-muted);
-    letter-spacing: .04em;
-    text-transform: uppercase;
-    margin: 28px 0 12px;
-    padding-bottom: 6px;
-    border-bottom: 2px solid var(--border);
+    font-size: 1.05em; font-weight: 700; color: var(--txt-muted);
+    letter-spacing: .04em; text-transform: uppercase;
+    margin: 28px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--border);
   }
   .help-page h2.section-title:first-child { margin-top: 0; }
 </style>
@@ -180,7 +134,7 @@
     {% endif %}
   </div>
 
-  {# ══════════════════  РУКОВОДСТВО ПОЛЬЗОВАТЕЛЯ  ══════════════════ #}
+  {# ══════════════  РУКОВОДСТВО ПОЛЬЗОВАТЕЛЯ  ══════════════ #}
   <div id="pane-user" class="help-tab-pane active">
 
     <h2 class="section-title">Начало работы</h2>
@@ -192,15 +146,15 @@
         <i class="fas fa-chevron-down help-chevron"></i>
       </div>
       <div class="help-section-body">
-        <p>Система доступна в браузере по адресу <strong>http://127.0.0.1:8000</strong>. При первом обращении без авторизации пользователь автоматически перенаправляется на страницу входа. Для создания новой учётной записи нажмите ссылку «Зарегистрироваться».</p>
+        <p>Система доступна в браузере по адресу <strong>http://127.0.0.1:8000</strong>. При первом обращении без авторизации вы автоматически перенаправляетесь на страницу входа. Для создания учётной записи нажмите ссылку «Зарегистрироваться».</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img2_register.png' %}" alt="Форма регистрации">
-          <figcaption>Рисунок Г.1 — Форма регистрации учётной записи</figcaption>
+          <img src="{% static 'help_src/g01_register.png' %}" alt="Форма регистрации">
+          <figcaption>Рисунок 1 — Форма регистрации учётной записи</figcaption>
         </figure>
-        <p>Введите логин, пароль и подтверждение пароля, затем нажмите «Зарегистрироваться». Система отобразит страницу ожидания активации.</p>
+        <p>Введите логин, пароль и подтверждение пароля, затем нажмите «Зарегистрироваться». После этого система отобразит страницу ожидания активации.</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img3_register_pending.png' %}" alt="Ожидание активации">
-          <figcaption>Рисунок Г.2 — Страница ожидания активации учётной записи</figcaption>
+          <img src="{% static 'help_src/g02_register_pending.png' %}" alt="Ожидание активации">
+          <figcaption>Рисунок 2 — Страница ожидания активации учётной записи</figcaption>
         </figure>
         <div class="help-tip"><i class="fas fa-info-circle"></i>Самостоятельный вход до активации администратором невозможен.</div>
       </div>
@@ -214,13 +168,21 @@
       </div>
       <div class="help-section-body">
         <div class="help-sub"><h4>Вход</h4></div>
-        <p>После активации учётной записи откройте <strong>http://127.0.0.1:8000</strong>. Введите логин и пароль и нажмите «Войти». При успешной авторизации система откроет главную страницу со списком заказов.</p>
+        <p>После активации откройте <strong>http://127.0.0.1:8000</strong>, введите логин и пароль и нажмите «Войти». При неверных данных система выведет сообщение об ошибке.</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img1_auth.png' %}" alt="Страница входа">
-          <figcaption>Рисунок Г.3 — Страница входа в систему</figcaption>
+          <img src="{% static 'help_src/g03_login.png' %}" alt="Страница входа">
+          <figcaption>Рисунок 3 — Страница входа в систему</figcaption>
+        </figure>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g04_login_error.png' %}" alt="Ошибка входа">
+          <figcaption>Рисунок 4 — Сообщение об ошибке при неверных данных входа</figcaption>
         </figure>
         <div class="help-sub"><h4>Выход</h4></div>
         <p>Нажмите кнопку <strong>«Выйти»</strong> в нижней части бокового меню. Система завершит сеанс и вернёт вас на страницу входа.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g05_logout_btn.png' %}" alt="Кнопка выхода">
+          <figcaption>Рисунок 5 — Кнопка выхода из системы в боковом меню</figcaption>
+        </figure>
       </div>
     </div>
 
@@ -231,12 +193,11 @@
         <i class="fas fa-chevron-down help-chevron"></i>
       </div>
       <div class="help-section-body">
-        <p>Интерфейс состоит из двух частей: <strong>бокового меню</strong> навигации слева и <strong>основной рабочей области</strong> справа.</p>
+        <p>Интерфейс состоит из <strong>бокового меню</strong> навигации слева и <strong>основной рабочей области</strong> справа. Боковое меню содержит ссылки на все разделы: Заказы, Клиенты, Марки и модели, Услуги, Склад, Закупки. Активный раздел выделяется в меню.</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img4_orders_list.png' %}" alt="Общий вид интерфейса">
-          <figcaption>Рисунок Г.6 — Общий вид интерфейса системы</figcaption>
+          <img src="{% static 'help_src/g06_interface.png' %}" alt="Интерфейс системы">
+          <figcaption>Рисунок 6 — Общий вид интерфейса системы</figcaption>
         </figure>
-        <p>Боковое меню содержит ссылки на все разделы, сгруппированные по назначению: Заказы, Клиенты, Марки и модели, Услуги, Склад, Закупки. В нижней части меню расположены кнопки «Справка» и «Выйти», а также отображается имя текущего пользователя.</p>
       </div>
     </div>
 
@@ -252,24 +213,28 @@
         <div class="help-sub"><h4>Список клиентов</h4></div>
         <p>Нажмите «Клиенты» в боковом меню. Таблица показывает ФИО, номер телефона и количество привязанных автомобилей. Для поиска введите ФИО или телефон в строку поиска.</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img12_clients_management.png' %}" alt="Список клиентов">
-          <figcaption>Рисунок Г.7 — Список клиентов</figcaption>
+          <img src="{% static 'help_src/g07_clients_list.png' %}" alt="Список клиентов">
+          <figcaption>Рисунок 7 — Список клиентов</figcaption>
         </figure>
         <div class="help-sub"><h4>Добавление клиента</h4></div>
         <p>Нажмите «Добавить клиента». Заполните ФИО, код страны и номер телефона, отметьте согласие на обработку персональных данных. Система проверяет уникальность телефона при сохранении.</p>
-        <div class="help-sub"><h4>Карточка клиента</h4></div>
-        <p>Откройте карточку нажатием на имя клиента — здесь видны его контактные данные и список автомобилей. Для редактирования и удаления используйте соответствующие кнопки.</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img13_client_cars_management.png' %}" alt="Карточка клиента">
-          <figcaption>Рисунок Г.9 — Карточка клиента</figcaption>
+          <img src="{% static 'help_src/g08_client_create.png' %}" alt="Форма добавления клиента">
+          <figcaption>Рисунок 8 — Форма добавления нового клиента</figcaption>
+        </figure>
+        <div class="help-sub"><h4>Карточка клиента</h4></div>
+        <p>Нажмите на имя клиента — откроется его карточка с контактными данными и списком автомобилей. Для редактирования или удаления используйте соответствующие кнопки.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g09_client_card.png' %}" alt="Карточка клиента">
+          <figcaption>Рисунок 9 — Карточка клиента</figcaption>
         </figure>
         <div class="help-sub"><h4>Добавление автомобиля</h4></div>
         <p>В карточке клиента нажмите «Добавить автомобиль». Выберите марку — список моделей обновится автоматически. Заполните государственный номер, VIN, цвет и год выпуска.</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img14_client_car_create.png' %}" alt="Добавление автомобиля">
-          <figcaption>Рисунок Г.10 — Динамическая загрузка моделей при выборе марки</figcaption>
+          <img src="{% static 'help_src/g10_car_model_select.png' %}" alt="Выбор марки и модели">
+          <figcaption>Рисунок 10 — Динамическая загрузка моделей при выборе марки</figcaption>
         </figure>
-        <div class="help-tip"><i class="fas fa-info-circle"></i>Система проверяет уникальность VIN и государственного номера. При дублировании форма не сохраняется.</div>
+        <div class="help-tip"><i class="fas fa-info-circle"></i>Система проверяет уникальность VIN и государственного номера — при дублировании форма не сохранится.</div>
       </div>
     </div>
 
@@ -282,17 +247,18 @@
         <i class="fas fa-chevron-down help-chevron"></i>
       </div>
       <div class="help-section-body">
-        <p>На главной странице нажмите «Добавить заказ». Начните вводить ФИО или телефон клиента — система покажет подходящие варианты. Выберите клиента и его автомобиль из подгруженного списка, укажите текущий пробег и при необходимости комментарий.</p>
+        <p>На главной странице нажмите «Добавить заказ». Начните вводить ФИО или телефон клиента — система покажет подходящие варианты. Выберите клиента, затем его автомобиль из подгруженного списка.</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img16_order_create_add_client_and_auto.png' %}" alt="Поиск клиента">
-          <figcaption>Рисунок Г.12 — Динамический поиск клиента при создании заказа</figcaption>
+          <img src="{% static 'help_src/g12_order_client_search.png' %}" alt="Поиск клиента">
+          <figcaption>Рисунок 12 — Динамический поиск клиента при создании заказа</figcaption>
         </figure>
+        <p>Укажите текущий пробег и при необходимости добавьте комментарий, затем нажмите «Сохранить».</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img15_order_create.png' %}" alt="Форма создания заказа">
-          <figcaption>Рисунок Г.13 — Заполненная форма создания заказ-наряда</figcaption>
+          <img src="{% static 'help_src/g13_order_create_form.png' %}" alt="Форма создания заказа">
+          <figcaption>Рисунок 13 — Заполненная форма создания заказ-наряда</figcaption>
         </figure>
-        <p>После нажатия «Сохранить» заказ создаётся со статусом <strong>«Первичный осмотр»</strong>.</p>
-        <div class="help-warn"><i class="fas fa-exclamation-triangle"></i>Создать заказ задним числом невозможно — дата не должна быть в прошлом.</div>
+        <p>Заказ создаётся со статусом <strong>«Первичный осмотр»</strong>.</p>
+        <div class="help-warn"><i class="fas fa-exclamation-triangle"></i>Создать заказ задним числом невозможно — дата не может быть в прошлом.</div>
       </div>
     </div>
 
@@ -303,20 +269,45 @@
         <i class="fas fa-chevron-down help-chevron"></i>
       </div>
       <div class="help-section-body">
-        <div class="help-sub"><h4>Добавление услуг</h4></div>
-        <p>Нажмите «Добавить услугу» в карточке заказа. Откроется окно со списком услуг, сгруппированных по типам. Нажмите на услугу — она переместится в правую часть «Выбранные». Скорректируйте нормо-часы и коэффициент сложности — цена пересчитается автоматически. Нажмите «Добавить выбранные».</p>
+        <p>После создания заказа открывается его карточка. В верхней части — номер, дата, клиент, автомобиль, статус и итоговая стоимость. Ниже — блоки добавления услуг и деталей.</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img17_order_create_add_service.png' %}" alt="Добавление услуг">
-          <figcaption>Рисунок Г.15 — Окно добавления услуг в заказ-наряд</figcaption>
+          <img src="{% static 'help_src/g14_order_card.png' %}" alt="Карточка заказа">
+          <figcaption>Рисунок 14 — Карточка заказ-наряда</figcaption>
+        </figure>
+        <div class="help-sub"><h4>Добавление услуг</h4></div>
+        <p>Нажмите «Добавить услугу». В открывшемся окне нажмите на нужную услугу — она переместится в правую часть. Скорректируйте нормо-часы и коэффициент сложности — цена пересчитается. Нажмите «Добавить выбранные».</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g15_order_add_service.png' %}" alt="Добавление услуг">
+          <figcaption>Рисунок 15 — Окно добавления услуг в заказ-наряд</figcaption>
+        </figure>
+        <div class="help-sub"><h4>Назначение исполнителя</h4></div>
+        <p>Рядом с услугой нажмите кнопку назначения и выберите сотрудника из списка. Имя и коэффициент фиксируются в заказе.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g16_order_assign_executor.png' %}" alt="Назначение исполнителя">
+          <figcaption>Рисунок 16 — Назначение исполнителя на услугу</figcaption>
         </figure>
         <div class="help-sub"><h4>Добавление запасных частей</h4></div>
-        <p>Нажмите «Добавить деталь». Введите наименование или артикул — система покажет варианты из каталога с остатком на складе. Выберите деталь и укажите количество. При наличии достаточного остатка деталь будет автоматически зарезервирована.</p>
-        <div class="help-sub"><h4>Назначение исполнителя</h4></div>
-        <p>Рядом с нужной услугой нажмите кнопку назначения и выберите сотрудника из списка. Имя исполнителя и его коэффициент фиксируются в заказе.</p>
+        <p>Нажмите «Добавить деталь». Введите наименование или артикул — система покажет варианты из каталога с остатком на складе. Выберите деталь и укажите количество.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g17_order_part_search.png' %}" alt="Поиск детали">
+          <figcaption>Рисунок 17 — Поиск детали при добавлении в заказ</figcaption>
+        </figure>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g18_order_add_part.png' %}" alt="Форма добавления детали">
+          <figcaption>Рисунок 18 — Заполненная форма добавления запасной части</figcaption>
+        </figure>
         <div class="help-sub"><h4>Изменение статуса</h4></div>
-        <p>Заказ последовательно проходит статусы: <strong>Первичный осмотр → Диагностика → В работе → Готов</strong>. Допускается возврат к предыдущему статусу. Управление осуществляется через блок «Изменить» в карточке заказа.</p>
+        <p>Заказ проходит статусы: <strong>Первичный осмотр → Диагностика → В работе → Готов</strong>. Допускается возврат к предыдущему статусу.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g19_order_status.png' %}" alt="Изменение статуса">
+          <figcaption>Рисунок 19 — Блок управления статусом заказ-наряда</figcaption>
+        </figure>
         <div class="help-sub"><h4>Завершение заказа</h4></div>
-        <p>Завершение возможно только из статуса «Готов» при обязательно указанном способе оплаты. При завершении зарезервированные детали списываются со склада, данные фиксируются. Редактирование завершённого заказа невозможно.</p>
+        <p>Завершение возможно только из статуса «Готов» при обязательно указанном способе оплаты. При завершении зарезервированные детали списываются со склада. Редактирование завершённого заказа невозможно.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g20_order_complete.png' %}" alt="Завершение заказа">
+          <figcaption>Рисунок 20 — Завершение заказ-наряда с указанием способа оплаты</figcaption>
+        </figure>
         <div class="help-sub"><h4>Отмена заказа</h4></div>
         <p>Заказ можно отменить из любого активного статуса кнопкой «Отменить». Все зарезервированные детали автоматически возвращаются в свободный остаток.</p>
         <div class="help-warn"><i class="fas fa-exclamation-triangle"></i>Завершённые заказы удалить нельзя — это защита целостности истории.</div>
@@ -330,12 +321,20 @@
         <i class="fas fa-chevron-down help-chevron"></i>
       </div>
       <div class="help-section-body">
-        <p>В карточке заказа нажмите кнопку <strong>«Печать ▾»</strong> — раскроется выпадающее меню с тремя пунктами:</p>
+        <p>В карточке заказа нажмите <strong>«Печать ▾»</strong> — раскроется меню с тремя пунктами:</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g21_order_print_menu.png' %}" alt="Меню печати">
+          <figcaption>Рисунок 21 — Раскрытое меню кнопки «Печать»</figcaption>
+        </figure>
         <ul>
           <li><strong>Для механика</strong> — технический бланк с перечнем работ и деталей без стоимости; доступен только для незавершённых заказов.</li>
-          <li><strong>Лист отборки</strong> — список деталей для комплектации со склада; отображается только при наличии деталей в заказе.</li>
-          <li><strong>Заказ-наряд клиенту</strong> — для активных заказов формирует предварительный документ, для статуса «Готов» или «Завершён» — финальный с итоговой стоимостью.</li>
+          <li><strong>Лист отборки</strong> — список деталей для комплектации со склада; отображается только при наличии деталей.</li>
+          <li><strong>Заказ-наряд клиенту</strong> — для активных заказов предварительный документ, для статуса «Готов» или «Завершён» — финальный с итоговой стоимостью.</li>
         </ul>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g22_order_pdf.png' %}" alt="PDF документ">
+          <figcaption>Рисунок 22 — Финальный заказ-наряд клиенту в формате PDF</figcaption>
+        </figure>
       </div>
     </div>
 
@@ -348,12 +347,16 @@
         <i class="fas fa-chevron-down help-chevron"></i>
       </div>
       <div class="help-section-body">
-        <p>Нажмите «Марки и модели» в боковом меню. Выберите строку в таблице — активируются кнопки «Подробнее», «Изменить» и «Удалить».</p>
+        <p>Нажмите «Марки и модели» в меню. Выберите строку в таблице — активируются кнопки «Подробнее», «Изменить» и «Удалить».</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img5_car_make_management.png' %}" alt="Управление марками">
-          <figcaption>Рисунок Г.23 — Страница управления марками автомобилей</figcaption>
+          <img src="{% static 'help_src/g23_car_makes.png' %}" alt="Управление марками">
+          <figcaption>Рисунок 23 — Страница управления марками автомобилей</figcaption>
         </figure>
-        <p>Для добавления марки нажмите «Добавить марку». Для просмотра и добавления моделей выберите марку и нажмите «Подробнее».</p>
+        <p>Для просмотра и добавления моделей выберите марку и нажмите «Подробнее».</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g24_car_models.png' %}" alt="Список моделей">
+          <figcaption>Рисунок 24 — Страница марки со списком моделей</figcaption>
+        </figure>
         <div class="help-tip"><i class="fas fa-info-circle"></i>Удаление марки невозможно, если к ней привязаны автомобили клиентов.</div>
       </div>
     </div>
@@ -365,8 +368,12 @@
         <i class="fas fa-chevron-down help-chevron"></i>
       </div>
       <div class="help-section-body">
-        <p>Нажмите «Услуги» в боковом меню. Каталог услуг организован по типам. Выберите тип и нажмите «Подробнее», чтобы просмотреть и добавить услуги данного типа. При добавлении услуги укажите название и базовое время в нормо-часах.</p>
-        <div class="help-tip"><i class="fas fa-info-circle"></i>Базовое время — значение по умолчанию при добавлении услуги в заказ; его можно изменить непосредственно в заказе.</div>
+        <p>Нажмите «Услуги» в меню. Каталог услуг организован по типам. Выберите тип и нажмите «Подробнее» для просмотра и добавления услуг. При добавлении укажите название и базовое время в нормо-часах.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g25_service_list.png' %}" alt="Список услуг">
+          <figcaption>Рисунок 25 — Список услуг выбранного типа</figcaption>
+        </figure>
+        <div class="help-tip"><i class="fas fa-info-circle"></i>Базовое время используется по умолчанию при добавлении услуги в заказ — его можно изменить непосредственно в заказе.</div>
       </div>
     </div>
 
@@ -381,14 +388,22 @@
       <div class="help-section-body">
         <div class="help-sub"><h4>Номенклатура деталей</h4></div>
         <p>Раздел «Номенклатура» содержит список всех деталей с артикулами и названиями. Для добавления нажмите «Добавить деталь» и укажите артикул, название и при необходимости бренд.</p>
-        <div class="help-sub"><h4>Остатки на складе</h4></div>
-        <p>Страница «Остатки» показывает все позиции хранения: место хранения, общее количество, зарезервированный и доступный остаток, минимальный порог. При снижении остатка ниже минимума позиция выделяется в таблице.</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img9_select_price.png' %}" alt="Остатки на складе">
-          <figcaption>Рисунок Г.27 — Страница остатков на складе</figcaption>
+          <img src="{% static 'help_src/g26_parts_catalog.png' %}" alt="Номенклатура">
+          <figcaption>Рисунок 26 — Страница номенклатуры деталей</figcaption>
+        </figure>
+        <div class="help-sub"><h4>Остатки на складе</h4></div>
+        <p>Страница «Остатки» показывает все позиции: место хранения, общее количество, зарезервированный и доступный остаток, минимальный порог. При снижении остатка ниже минимума позиция выделяется.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g27_stock_list.png' %}" alt="Остатки на складе">
+          <figcaption>Рисунок 27 — Страница остатков на складе</figcaption>
         </figure>
         <div class="help-sub"><h4>Цены закупки</h4></div>
         <p>Страница «Цены закупки» показывает стоимость каждой партии деталей по методу FIFO в разрезе мест хранения.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g28_purchase_prices.png' %}" alt="Цены закупки">
+          <figcaption>Рисунок 28 — Страница цен закупки</figcaption>
+        </figure>
       </div>
     </div>
 
@@ -401,15 +416,35 @@
       <div class="help-section-body">
         <div class="help-sub"><h4>Заказы поставщикам</h4></div>
         <p>В разделе «Заказы поставщикам» нажмите «Создать заказ», выберите поставщика и добавьте позиции с нужным количеством. Статус заказа изменяется кнопкой «Изменить статус». Когда товар поступил — нажмите «Оформить приход».</p>
-        <div class="help-sub"><h4>Документы прихода</h4></div>
-        <p>В разделе «Приход товара» ведётся журнал всех поступлений. При создании прихода выберите деталь, место хранения, укажите количество и закупочную цену. После сохранения остатки на складе и цены закупки обновятся автоматически.</p>
-        <p>В карточке документа прихода кнопка <strong>«Лист размещения (PDF)»</strong> формирует документ для кладовщика с адресами мест хранения.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g29_purchase_orders.png' %}" alt="Заказы поставщикам">
+          <figcaption>Рисунок 29 — Список заказов поставщикам</figcaption>
+        </figure>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g30_purchase_order_create.png' %}" alt="Создание заказа поставщику">
+          <figcaption>Рисунок 30 — Форма создания заказа поставщику</figcaption>
+        </figure>
+        <div class="help-sub"><h4>Приход товара</h4></div>
+        <p>При создании прихода выберите деталь, место хранения, укажите количество и закупочную цену. После сохранения остатки и цены закупки обновятся автоматически.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g31_supply_create.png' %}" alt="Форма прихода">
+          <figcaption>Рисунок 31 — Форма создания прихода товара</figcaption>
+        </figure>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g32_supply_card.png' %}" alt="Карточка прихода">
+          <figcaption>Рисунок 32 — Карточка документа прихода товара</figcaption>
+        </figure>
+        <p>Кнопка <strong>«Лист размещения (PDF)»</strong> формирует документ для кладовщика с адресами мест хранения.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/g33_supply_pdf.png' %}" alt="Лист размещения PDF">
+          <figcaption>Рисунок 33 — Лист размещения деталей в формате PDF</figcaption>
+        </figure>
       </div>
     </div>
 
   </div>{# end pane-user #}
 
-  {# ══════════════════  РУКОВОДСТВО АДМИНИСТРАТОРА  ══════════════════ #}
+  {# ══════════════  РУКОВОДСТВО АДМИНИСТРАТОРА  ══════════════ #}
   {% if user.is_staff %}
   <div id="pane-admin" class="help-tab-pane">
 
@@ -443,8 +478,14 @@
       <div class="help-section-body">
         <p>Панель администратора доступна по адресу <strong>http://127.0.0.1:8000/admin/</strong>. Для входа используйте учётную запись суперпользователя. Главная страница содержит разделы: «Пользователи», «Резервные копии», «Настройки системы» и «Лог действий».</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img19_admin_panel.png' %}" alt="Панель администратора">
-          <figcaption>Рисунок Д.1 — Главная страница панели администратора</figcaption>
+          <img src="{% static 'help_src/d01_admin_main.png' %}" alt="Панель администратора">
+          <figcaption>Рисунок 34 — Главная страница панели администратора</figcaption>
+        </figure>
+        <div class="help-sub"><h4>Смена пароля</h4></div>
+        <p>При первом запуске создаётся учётная запись <strong>admin / 12345</strong>. Сменить пароль можно через меню в правом верхнем углу панели администратора.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/d02_admin_password.png' %}" alt="Смена пароля">
+          <figcaption>Рисунок 35 — Страница смены пароля</figcaption>
         </figure>
       </div>
     </div>
@@ -457,18 +498,18 @@
       </div>
       <div class="help-section-body">
         <div class="help-sub"><h4>Активация учётной записи</h4></div>
-        <p>Новый пользователь регистрируется самостоятельно. После регистрации учётная запись неактивна. Для активации откройте раздел «Пользователи», нажмите на имя нужного пользователя.</p>
+        <p>Новый пользователь регистрируется самостоятельно, после чего учётная запись остаётся неактивной. Откройте раздел «Пользователи» и нажмите на имя нужного пользователя.</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img20_admin_panel_users.png' %}" alt="Список пользователей">
-          <figcaption>Рисунок Д.3 — Список пользователей в панели администратора</figcaption>
+          <img src="{% static 'help_src/d03_admin_users.png' %}" alt="Список пользователей">
+          <figcaption>Рисунок 36 — Список пользователей в панели администратора</figcaption>
         </figure>
         <p>Установите флажок <strong>«Активен»</strong> и нажмите «Сохранить». Для деактивации снимите тот же флажок.</p>
         <figure class="help-figure">
-          <img src="{% static 'help_src/img21_admin_panel_user_edit.png' %}" alt="Редактирование пользователя">
-          <figcaption>Рисунок Д.4 — Страница редактирования пользователя</figcaption>
+          <img src="{% static 'help_src/d04_admin_user_edit.png' %}" alt="Редактирование пользователя">
+          <figcaption>Рисунок 37 — Страница редактирования пользователя</figcaption>
         </figure>
         <div class="help-sub"><h4>Назначение прав администратора</h4></div>
-        <p>Чтобы предоставить пользователю права администратора, установите флажок <strong>«Статус персонала»</strong> на его странице и нажмите «Сохранить». Пользователь получит доступ к разделам «Настройки», «Персонал», «Администрирование» и к панели /admin/.</p>
+        <p>Установите флажок <strong>«Статус персонала»</strong> на странице пользователя и нажмите «Сохранить». Пользователь получит доступ к разделам «Настройки», «Персонал», «Администрирование» и к панели /admin/.</p>
       </div>
     </div>
 
@@ -479,12 +520,15 @@
         <i class="fas fa-chevron-down help-chevron"></i>
       </div>
       <div class="help-section-body">
-        <p>Раздел «Настройки системы» в панели администратора позволяет задать:</p>
+        <p>Раздел «Настройки системы» позволяет задать:</p>
         <ul>
-          <li><strong>Часовой пояс</strong> — определяет временную зону для отображения всех дат. Изменение применяется немедленно без перезапуска.</li>
+          <li><strong>Часовой пояс</strong> — временная зона для отображения всех дат. Изменение применяется немедленно без перезапуска.</li>
           <li><strong>Интервал автокопирования</strong> — количество дней между автоматическими резервными копиями (по умолчанию 7 дней).</li>
         </ul>
-        <p>После изменений нажмите «Сохранить».</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/d05_admin_settings.png' %}" alt="Настройки системы">
+          <figcaption>Рисунок 38 — Страница настроек системы в панели администратора</figcaption>
+        </figure>
       </div>
     </div>
 
@@ -495,12 +539,14 @@
         <i class="fas fa-chevron-down help-chevron"></i>
       </div>
       <div class="help-section-body">
-        <p>Резервные копии хранятся в папке <strong>backups/</strong> в формате JSON и содержат все данные системы.</p>
-        <div class="help-sub"><h4>Создание копии</h4></div>
-        <p>Система проверяет при каждом запросе, истёк ли настроенный интервал, и при необходимости создаёт копию автоматически. Для немедленного создания нажмите кнопку «Создать резервную копию» в разделе «Резервные копии» панели администратора.</p>
+        <p>Резервные копии хранятся в папке <strong>backups/</strong> в формате JSON. Система автоматически создаёт копию при каждом HTTP-запросе, если истёк настроенный интервал.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/d06_admin_backups.png' %}" alt="Резервные копии">
+          <figcaption>Рисунок 39 — Страница резервных копий в панели администратора</figcaption>
+        </figure>
         <div class="help-sub"><h4>Восстановление из копии</h4></div>
-        <p><strong>Способ 1 — через интерфейс системы:</strong> раздел «Администрирование» → «Импорт БД» → выберите файл резервной копии и нажмите «Импортировать».</p>
-        <p><strong>Способ 2 — через терминал:</strong> активируйте виртуальное окружение и выполните команду:</p>
+        <p><strong>Способ 1 — через интерфейс:</strong> раздел «Администрирование» → «Импорт БД» → выберите файл и нажмите «Импортировать».</p>
+        <p><strong>Способ 2 — через терминал:</strong></p>
         <div class="help-tip" style="font-family:monospace"><i class="fas fa-terminal"></i>python mykursovik2/manage.py loaddata backups/backup_YYYYMMDD_HHMMSS.json</div>
         <div class="help-warn"><i class="fas fa-exclamation-triangle"></i>Перед восстановлением создайте резервную копию текущего состояния — операция необратима.</div>
       </div>
@@ -515,46 +561,24 @@
         <i class="fas fa-chevron-down help-chevron"></i>
       </div>
       <div class="help-section-body">
-        <p>Раздел «Настройки» в группе «Склад» содержит реквизиты организации: наименование, форма собственности, ИНН, КПП, ОГРН, адрес, телефон, e-mail, стоимость нормо-часа и гарантийный срок. Эти данные используются при формировании PDF-документов.</p>
+        <p>Раздел «Настройки» (группа «Склад») содержит реквизиты организации: наименование, ИНН, КПП, ОГРН, адрес, телефон, e-mail, стоимость нормо-часа и гарантийный срок. Эти данные используются при формировании PDF-документов.</p>
         <div class="help-tip"><i class="fas fa-info-circle"></i>Уже созданные заказы хранят снапшоты реквизитов на момент создания и не изменяются при обновлении настроек.</div>
       </div>
     </div>
 
     <div class="help-section">
       <div class="help-section-head" onclick="toggleHelp(this)">
-        <i class="fas fa-users-cog section-icon"></i>
-        <h3>Сотрудники <span class="admin-badge">Админ</span></h3>
-        <i class="fas fa-chevron-down help-chevron"></i>
-      </div>
-      <div class="help-section-body">
-        <p>Раздел «Персонал» → «Сотрудники» содержит список сотрудников. Администратор добавляет сотрудников, указывает коэффициент заработной платы и при необходимости формирует отчёт о выполненных работах за период.</p>
-      </div>
-    </div>
-
-    <div class="help-section">
-      <div class="help-section-head" onclick="toggleHelp(this)">
         <i class="fas fa-exchange-alt section-icon"></i>
-        <h3>Экспорт и импорт базы данных <span class="admin-badge">Админ</span></h3>
+        <h3>Экспорт, импорт и бухгалтерия <span class="admin-badge">Админ</span></h3>
         <i class="fas fa-chevron-down help-chevron"></i>
       </div>
       <div class="help-section-body">
-        <p>Раздел «Администрирование» содержит инструменты переноса данных:</p>
         <ul>
           <li><strong>Экспорт БД</strong> — выгружает все данные в JSON-файл для переноса на другой компьютер.</li>
           <li><strong>Импорт БД</strong> — загружает ранее выгруженный файл, полностью заменяя текущие данные.</li>
+          <li><strong>Бухгалтерия (Excel)</strong> — выгружает данные о завершённых заказах, поступлениях и списаниях за указанный период в файл Microsoft Excel.</li>
         </ul>
         <div class="help-warn"><i class="fas fa-exclamation-triangle"></i>Импорт необратим — перед его выполнением обязательно создайте резервную копию.</div>
-      </div>
-    </div>
-
-    <div class="help-section">
-      <div class="help-section-head" onclick="toggleHelp(this)">
-        <i class="fas fa-file-excel section-icon"></i>
-        <h3>Бухгалтерский экспорт <span class="admin-badge">Админ</span></h3>
-        <i class="fas fa-chevron-down help-chevron"></i>
-      </div>
-      <div class="help-section-body">
-        <p>Раздел «Бухгалтерия (Excel)» позволяет выгрузить данные о завершённых заказах, поступлениях и списаниях за выбранный период в файл Microsoft Excel. Укажите даты начала и конца периода и нажмите «Сформировать» — файл скачается автоматически.</p>
       </div>
     </div>
 
@@ -565,7 +589,11 @@
         <i class="fas fa-chevron-down help-chevron"></i>
       </div>
       <div class="help-section-body">
-        <p>Раздел «Лог действий» в панели администратора фиксирует все значимые операции: создание, изменение и удаление объектов. Для каждой записи указывается пользователь, время, тип действия и подробности изменений. Доступна фильтрация по типу действия, модели, пользователю и дате.</p>
+        <p>Раздел «Лог действий» фиксирует все операции: создание, изменение и удаление объектов. Для каждой записи указывается пользователь, время, тип действия, IP-адрес и подробности. Доступна фильтрация по типу действия, модели, пользователю и дате.</p>
+        <figure class="help-figure">
+          <img src="{% static 'help_src/d07_admin_log.png' %}" alt="Журнал действий">
+          <figcaption>Рисунок 40 — Журнал действий в панели администратора</figcaption>
+        </figure>
         <div class="help-tip"><i class="fas fa-info-circle"></i>Записи журнала доступны только для просмотра — редактирование и удаление отключены.</div>
       </div>
     </div>
@@ -577,7 +605,7 @@
         <i class="fas fa-chevron-down help-chevron"></i>
       </div>
       <div class="help-section-body">
-        <p>Все данные системы хранятся в файле базы данных SQLite по пути <strong>db.sqlite3</strong> в корневом каталоге проекта. Резервные копии в формате JSON хранятся в папке <strong>backups/</strong>. При переносе системы на новый компьютер достаточно скопировать весь каталог проекта целиком.</p>
+        <p>Все данные системы хранятся в файле <strong>db.sqlite3</strong> в корневом каталоге проекта. Резервные копии хранятся в папке <strong>backups/</strong>. При переносе системы на новый компьютер достаточно скопировать весь каталог проекта целиком.</p>
       </div>
     </div>
 
@@ -593,7 +621,6 @@ function helpTab(btn, paneId) {
   btn.classList.add('active');
   document.getElementById(paneId).classList.add('active');
 }
-
 function toggleHelp(head) {
   head.parentElement.classList.toggle('open');
 }
