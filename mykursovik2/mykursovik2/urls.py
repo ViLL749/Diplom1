@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic.base import RedirectView
 from mainapp import views  # Импортируем views из приложения mainapp
 
 urlpatterns = [
@@ -76,6 +77,7 @@ urlpatterns = [
     # Аутентификация (login/logout)
     path('accounts/', include('accounts.urls')),
     path('help/', views.help_page, name='help_page'),
+    path('favicon.ico', RedirectView.as_view(url='/static/images/favicon.png', permanent=True)),
 
     # Склад
     path('warehouse/', include('warehouse.urls')),
