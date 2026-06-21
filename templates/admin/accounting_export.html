@@ -94,7 +94,7 @@ function setPreset(type) {
         from = new Date(today.getFullYear(), 0, 1);
         to   = today;
     }
-    const fmt = d => d.toISOString().split('T')[0];
+    const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     document.getElementById('date_from').value = fmt(from);
     document.getElementById('date_to').value   = fmt(to);
 }
