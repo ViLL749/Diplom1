@@ -81,12 +81,12 @@
             {% for order in page_obj %}
                 <tr data-id="{{ order.id }}" data-url-detail="{% url 'order_detail' order.id %}" data-url-update="{% url 'order_update' order.id %}" data-url-delete="{% url 'order_delete' order.id %}">
                     <td>{{ order.id }}</td>
-                    {% if order.status == 'Завершён' %}
-                        <td>{{ order.client_fio_static }}</td>
-                        <td>{{ order.car_details_static }}</td>
-                    {% else %}
+                    {% if order.client_car %}
                         <td>{{ order.client_car.client.fio }}</td>
                         <td>{{ order.client_car.make.name }} {{ order.client_car.model.name }}</td>
+                    {% else %}
+                        <td>{{ order.client_fio_static }}</td>
+                        <td>{{ order.car_details_static }}</td>
                     {% endif %}
                     <td>{{ order.order_date }}</td>
                     <td>{{ order.status }}</td>
