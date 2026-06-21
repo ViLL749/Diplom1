@@ -322,12 +322,9 @@ class SupplyDocumentForm(forms.ModelForm):
 
     class Meta:
         model = SupplyDocument
-        fields = ['supplier', 'purchase_order', 'comment', 'created_at']
+        fields = ['supplier', 'purchase_order', 'comment']
         widgets = {
             'comment': forms.Textarea(attrs={'rows': 2}),
-            'created_at': forms.DateTimeInput(
-                attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M'
-            ),
             'supplier': forms.HiddenInput(attrs={'id': 'supply-supplier-id'}),
             'purchase_order': forms.HiddenInput(),
         }
@@ -335,7 +332,6 @@ class SupplyDocumentForm(forms.ModelForm):
             'supplier': 'Поставщик',
             'purchase_order': 'Заказ поставщику',
             'comment': 'Примечание',
-            'created_at': 'Дата приёмки',
         }
 
     def __init__(self, *args, **kwargs):
@@ -644,17 +640,13 @@ class WorkshopSettingsForm(forms.ModelForm):
 class WriteOffForm(forms.ModelForm):
     class Meta:
         model = WriteOff
-        fields = ['reason', 'comment', 'created_at']
+        fields = ['reason', 'comment']
         widgets = {
             'comment': forms.Textarea(attrs={'rows': 2}),
-            'created_at': forms.DateTimeInput(
-                attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M'
-            ),
         }
         labels = {
             'reason': 'Причина списания',
             'comment': 'Примечание',
-            'created_at': 'Дата списания',
         }
 
 

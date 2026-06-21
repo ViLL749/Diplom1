@@ -25,6 +25,7 @@
     {% csrf_token %}
 
     <h2>Документ</h2>
+    <p><label>Дата списания:</label> <span style="color:#64748b;">{% now "d.m.Y H:i" %}</span></p>
     {% for field in form %}
     <div style="margin-bottom:10px;">
         <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
