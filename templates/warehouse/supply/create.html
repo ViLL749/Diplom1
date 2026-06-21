@@ -50,7 +50,7 @@
     </div>
     {% endif %}
 
-    <p><label>Дата приёмки:</label> <span style="color:#64748b;">{% now "d.m.Y H:i" %}</span></p>
+    <p><label>Дата приёмки:</label> <span style="color:#64748b;">{% now "d.m.Y" %}</span></p>
 
     {% for field in doc_form %}
     {% if field.html_name != "supplier" and field.html_name != "purchase_order" and field.html_name != "supplier_display" %}
