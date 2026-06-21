@@ -464,18 +464,23 @@ class Command(BaseCommand):
         # ── Заказы (45 штук) ─────────────────────────────────────
 
         def make_order(car, order_date_str, status, services, parts_list=None,
-                       comment=None, payment='cash', completion_days=3):
+                       comment=None, payment='cash', completion_days=3, mileage=None):
             """
             services: list of (Service, hours, complexity, Employee)
             parts_list: list of (Part, StockEntry, quantity, markup)
             """
             order_date = _date(order_date_str)
+            if mileage is None:
+                # ~15 000 км/год + небольшой разброс по номеру машины
+                base = (2026 - (car.year or 2018)) * 15000
+                vary = abs(hash(car.license_plate or str(car.pk))) % 8000
+                mileage = base + vary
             o = Order(
                 client_car=car,
                 order_date=order_date,
                 status=status,
                 comment=comment,
-                mileage=None,
+                mileage=mileage,
             )
             # Заполнить снапшоты вручную (сигналы выключены)
             o.client_fio_static = car.client.fio
